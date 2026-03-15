@@ -1,0 +1,417 @@
+import { Badge, Button, Card, Group, Select, Stack, Text, TextInput } from '@mantine/core';
+import { NavLink, useLocation } from 'react-router-dom';
+import type { LocalServerProfile, LocalWatchRoot, LocalUploadJob, TournamentFormat } from '@xips/api-contract';
+import { useState } from 'react';
+import { useDesktop } from './DesktopContext';
+
+const navItems = [
+  { to: '/', label: 'Overview' },
+  { to: '/queue', label: 'Upload Queue' },
+  { to: '/watch-folders', label: 'Watch Folders' },
+  { to: '/formats', label: 'Formats' },
+  { to: '/history', label: 'History' },
+  { to: '/diagnostics', label: 'Diagnostics' },
+  { to: '/settings', label: 'Settings' }
+] as const;
+
+const serverOptions = (profiles: LocalServerProfile[]): Array<{ value: string; label: string }> =>
+  profiles.map((profile) => ({
+    value: profile.id,
+    label: profile.name
+  }));
+
+export const DesktopSidebar = (): JSX.Element => {
+  const location = useLocation();
+  const { snapshot, health } = useDesktop();
+
+  return (
+    <aside className="desktop-sidebar">
+      <div className="desktop-brand">
+        <div className="desktop-brand-mark">XP</div>
+        <div>
+          <h1>xips-pt desktop</h1>
+          <p>Perfect Team upload control room</p>
+        </div>
+      </div>
+      <div className="desktop-nav">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            className={`desktop-nav-link${location.pathname === item.to ? ' active' : ''}`}
+            to={item.to}
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </div>
+      <Card withBorder className="desktop-status-card">
+        <Stack gap={6}>
+          <Text className="desktop-micro-label">Server status</Text>
+          <Group justify="space-between">
+            <Text size="sm">{health?.service ?? 'not checked'}</Text>
+            <Badge color={health?.ok ? 'teal' : 'gray'} variant="light">
+              {health?.ok ? 'healthy' : 'idle'}
+            </Badge>
+          </Group>
+          <Text size="xs" c="dimmed">
+            Queue depth: {health?.queueDepth ?? 0}
+          </Text>
+          <Text size="xs" c="dimmed">
+            Failed jobs: {health?.failedJobs ?? 0}
+          </Text>
+          <Text size="xs" c="dimmed">
+            Profiles: {snapshot.profiles.length}
+          </Text>
+        </Stack>
+      </Card>
+    </aside>
+  );
+};
+
+export const DesktopTopbar = (): JSX.Element => {
+  const { snapshot, selectedProfile, selectServerProfile, refreshHealth } = useDesktop();
+
+  return (
+    <header className="desktop-topbar">
+      <Group gap="sm" wrap="wrap">
+        <div className="desktop-select-wrap">
+          <span>Server</span>
+          <Select
+            value={snapshot.selectedProfileId || null}
+            data={serverOptions(snapshot.profiles)}
+            placeholder="Select a server"
+            onChange={(value) => {
+              if (value) {
+                void selectServerProfile(value);
+              }
+            }}
+          />
+        </div>
+        <Badge color="blue" variant="light">
+          OOTP27
+        </Badge>
+        <AuthStateBadge authenticated={snapshot.authUser !== null} />
+        {selectedProfile ? (
+          <Text size="sm" className="desktop-mono">
+            {selectedProfile.baseUrl}
+          </Text>
+        ) : null}
+      </Group>
+      <Group gap="sm">
+        <Badge color="orange" variant="light">
+          Pending {snapshot.uploadJobs.filter((job) => job.localState !== 'complete').length}
+        </Badge>
+        <Button size="xs" variant="light" onClick={() => void refreshHealth()}>
+          Refresh health
+        </Button>
+      </Group>
+    </header>
+  );
+};
+
+const lifecycleColor = (value: string | null): string => {
+  switch (value) {
+    case 'complete':
+      return 'teal';
+    case 'refreshing':
+      return 'cyan';
+    case 'refresh_pending':
+      return 'blue';
+    case 'processing':
+      return 'orange';
+    case 'failed':
+      return 'red';
+    case 'skipped_duplicate':
+      return 'gray';
+    case 'queued':
+      return 'yellow';
+    default:
+      return 'gray';
+  }
+};
+
+const localStateColor = (value: LocalUploadJob['localState']): string => {
+  switch (value) {
+    case 'complete':
+      return 'teal';
+    case 'uploading':
+      return 'orange';
+    case 'server_processing':
+    case 'server_refresh_pending':
+    case 'server_refreshing':
+      return 'blue';
+    case 'failed_retryable':
+      return 'yellow';
+    case 'failed_terminal':
+      return 'red';
+    case 'duplicate_skipped_local':
+      return 'gray';
+    case 'auth_blocked':
+      return 'red';
+    default:
+      return 'gray';
+  }
+};
+
+export const AuthStateBadge = ({ authenticated }: { authenticated: boolean }): JSX.Element => (
+  <Badge color={authenticated ? 'teal' : 'gray'} variant="light">
+    {authenticated ? 'Signed in' : 'Signed out'}
+  </Badge>
+);
+
+export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind'] }): JSX.Element => (
+  <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
+    {fileKind}
+  </Badge>
+);
+
+export const QueueStateBadge = ({ state }: { state: LocalUploadJob['localState'] }): JSX.Element => (
+  <Badge color={localStateColor(state)} variant="light">
+    {state}
+  </Badge>
+);
+
+export const LifecycleBadge = ({ phase }: { phase: LocalUploadJob['lifecyclePhase'] }): JSX.Element => (
+  <Badge color={lifecycleColor(phase)} variant="light">
+    {phase ?? 'not_started'}
+  </Badge>
+);
+
+export const SummaryCard = ({
+  label,
+  value,
+  detail
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}): JSX.Element => (
+  <Card withBorder className="desktop-card">
+    <Stack gap={4}>
+      <Text className="desktop-micro-label">{label}</Text>
+      <Text className="desktop-stat">{value}</Text>
+      <Text size="xs" c="dimmed">
+        {detail}
+      </Text>
+    </Stack>
+  </Card>
+);
+
+export const QueueTable = ({ jobs }: { jobs: LocalUploadJob[] }): JSX.Element => (
+  <div className="desktop-table-wrap">
+    <table className="desktop-table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Kind</th>
+          <th>Format</th>
+          <th>Local state</th>
+          <th>Server state</th>
+          <th>Retries</th>
+          <th>Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {jobs.length === 0 ? (
+          <tr>
+            <td colSpan={7}>No queued uploads yet.</td>
+          </tr>
+        ) : (
+          jobs.map((job) => (
+            <tr key={job.id}>
+              <td>{job.filename}</td>
+              <td>
+                <FileKindBadge fileKind={job.fileKind} />
+              </td>
+              <td>{job.formatId || '-'}</td>
+              <td>
+                <QueueStateBadge state={job.localState} />
+              </td>
+              <td>
+                <LifecycleBadge phase={job.lifecyclePhase} />
+              </td>
+              <td>{job.retries}</td>
+              <td>{new Date(job.updatedAt).toLocaleString()}</td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  </div>
+);
+
+export const WatchRootTable = ({
+  watchRoots,
+  onToggle,
+  onDelete
+}: {
+  watchRoots: LocalWatchRoot[];
+  onToggle: (watchRootId: string, paused: boolean) => Promise<void>;
+  onDelete: (watchRootId: string) => Promise<void>;
+}): JSX.Element => (
+  <div className="desktop-table-wrap">
+    <table className="desktop-table">
+      <thead>
+        <tr>
+          <th>Path</th>
+          <th>Recursive</th>
+          <th>Status</th>
+          <th>Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {watchRoots.length === 0 ? (
+          <tr>
+            <td colSpan={5}>No watched directories configured.</td>
+          </tr>
+        ) : (
+          watchRoots.map((root) => (
+            <tr key={root.id}>
+              <td className="desktop-mono">{root.path}</td>
+              <td>{root.recursive ? 'Yes' : 'No'}</td>
+              <td>{root.paused ? 'Paused' : 'Active'}</td>
+              <td>{new Date(root.updatedAt).toLocaleString()}</td>
+              <td>
+                <Group gap="xs">
+                  <Button size="compact-xs" variant="light" onClick={() => void onToggle(root.id, !root.paused)}>
+                    {root.paused ? 'Resume' : 'Pause'}
+                  </Button>
+                  <Button size="compact-xs" color="red" variant="light" onClick={() => void onDelete(root.id)}>
+                    Remove
+                  </Button>
+                </Group>
+              </td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  </div>
+);
+
+export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.Element => (
+  <div className="desktop-table-wrap">
+    <table className="desktop-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Mode</th>
+          <th>Run env</th>
+          <th>Park</th>
+          <th>Cap</th>
+          <th>OVR restrictions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {formats.length === 0 ? (
+          <tr>
+            <td colSpan={6}>No cached formats yet.</td>
+          </tr>
+        ) : (
+          formats.map((format) => (
+            <tr key={format.id}>
+              <td>{format.name}</td>
+              <td>{format.mode || '-'}</td>
+              <td>{format.runEnvironment || '-'}</td>
+              <td>{format.parkKey || '-'}</td>
+              <td>{format.capValue || '-'}</td>
+              <td>{format.ovrRestrictions.join(', ') || '-'}</td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  </div>
+);
+
+export const ServerProfileForm = (): JSX.Element => {
+  const { snapshot, saveServerProfile } = useDesktop();
+  const [editingId, setEditingId] = useState('');
+  const [name, setName] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+
+  return (
+    <Card withBorder className="desktop-card">
+      <Stack gap="sm">
+        <Text fw={700}>Add server profile</Text>
+        <Select
+          label="Edit existing profile"
+          placeholder="Create a new profile"
+          value={editingId || null}
+          data={[
+            { value: '', label: 'Create new profile' },
+            ...snapshot.profiles.map((profile) => ({ value: profile.id, label: profile.name }))
+          ]}
+          onChange={(value) => {
+            const nextId = value ?? '';
+            setEditingId(nextId);
+            const profile = snapshot.profiles.find((item) => item.id === nextId) ?? null;
+            setName(profile?.name ?? '');
+            setBaseUrl(profile?.baseUrl ?? '');
+          }}
+        />
+        <TextInput label="Profile name" value={name} onChange={(event) => setName(event.currentTarget.value)} />
+        <TextInput label="Base URL" value={baseUrl} onChange={(event) => setBaseUrl(event.currentTarget.value)} />
+        <Group justify="flex-end">
+          <Button
+            onClick={() => {
+              if (!name.trim() || !baseUrl.trim()) {
+                return;
+              }
+              void saveServerProfile({
+                id: editingId || undefined,
+                name: name.trim(),
+                baseUrl: baseUrl.trim()
+              }).then(() => {
+                setEditingId('');
+                setName('');
+                setBaseUrl('');
+              });
+            }}
+          >
+            {editingId ? 'Update profile' : 'Save profile'}
+          </Button>
+        </Group>
+      </Stack>
+    </Card>
+  );
+};
+
+export const WatchRootForm = (): JSX.Element => {
+  const { selectedProfile, addWatchRoot } = useDesktop();
+  const [path, setPath] = useState('');
+
+  return (
+    <Card withBorder className="desktop-card">
+      <Stack gap="sm">
+        <Text fw={700}>Add watch folder</Text>
+        <TextInput
+          label="Folder path"
+          placeholder="/Users/example/Downloads/PT Exports"
+          value={path}
+          onChange={(event) => setPath(event.currentTarget.value)}
+        />
+        <Group justify="flex-end">
+          <Button
+            disabled={!selectedProfile || !path.trim()}
+            onClick={() => {
+              if (!selectedProfile || !path.trim()) {
+                return;
+              }
+              void addWatchRoot({
+                profileId: selectedProfile.id,
+                path: path.trim(),
+                recursive: false
+              }).then(() => {
+                setPath('');
+              });
+            }}
+          >
+            Add folder
+          </Button>
+        </Group>
+      </Stack>
+    </Card>
+  );
+};

@@ -1,0 +1,233 @@
+:root {
+  --page-bg: #101113;
+  --surface-0: #15171a;
+  --surface-1: #1b1f24;
+  --surface-2: #232931;
+  --line-0: #2f3741;
+  --text-main: #f1f5fb;
+  --text-muted: #9aa7b6;
+  --accent: #2f80ed;
+  --accent-soft: #19355d;
+  --accent-green: #16c185;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  background: var(--page-bg);
+  color: var(--text-main);
+  font-family: "IBM Plex Sans", "Trebuchet MS", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.desktop-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+}
+
+.desktop-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 16px;
+  background: linear-gradient(180deg, #171a1e 0%, #121418 100%);
+  border-right: 1px solid var(--line-0);
+}
+
+.desktop-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.desktop-brand-mark {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #3188ff 0%, #1a5cc2 100%);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.desktop-brand h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #e7f0ff;
+}
+
+.desktop-brand p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.desktop-nav {
+  display: grid;
+  gap: 6px;
+}
+
+.desktop-nav-link {
+  padding: 10px 12px;
+  border-radius: 9px;
+  color: var(--text-muted);
+  font-size: 0.93rem;
+  transition: 140ms ease;
+}
+
+.desktop-nav-link:hover {
+  background: #1d232c;
+  color: #dce6f4;
+}
+
+.desktop-nav-link.active {
+  background: var(--accent-soft);
+  color: #b7d2fb;
+  border: 1px solid #254c84;
+}
+
+.desktop-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.desktop-topbar {
+  min-height: 64px;
+  border-bottom: 1px solid var(--line-0);
+  background: #14181d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+}
+
+.desktop-content {
+  display: grid;
+  gap: 18px;
+  padding: 24px 20px 28px;
+}
+
+.desktop-card {
+  background: var(--surface-1);
+  border: 1px solid var(--line-0);
+}
+
+.desktop-subcard {
+  background: #121820;
+  border: 1px solid #27303a;
+}
+
+.desktop-status-card {
+  margin-top: auto;
+  background: #14181d;
+  border: 1px solid var(--line-0);
+}
+
+.desktop-page-title {
+  margin: 0;
+  font-size: clamp(1.3rem, 2.8vw, 2rem);
+  letter-spacing: 0.01em;
+}
+
+.desktop-page-subtitle {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.desktop-micro-label {
+  color: #9db0c6;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.desktop-stat {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.desktop-mono {
+  font-family: "JetBrains Mono", monospace;
+}
+
+.desktop-select-wrap {
+  min-width: 260px;
+}
+
+.desktop-table-wrap {
+  overflow: auto;
+  border: 1px solid #27303a;
+  border-radius: 10px;
+  background: #121820;
+}
+
+.desktop-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.desktop-table thead tr {
+  background: #11161d;
+}
+
+.desktop-table th {
+  text-align: left;
+  color: #90a2b6;
+  font-size: 0.68rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  padding: 10px 12px;
+}
+
+.desktop-table td {
+  padding: 12px;
+  border-top: 1px solid #27303a;
+  color: #d7e6fb;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.desktop-table tbody tr:hover {
+  background: #1b2230;
+}
+
+@media (max-width: 980px) {
+  .desktop-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line-0);
+  }
+
+  .desktop-topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

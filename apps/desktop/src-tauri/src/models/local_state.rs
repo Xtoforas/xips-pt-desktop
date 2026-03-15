@@ -1,0 +1,119 @@
+use serde::{Deserialize, Serialize};
+
+use crate::models::api::TournamentFormat;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionUser {
+  #[serde(rename = "userId")]
+  pub user_id: String,
+  #[serde(rename = "discordId")]
+  pub discord_id: String,
+  #[serde(rename = "displayName")]
+  pub display_name: String,
+  pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalServerProfile {
+  pub id: String,
+  pub name: String,
+  #[serde(rename = "baseUrl")]
+  pub base_url: String,
+  #[serde(rename = "createdAt")]
+  pub created_at: String,
+  #[serde(rename = "updatedAt")]
+  pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalWatchRoot {
+  pub id: String,
+  #[serde(rename = "profileId")]
+  pub profile_id: String,
+  pub path: String,
+  pub recursive: bool,
+  pub paused: bool,
+  #[serde(rename = "createdAt")]
+  pub created_at: String,
+  #[serde(rename = "updatedAt")]
+  pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalDiagnosticEvent {
+  pub id: String,
+  pub level: String,
+  pub category: String,
+  pub message: String,
+  pub detail: String,
+  #[serde(rename = "createdAt")]
+  pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalUploadJob {
+  pub id: String,
+  #[serde(rename = "profileId")]
+  pub profile_id: String,
+  pub filename: String,
+  pub path: String,
+  #[serde(rename = "fileKind")]
+  pub file_kind: String,
+  #[serde(rename = "localState")]
+  pub local_state: String,
+  #[serde(rename = "lifecyclePhase")]
+  pub lifecycle_phase: Option<String>,
+  pub checksum: String,
+  #[serde(rename = "formatId")]
+  pub format_id: String,
+  #[serde(rename = "uploadId")]
+  pub upload_id: String,
+  pub error: String,
+  pub retries: u32,
+  #[serde(rename = "createdAt")]
+  pub created_at: String,
+  #[serde(rename = "updatedAt")]
+  pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesktopSnapshot {
+  pub profiles: Vec<LocalServerProfile>,
+  #[serde(rename = "selectedProfileId")]
+  pub selected_profile_id: String,
+  #[serde(rename = "authUser")]
+  pub auth_user: Option<SessionUser>,
+  #[serde(rename = "tokenExpiresAt")]
+  pub token_expires_at: String,
+  #[serde(rename = "watchRoots")]
+  pub watch_roots: Vec<LocalWatchRoot>,
+  #[serde(rename = "uploadJobs")]
+  pub upload_jobs: Vec<LocalUploadJob>,
+  pub diagnostics: Vec<LocalDiagnosticEvent>,
+  #[serde(rename = "cachedFormats")]
+  pub cached_formats: Vec<TournamentFormat>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SaveServerProfileInput {
+  pub id: Option<String>,
+  pub name: String,
+  #[serde(rename = "baseUrl")]
+  pub base_url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AddWatchRootInput {
+  #[serde(rename = "profileId")]
+  pub profile_id: String,
+  pub path: String,
+  pub recursive: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AddDiagnosticEventInput {
+  pub level: String,
+  pub category: String,
+  pub message: String,
+  pub detail: String,
+}
