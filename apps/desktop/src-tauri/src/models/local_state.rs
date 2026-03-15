@@ -40,6 +40,48 @@ pub struct LocalWatchRoot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalFormatRule {
+  pub id: String,
+  #[serde(rename = "profileId")]
+  pub profile_id: String,
+  #[serde(rename = "watchRootId")]
+  pub watch_root_id: String,
+  #[serde(rename = "matchType")]
+  pub match_type: String,
+  pub pattern: String,
+  #[serde(rename = "formatId")]
+  pub format_id: String,
+  #[serde(rename = "formatName")]
+  pub format_name: String,
+  #[serde(rename = "createdAt")]
+  pub created_at: String,
+  #[serde(rename = "updatedAt")]
+  pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalDetectedFile {
+  pub id: String,
+  #[serde(rename = "profileId")]
+  pub profile_id: String,
+  #[serde(rename = "watchRootId")]
+  pub watch_root_id: String,
+  pub path: String,
+  pub filename: String,
+  #[serde(rename = "fileKind")]
+  pub file_kind: String,
+  pub checksum: String,
+  #[serde(rename = "localState")]
+  pub local_state: String,
+  #[serde(rename = "formatId")]
+  pub format_id: String,
+  #[serde(rename = "createdAt")]
+  pub created_at: String,
+  #[serde(rename = "updatedAt")]
+  pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalDiagnosticEvent {
   pub id: String,
   pub level: String,
@@ -77,6 +119,33 @@ pub struct LocalUploadJob {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalUploadAttempt {
+  pub id: String,
+  #[serde(rename = "uploadJobId")]
+  pub upload_job_id: String,
+  #[serde(rename = "attemptNumber")]
+  pub attempt_number: u32,
+  pub status: String,
+  pub detail: String,
+  #[serde(rename = "createdAt")]
+  pub created_at: String,
+  #[serde(rename = "updatedAt")]
+  pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesktopPreferences {
+  #[serde(rename = "launchAtLogin")]
+  pub launch_at_login: bool,
+  #[serde(rename = "closeToTray")]
+  pub close_to_tray: bool,
+  #[serde(rename = "pollingIntervalSeconds")]
+  pub polling_interval_seconds: u32,
+  #[serde(rename = "diagnosticsRetentionDays")]
+  pub diagnostics_retention_days: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesktopSnapshot {
   pub profiles: Vec<LocalServerProfile>,
   #[serde(rename = "selectedProfileId")]
@@ -87,8 +156,15 @@ pub struct DesktopSnapshot {
   pub token_expires_at: String,
   #[serde(rename = "watchRoots")]
   pub watch_roots: Vec<LocalWatchRoot>,
+  #[serde(rename = "formatRules")]
+  pub format_rules: Vec<LocalFormatRule>,
+  #[serde(rename = "detectedFiles")]
+  pub detected_files: Vec<LocalDetectedFile>,
   #[serde(rename = "uploadJobs")]
   pub upload_jobs: Vec<LocalUploadJob>,
+  #[serde(rename = "uploadAttempts")]
+  pub upload_attempts: Vec<LocalUploadAttempt>,
+  pub preferences: DesktopPreferences,
   pub diagnostics: Vec<LocalDiagnosticEvent>,
   #[serde(rename = "cachedFormats")]
   pub cached_formats: Vec<TournamentFormat>,
@@ -108,6 +184,33 @@ pub struct AddWatchRootInput {
   pub profile_id: String,
   pub path: String,
   pub recursive: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SaveFormatRuleInput {
+  #[serde(rename = "profileId")]
+  pub profile_id: String,
+  #[serde(rename = "watchRootId")]
+  pub watch_root_id: String,
+  #[serde(rename = "matchType")]
+  pub match_type: String,
+  pub pattern: String,
+  #[serde(rename = "formatId")]
+  pub format_id: String,
+  #[serde(rename = "formatName")]
+  pub format_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdatePreferencesInput {
+  #[serde(rename = "launchAtLogin")]
+  pub launch_at_login: bool,
+  #[serde(rename = "closeToTray")]
+  pub close_to_tray: bool,
+  #[serde(rename = "pollingIntervalSeconds")]
+  pub polling_interval_seconds: u32,
+  #[serde(rename = "diagnosticsRetentionDays")]
+  pub diagnostics_retention_days: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]

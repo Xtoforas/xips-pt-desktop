@@ -175,6 +175,32 @@ export type LocalWatchRoot = {
   updatedAt: string;
 };
 
+export type LocalFormatRule = {
+  id: string;
+  profileId: string;
+  watchRootId: string;
+  matchType: 'folder' | 'filename';
+  pattern: string;
+  formatId: string;
+  formatName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LocalDetectedFile = {
+  id: string;
+  profileId: string;
+  watchRootId: string;
+  path: string;
+  filename: string;
+  fileKind: 'stats_export' | 'card_catalog' | 'unknown';
+  checksum: string;
+  localState: 'detected' | 'awaiting_format_assignment' | 'ignored';
+  formatId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type LocalDiagnosticEvent = {
   id: string;
   level: 'info' | 'warn' | 'error';
@@ -215,13 +241,34 @@ export type LocalUploadJob = {
   updatedAt: string;
 };
 
+export type LocalUploadAttempt = {
+  id: string;
+  uploadJobId: string;
+  attemptNumber: number;
+  status: 'queued' | 'running' | 'failed' | 'complete';
+  detail: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DesktopPreferences = {
+  launchAtLogin: boolean;
+  closeToTray: boolean;
+  pollingIntervalSeconds: number;
+  diagnosticsRetentionDays: number;
+};
+
 export type DesktopSnapshot = {
   profiles: LocalServerProfile[];
   selectedProfileId: string;
   authUser: SessionUser | null;
   tokenExpiresAt: string;
   watchRoots: LocalWatchRoot[];
+  formatRules: LocalFormatRule[];
+  detectedFiles: LocalDetectedFile[];
   uploadJobs: LocalUploadJob[];
+  uploadAttempts: LocalUploadAttempt[];
+  preferences: DesktopPreferences;
   diagnostics: LocalDiagnosticEvent[];
   cachedFormats: TournamentFormat[];
 };

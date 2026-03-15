@@ -5,9 +5,10 @@ use tauri::{AppHandle, Manager, State};
 use crate::app_state::AppState;
 use crate::models::api::{ServiceHealth, TournamentFormat};
 use crate::models::local_state::{
-  AddDiagnosticEventInput, AddWatchRootInput, DesktopSnapshot, SaveServerProfileInput,
+  AddDiagnosticEventInput, AddWatchRootInput, DesktopSnapshot, SaveFormatRuleInput, SaveServerProfileInput,
+  UpdatePreferencesInput,
 };
-use crate::services::{api_client, storage};
+use crate::services::{api_client, scanner, storage};
 
 #[tauri::command]
 pub fn desktop_get_snapshot(state: State<'_, AppState>) -> Result<DesktopSnapshot, String> {
@@ -145,6 +146,41 @@ pub fn desktop_add_watch_root(
 }
 
 #[tauri::command]
+pub fn desktop_save_format_rule(
+  input: SaveFormatRuleInput,
+  state: State<'_, AppState>,
+) -> Result<DesktopSnapshot, String> {
+  let snapshot = storage::save_format_rule(&state.db_path, input.clone())?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "info",
+    "watcher",
+    "Saved format rule",
+    &format!(
+      "profile_id={},watch_root_id={},match_type={},pattern={},format_id={}",
+      input.profile_id, input.watch_root_id, input.match_type, input.pattern, input.format_id
+    ),
+  )?;
+  Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn desktop_delete_format_rule(
+  format_rule_id: String,
+  state: State<'_, AppState>,
+) -> Result<DesktopSnapshot, String> {
+  let snapshot = storage::delete_format_rule(&state.db_path, &format_rule_id)?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "warn",
+    "watcher",
+    "Deleted format rule",
+    &format!("format_rule_id={}", format_rule_id),
+  )?;
+  Ok(snapshot)
+}
+
+#[tauri::command]
 pub fn desktop_delete_watch_root(
   watch_root_id: String,
   state: State<'_, AppState>,
@@ -173,6 +209,47 @@ pub fn desktop_toggle_watch_root(
     "watcher",
     "Toggled watch root",
     &format!("watch_root_id={},paused={}", watch_root_id, paused),
+  )?;
+  Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn desktop_update_preferences(
+  input: UpdatePreferencesInput,
+  state: State<'_, AppState>,
+) -> Result<DesktopSnapshot, String> {
+  let snapshot = storage::update_preferences(&state.db_path, input.clone())?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "info",
+    "storage",
+    "Updated desktop preferences",
+    &format!(
+      "launch_at_login={},close_to_tray={},polling_interval_seconds={},diagnostics_retention_days={}",
+      input.launch_at_login,
+      input.close_to_tray,
+      input.polling_interval_seconds,
+      input.diagnostics_retention_days
+    ),
+  )?;
+  Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn desktop_scan_watch_roots(
+  profile_id: String,
+  state: State<'_, AppState>,
+) -> Result<DesktopSnapshot, String> {
+  let watch_roots = storage::list_watch_roots_for_profile(&state.db_path, &profile_id)?;
+  let format_rules = storage::list_format_rule_matches_for_profile(&state.db_path, &profile_id)?;
+  let scanned = scanner::scan_watch_roots(&watch_roots, &format_rules)?;
+  let snapshot = storage::save_scan_results(&state.db_path, &profile_id, &scanned)?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "info",
+    "watcher",
+    "Scanned watch roots",
+    &format!("profile_id={},detected_files={}", profile_id, scanned.len()),
   )?;
   Ok(snapshot)
 }

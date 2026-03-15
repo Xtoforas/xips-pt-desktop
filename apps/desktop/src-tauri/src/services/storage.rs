@@ -6,9 +6,11 @@ use uuid::Uuid;
 use crate::db::INITIAL_MIGRATION_SQL;
 use crate::models::api::TournamentFormat;
 use crate::models::local_state::{
-  AddDiagnosticEventInput, AddWatchRootInput, DesktopSnapshot, LocalDiagnosticEvent, LocalServerProfile,
-  LocalUploadJob, LocalWatchRoot, SaveServerProfileInput,
+  AddDiagnosticEventInput, AddWatchRootInput, DesktopPreferences, DesktopSnapshot, LocalDetectedFile,
+  LocalDiagnosticEvent, LocalFormatRule, LocalServerProfile, LocalUploadAttempt, LocalUploadJob, LocalWatchRoot,
+  SaveFormatRuleInput, SaveServerProfileInput, SessionUser, UpdatePreferencesInput,
 };
+use crate::services::scanner::{FormatRuleMatch, ScanResult};
 
 fn now_iso() -> String {
   let now = std::time::SystemTime::now();
@@ -36,19 +38,32 @@ pub fn load_snapshot(db_path: &Path) -> Result<DesktopSnapshot, String> {
   let connection = open_db(db_path)?;
   let profiles = load_profiles(&connection)?;
   let selected_profile_id = load_setting(&connection, "selected_profile_id")?;
-  let token_expires_at = load_setting(&connection, "token_expires_at")?;
+  let auth_user = load_auth_user(&connection)?;
+  let token_expires_at = auth_user
+    .as_ref()
+    .map(|_| load_setting(&connection, "token_expires_at"))
+    .transpose()?
+    .unwrap_or_default();
   let watch_roots = load_watch_roots(&connection)?;
+  let format_rules = load_format_rules(&connection)?;
+  let detected_files = load_detected_files(&connection)?;
   let upload_jobs = load_upload_jobs(&connection)?;
+  let upload_attempts = load_upload_attempts(&connection)?;
+  let preferences = load_preferences(&connection)?;
   let diagnostics = load_diagnostics(&connection)?;
   let cached_formats = load_cached_formats(&connection)?;
 
   Ok(DesktopSnapshot {
     profiles,
     selected_profile_id,
-    auth_user: None,
+    auth_user,
     token_expires_at,
     watch_roots,
+    format_rules,
+    detected_files,
     upload_jobs,
+    upload_attempts,
+    preferences,
     diagnostics,
     cached_formats,
   })
@@ -127,6 +142,50 @@ pub fn add_watch_root(db_path: &Path, input: AddWatchRootInput) -> Result<Deskto
   load_snapshot(db_path)
 }
 
+pub fn save_format_rule(db_path: &Path, input: SaveFormatRuleInput) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  let format_rule_id = Uuid::new_v4().to_string();
+  let now = now_iso();
+  connection
+    .execute(
+      "
+      INSERT INTO format_rules (
+        format_rule_id,
+        profile_id,
+        watch_root_id,
+        match_type,
+        pattern,
+        format_id,
+        format_name,
+        created_at,
+        updated_at
+      )
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      ",
+      params![
+        format_rule_id,
+        input.profile_id,
+        input.watch_root_id,
+        input.match_type,
+        input.pattern.trim(),
+        input.format_id,
+        input.format_name,
+        now,
+        now
+      ],
+    )
+    .map_err(|error| error.to_string())?;
+  load_snapshot(db_path)
+}
+
+pub fn delete_format_rule(db_path: &Path, format_rule_id: &str) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  connection
+    .execute("DELETE FROM format_rules WHERE format_rule_id = ?1", params![format_rule_id])
+    .map_err(|error| error.to_string())?;
+  load_snapshot(db_path)
+}
+
 pub fn delete_watch_root(db_path: &Path, watch_root_id: &str) -> Result<DesktopSnapshot, String> {
   let connection = open_db(db_path)?;
   connection
@@ -143,6 +202,137 @@ pub fn toggle_watch_root(db_path: &Path, watch_root_id: &str, paused: bool) -> R
       params![watch_root_id, if paused { 1 } else { 0 }, now_iso()],
     )
     .map_err(|error| error.to_string())?;
+  load_snapshot(db_path)
+}
+
+pub fn update_preferences(db_path: &Path, input: UpdatePreferencesInput) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  save_setting(
+    &connection,
+    "preferences_json",
+    &serde_json::to_string(&DesktopPreferences {
+      launch_at_login: input.launch_at_login,
+      close_to_tray: input.close_to_tray,
+      polling_interval_seconds: input.polling_interval_seconds,
+      diagnostics_retention_days: input.diagnostics_retention_days,
+    })
+    .map_err(|error| error.to_string())?,
+  )
+  .map_err(|error| error.to_string())?;
+  load_snapshot(db_path)
+}
+
+pub fn list_watch_roots_for_profile(db_path: &Path, profile_id: &str) -> Result<Vec<LocalWatchRoot>, String> {
+  let connection = open_db(db_path)?;
+  let watch_roots = load_watch_roots(&connection)?;
+  Ok(watch_roots.into_iter().filter(|root| root.profile_id == profile_id).collect())
+}
+
+pub fn list_format_rule_matches_for_profile(db_path: &Path, profile_id: &str) -> Result<Vec<FormatRuleMatch>, String> {
+  let connection = open_db(db_path)?;
+  let rules = load_format_rules(&connection)?;
+  Ok(
+    rules
+      .into_iter()
+      .filter(|rule| rule.profile_id == profile_id)
+      .map(|rule| FormatRuleMatch {
+        watch_root_id: rule.watch_root_id,
+        match_type: rule.match_type,
+        pattern: rule.pattern,
+        format_id: rule.format_id,
+      })
+      .collect(),
+  )
+}
+
+pub fn save_scan_results(
+  db_path: &Path,
+  profile_id: &str,
+  rows: &[ScanResult],
+) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  connection
+    .execute("DELETE FROM detected_files WHERE profile_id = ?1", params![profile_id])
+    .map_err(|error| error.to_string())?;
+  connection
+    .execute("DELETE FROM upload_jobs WHERE profile_id = ?1", params![profile_id])
+    .map_err(|error| error.to_string())?;
+
+  for row in rows {
+    let now = now_iso();
+    let detected_file_id = Uuid::new_v4().to_string();
+    connection
+      .execute(
+        "
+        INSERT INTO detected_files (
+          detected_file_id,
+          profile_id,
+          watch_root_id,
+          path,
+          filename,
+          file_kind,
+          checksum,
+          local_state,
+          format_id,
+          created_at,
+          updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+        ",
+        params![
+          detected_file_id,
+          profile_id,
+          row.watch_root_id,
+          row.path,
+          row.filename,
+          row.file_kind,
+          row.checksum,
+          row.local_state,
+          row.format_id,
+          now,
+          now
+        ],
+      )
+      .map_err(|error| error.to_string())?;
+
+    let upload_job_id = Uuid::new_v4().to_string();
+    connection
+      .execute(
+        "
+        INSERT INTO upload_jobs (
+          upload_job_id,
+          profile_id,
+          filename,
+          path,
+          file_kind,
+          local_state,
+          lifecycle_phase,
+          checksum,
+          format_id,
+          upload_id,
+          error,
+          retries,
+          created_at,
+          updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8, '', '', 0, ?9, ?10)
+        ",
+        params![
+          upload_job_id,
+          profile_id,
+          row.filename,
+          row.path,
+          row.file_kind,
+          row.local_state,
+          row.checksum,
+          row.format_id,
+          now,
+          now
+        ],
+      )
+      .map_err(|error| error.to_string())?;
+  }
+
   load_snapshot(db_path)
 }
 
@@ -252,6 +442,66 @@ fn load_watch_roots(connection: &Connection) -> Result<Vec<LocalWatchRoot>, Stri
   Ok(rows)
 }
 
+fn load_format_rules(connection: &Connection) -> Result<Vec<LocalFormatRule>, String> {
+  let mut statement = connection
+    .prepare(
+      "
+      SELECT format_rule_id, profile_id, watch_root_id, match_type, pattern, format_id, format_name, created_at, updated_at
+      FROM format_rules
+      ORDER BY updated_at DESC
+      ",
+    )
+    .map_err(|error| error.to_string())?;
+  let mapped = statement
+    .query_map([], |row| {
+      Ok(LocalFormatRule {
+        id: row.get(0)?,
+        profile_id: row.get(1)?,
+        watch_root_id: row.get(2)?,
+        match_type: row.get(3)?,
+        pattern: row.get(4)?,
+        format_id: row.get(5)?,
+        format_name: row.get(6)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+      })
+    })
+    .map_err(|error| error.to_string())?;
+  let rows = mapped.collect::<SqlResult<Vec<LocalFormatRule>>>().map_err(|error| error.to_string())?;
+  Ok(rows)
+}
+
+fn load_detected_files(connection: &Connection) -> Result<Vec<LocalDetectedFile>, String> {
+  let mut statement = connection
+    .prepare(
+      "
+      SELECT detected_file_id, profile_id, watch_root_id, path, filename, file_kind, checksum, local_state, format_id, created_at, updated_at
+      FROM detected_files
+      ORDER BY updated_at DESC
+      ",
+    )
+    .map_err(|error| error.to_string())?;
+  let mapped = statement
+    .query_map([], |row| {
+      Ok(LocalDetectedFile {
+        id: row.get(0)?,
+        profile_id: row.get(1)?,
+        watch_root_id: row.get(2)?,
+        path: row.get(3)?,
+        filename: row.get(4)?,
+        file_kind: row.get(5)?,
+        checksum: row.get(6)?,
+        local_state: row.get(7)?,
+        format_id: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
+      })
+    })
+    .map_err(|error| error.to_string())?;
+  let rows = mapped.collect::<SqlResult<Vec<LocalDetectedFile>>>().map_err(|error| error.to_string())?;
+  Ok(rows)
+}
+
 fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, String> {
   let mut statement = connection
     .prepare(
@@ -286,6 +536,33 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
   Ok(rows)
 }
 
+fn load_upload_attempts(connection: &Connection) -> Result<Vec<LocalUploadAttempt>, String> {
+  let mut statement = connection
+    .prepare(
+      "
+      SELECT upload_attempt_id, upload_job_id, attempt_number, status, detail, created_at, updated_at
+      FROM upload_attempts
+      ORDER BY updated_at DESC
+      ",
+    )
+    .map_err(|error| error.to_string())?;
+  let mapped = statement
+    .query_map([], |row| {
+      Ok(LocalUploadAttempt {
+        id: row.get(0)?,
+        upload_job_id: row.get(1)?,
+        attempt_number: row.get(2)?,
+        status: row.get(3)?,
+        detail: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+      })
+    })
+    .map_err(|error| error.to_string())?;
+  let rows = mapped.collect::<SqlResult<Vec<LocalUploadAttempt>>>().map_err(|error| error.to_string())?;
+  Ok(rows)
+}
+
 fn load_diagnostics(connection: &Connection) -> Result<Vec<LocalDiagnosticEvent>, String> {
   let mut statement = connection
     .prepare(
@@ -311,6 +588,29 @@ fn load_diagnostics(connection: &Connection) -> Result<Vec<LocalDiagnosticEvent>
     .map_err(|error| error.to_string())?;
   let rows = mapped.collect::<SqlResult<Vec<LocalDiagnosticEvent>>>().map_err(|error| error.to_string())?;
   Ok(rows)
+}
+
+fn load_auth_user(connection: &Connection) -> Result<Option<SessionUser>, String> {
+  let row = connection
+    .query_row(
+      "
+      SELECT user_id, discord_id, display_name, role
+      FROM auth_state
+      ORDER BY updated_at DESC
+      LIMIT 1
+      ",
+      [],
+      |row| {
+        Ok(SessionUser {
+          user_id: row.get(0)?,
+          discord_id: row.get(1)?,
+          display_name: row.get(2)?,
+          role: row.get(3)?,
+        })
+      },
+    )
+    .ok();
+  Ok(row)
 }
 
 fn load_cached_formats(connection: &Connection) -> Result<Vec<TournamentFormat>, String> {
@@ -343,6 +643,19 @@ fn load_setting(connection: &Connection, key: &str) -> Result<String, String> {
     )
     .unwrap_or_default();
   Ok(value)
+}
+
+fn load_preferences(connection: &Connection) -> Result<DesktopPreferences, String> {
+  let raw = load_setting(connection, "preferences_json")?;
+  if raw.is_empty() {
+    return Ok(DesktopPreferences {
+      launch_at_login: false,
+      close_to_tray: true,
+      polling_interval_seconds: 5,
+      diagnostics_retention_days: 14,
+    });
+  }
+  serde_json::from_str::<DesktopPreferences>(&raw).map_err(|error| error.to_string())
 }
 
 fn save_setting(connection: &Connection, key: &str, value: &str) -> SqlResult<()> {

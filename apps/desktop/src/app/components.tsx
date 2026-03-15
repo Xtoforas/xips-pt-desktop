@@ -1,6 +1,6 @@
 import { Badge, Button, Card, Group, Select, Stack, Text, TextInput } from '@mantine/core';
 import { NavLink, useLocation } from 'react-router-dom';
-import type { LocalServerProfile, LocalWatchRoot, LocalUploadJob, TournamentFormat } from '@xips/api-contract';
+import type { DesktopPreferences, LocalFormatRule, LocalServerProfile, LocalWatchRoot, LocalUploadJob, TournamentFormat } from '@xips/api-contract';
 import { useState } from 'react';
 import { useDesktop } from './DesktopContext';
 
@@ -197,7 +197,15 @@ export const SummaryCard = ({
   </Card>
 );
 
-export const QueueTable = ({ jobs }: { jobs: LocalUploadJob[] }): JSX.Element => (
+export const QueueTable = ({
+  jobs,
+  selectedJobId,
+  onSelect
+}: {
+  jobs: LocalUploadJob[];
+  selectedJobId?: string;
+  onSelect?: (job: LocalUploadJob) => void;
+}): JSX.Element => (
   <div className="desktop-table-wrap">
     <table className="desktop-table">
       <thead>
@@ -218,7 +226,11 @@ export const QueueTable = ({ jobs }: { jobs: LocalUploadJob[] }): JSX.Element =>
           </tr>
         ) : (
           jobs.map((job) => (
-            <tr key={job.id}>
+            <tr
+              key={job.id}
+              className={selectedJobId === job.id ? 'desktop-row-selected' : ''}
+              onClick={() => onSelect?.(job)}
+            >
               <td>{job.filename}</td>
               <td>
                 <FileKindBadge fileKind={job.fileKind} />
@@ -409,6 +421,111 @@ export const WatchRootForm = (): JSX.Element => {
             }}
           >
             Add folder
+          </Button>
+        </Group>
+      </Stack>
+    </Card>
+  );
+};
+
+export const FormatRuleTable = ({
+  rules,
+  onDelete
+}: {
+  rules: LocalFormatRule[];
+  onDelete: (formatRuleId: string) => Promise<void>;
+}): JSX.Element => (
+  <div className="desktop-table-wrap">
+    <table className="desktop-table">
+      <thead>
+        <tr>
+          <th>Match</th>
+          <th>Pattern</th>
+          <th>Format</th>
+          <th>Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rules.length === 0 ? (
+          <tr>
+            <td colSpan={5}>No saved format rules yet.</td>
+          </tr>
+        ) : (
+          rules.map((rule) => (
+            <tr key={rule.id}>
+              <td>{rule.matchType}</td>
+              <td className="desktop-mono">{rule.pattern}</td>
+              <td>{rule.formatName}</td>
+              <td>{new Date(rule.updatedAt).toLocaleString()}</td>
+              <td>
+                <Button size="compact-xs" color="red" variant="light" onClick={() => void onDelete(rule.id)}>
+                  Remove
+                </Button>
+              </td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  </div>
+);
+
+export const PreferencesForm = ({
+  preferences,
+  onSave
+}: {
+  preferences: DesktopPreferences;
+  onSave: (preferences: DesktopPreferences) => Promise<void>;
+}): JSX.Element => {
+  const [launchAtLogin, setLaunchAtLogin] = useState(preferences.launchAtLogin);
+  const [closeToTray, setCloseToTray] = useState(preferences.closeToTray);
+  const [pollingIntervalSeconds, setPollingIntervalSeconds] = useState(String(preferences.pollingIntervalSeconds));
+  const [diagnosticsRetentionDays, setDiagnosticsRetentionDays] = useState(String(preferences.diagnosticsRetentionDays));
+
+  return (
+    <Card withBorder className="desktop-card">
+      <Stack gap="sm">
+        <Text fw={700}>Desktop behavior</Text>
+        <label className="desktop-checkbox-row">
+          <input
+            type="checkbox"
+            checked={launchAtLogin}
+            onChange={(event) => setLaunchAtLogin(event.currentTarget.checked)}
+          />
+          <span>Launch at login</span>
+        </label>
+        <label className="desktop-checkbox-row">
+          <input type="checkbox" checked={closeToTray} onChange={(event) => setCloseToTray(event.currentTarget.checked)} />
+          <span>Close to background</span>
+        </label>
+        <TextInput
+          label="Polling interval (seconds)"
+          value={pollingIntervalSeconds}
+          onChange={(event) => setPollingIntervalSeconds(event.currentTarget.value)}
+        />
+        <TextInput
+          label="Diagnostics retention (days)"
+          value={diagnosticsRetentionDays}
+          onChange={(event) => setDiagnosticsRetentionDays(event.currentTarget.value)}
+        />
+        <Group justify="flex-end">
+          <Button
+            onClick={() => {
+              const polling = Number.parseInt(pollingIntervalSeconds, 10);
+              const retention = Number.parseInt(diagnosticsRetentionDays, 10);
+              if (!Number.isFinite(polling) || !Number.isFinite(retention)) {
+                return;
+              }
+              void onSave({
+                launchAtLogin,
+                closeToTray,
+                pollingIntervalSeconds: polling,
+                diagnosticsRetentionDays: retention
+              });
+            }}
+          >
+            Save preferences
           </Button>
         </Group>
       </Stack>

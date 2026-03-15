@@ -8,6 +8,7 @@ import {
   type PropsWithChildren
 } from 'react';
 import type {
+  DesktopPreferences,
   DesktopSnapshot,
   LocalDiagnosticEvent,
   LocalServerProfile,
@@ -29,6 +30,15 @@ type AddWatchRootInput = {
   recursive: boolean;
 };
 
+type SaveFormatRuleInput = {
+  profileId: string;
+  watchRootId: string;
+  matchType: 'folder' | 'filename';
+  pattern: string;
+  formatId: string;
+  formatName: string;
+};
+
 type DesktopContextValue = {
   snapshot: DesktopSnapshot;
   loading: boolean;
@@ -41,8 +51,12 @@ type DesktopContextValue = {
   refreshHealth: () => Promise<void>;
   refreshFormats: () => Promise<void>;
   addWatchRoot: (input: AddWatchRootInput) => Promise<void>;
+  saveFormatRule: (input: SaveFormatRuleInput) => Promise<void>;
+  deleteFormatRule: (formatRuleId: string) => Promise<void>;
+  scanWatchRoots: (profileId: string) => Promise<void>;
   deleteWatchRoot: (watchRootId: string) => Promise<void>;
   toggleWatchRoot: (watchRootId: string, paused: boolean) => Promise<void>;
+  updatePreferences: (preferences: DesktopPreferences) => Promise<void>;
   addDiagnosticEvent: (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>) => Promise<void>;
 };
 
@@ -52,7 +66,16 @@ const emptySnapshot: DesktopSnapshot = {
   authUser: null,
   tokenExpiresAt: '',
   watchRoots: [],
+  formatRules: [],
+  detectedFiles: [],
   uploadJobs: [],
+  uploadAttempts: [],
+  preferences: {
+    launchAtLogin: false,
+    closeToTray: true,
+    pollingIntervalSeconds: 5,
+    diagnosticsRetentionDays: 14
+  },
   diagnostics: [],
   cachedFormats: []
 };
@@ -121,6 +144,21 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setSnapshot(next);
   }, []);
 
+  const saveFormatRule = useCallback(async (input: SaveFormatRuleInput): Promise<void> => {
+    const next = await desktopClient.saveFormatRule(input);
+    setSnapshot(next);
+  }, []);
+
+  const deleteFormatRule = useCallback(async (formatRuleId: string): Promise<void> => {
+    const next = await desktopClient.deleteFormatRule(formatRuleId);
+    setSnapshot(next);
+  }, []);
+
+  const scanWatchRoots = useCallback(async (profileId: string): Promise<void> => {
+    const next = await desktopClient.scanWatchRoots(profileId);
+    setSnapshot(next);
+  }, []);
+
   const deleteWatchRoot = useCallback(async (watchRootId: string): Promise<void> => {
     const next = await desktopClient.deleteWatchRoot(watchRootId);
     setSnapshot(next);
@@ -128,6 +166,11 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
 
   const toggleWatchRoot = useCallback(async (watchRootId: string, paused: boolean): Promise<void> => {
     const next = await desktopClient.toggleWatchRoot(watchRootId, paused);
+    setSnapshot(next);
+  }, []);
+
+  const updatePreferences = useCallback(async (preferences: DesktopPreferences): Promise<void> => {
+    const next = await desktopClient.updatePreferences(preferences);
     setSnapshot(next);
   }, []);
 
@@ -157,8 +200,12 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       refreshHealth,
       refreshFormats,
       addWatchRoot,
+      saveFormatRule,
+      deleteFormatRule,
+      scanWatchRoots,
       deleteWatchRoot,
       toggleWatchRoot,
+      updatePreferences,
       addDiagnosticEvent
     }),
     [
@@ -173,8 +220,12 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       refreshHealth,
       refreshFormats,
       addWatchRoot,
+      saveFormatRule,
+      deleteFormatRule,
+      scanWatchRoots,
       deleteWatchRoot,
       toggleWatchRoot,
+      updatePreferences,
       addDiagnosticEvent
     ]
   );

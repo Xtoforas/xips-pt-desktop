@@ -21,6 +21,43 @@ CREATE TABLE IF NOT EXISTS watch_roots (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS auth_state (
+  auth_state_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  discord_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  token_expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS format_rules (
+  format_rule_id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL,
+  watch_root_id TEXT NOT NULL,
+  match_type TEXT NOT NULL,
+  pattern TEXT NOT NULL,
+  format_id TEXT NOT NULL,
+  format_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS detected_files (
+  detected_file_id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL,
+  watch_root_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  file_kind TEXT NOT NULL,
+  checksum TEXT NOT NULL,
+  local_state TEXT NOT NULL,
+  format_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS upload_jobs (
   upload_job_id TEXT PRIMARY KEY,
   profile_id TEXT NOT NULL,
@@ -34,6 +71,16 @@ CREATE TABLE IF NOT EXISTS upload_jobs (
   upload_id TEXT NOT NULL,
   error TEXT NOT NULL,
   retries INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS upload_attempts (
+  upload_attempt_id TEXT PRIMARY KEY,
+  upload_job_id TEXT NOT NULL,
+  attempt_number INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  detail TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

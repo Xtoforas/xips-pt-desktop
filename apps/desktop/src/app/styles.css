@@ -216,6 +216,26 @@ a {
   background: #1b2230;
 }
 
+.desktop-table tbody tr {
+  cursor: pointer;
+}
+
+.desktop-row-selected {
+  background: #1a2534;
+}
+
+.desktop-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d7e6fb;
+  font-size: 0.9rem;
+}
+
+.desktop-checkbox-row input {
+  accent-color: #f08c00;
+}
+
 @media (max-width: 980px) {
   .desktop-shell {
     grid-template-columns: 1fr;

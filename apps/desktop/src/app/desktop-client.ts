@@ -1,7 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  DesktopPreferences,
   DesktopSnapshot,
+  LocalDetectedFile,
   LocalDiagnosticEvent,
+  LocalFormatRule,
   LocalServerProfile,
   LocalWatchRoot,
   ServiceHealth,
@@ -20,6 +23,15 @@ type AddWatchRootInput = {
   recursive: boolean;
 };
 
+type SaveFormatRuleInput = {
+  profileId: string;
+  watchRootId: string;
+  matchType: 'folder' | 'filename';
+  pattern: string;
+  formatId: string;
+  formatName: string;
+};
+
 type DesktopClient = {
   getSnapshot: () => Promise<DesktopSnapshot>;
   saveServerProfile: (input: SaveServerProfileInput) => Promise<DesktopSnapshot>;
@@ -28,8 +40,12 @@ type DesktopClient = {
   checkServerHealth: (profileId: string) => Promise<ServiceHealth>;
   fetchFormats: (profileId: string) => Promise<TournamentFormat[]>;
   addWatchRoot: (input: AddWatchRootInput) => Promise<DesktopSnapshot>;
+  saveFormatRule: (input: SaveFormatRuleInput) => Promise<DesktopSnapshot>;
+  deleteFormatRule: (formatRuleId: string) => Promise<DesktopSnapshot>;
+  scanWatchRoots: (profileId: string) => Promise<DesktopSnapshot>;
   deleteWatchRoot: (watchRootId: string) => Promise<DesktopSnapshot>;
   toggleWatchRoot: (watchRootId: string, paused: boolean) => Promise<DesktopSnapshot>;
+  updatePreferences: (preferences: DesktopPreferences) => Promise<DesktopSnapshot>;
   addDiagnosticEvent: (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>) => Promise<DesktopSnapshot>;
 };
 
@@ -61,7 +77,16 @@ const mockSnapshot = (): DesktopSnapshot => ({
   authUser: null,
   tokenExpiresAt: '',
   watchRoots: mockWatchRoots,
+  formatRules: [],
+  detectedFiles: [] as LocalDetectedFile[],
   uploadJobs: [],
+  uploadAttempts: [],
+  preferences: {
+    launchAtLogin: false,
+    closeToTray: true,
+    pollingIntervalSeconds: 5,
+    diagnosticsRetentionDays: 14
+  },
   diagnostics: [],
   cachedFormats: []
 });
@@ -96,10 +121,22 @@ const browserClient: DesktopClient = {
   async addWatchRoot() {
     return mockSnapshot();
   },
+  async saveFormatRule() {
+    return mockSnapshot();
+  },
+  async deleteFormatRule() {
+    return mockSnapshot();
+  },
+  async scanWatchRoots() {
+    return mockSnapshot();
+  },
   async deleteWatchRoot() {
     return mockSnapshot();
   },
   async toggleWatchRoot() {
+    return mockSnapshot();
+  },
+  async updatePreferences() {
     return mockSnapshot();
   },
   async addDiagnosticEvent() {
@@ -115,9 +152,13 @@ const tauriClient: DesktopClient = {
   checkServerHealth: (profileId) => invoke<ServiceHealth>('desktop_check_server_health', { profileId }),
   fetchFormats: (profileId) => invoke<TournamentFormat[]>('desktop_fetch_formats', { profileId }),
   addWatchRoot: (input) => invoke<DesktopSnapshot>('desktop_add_watch_root', { input }),
+  saveFormatRule: (input) => invoke<DesktopSnapshot>('desktop_save_format_rule', { input }),
+  deleteFormatRule: (formatRuleId) => invoke<DesktopSnapshot>('desktop_delete_format_rule', { formatRuleId }),
+  scanWatchRoots: (profileId) => invoke<DesktopSnapshot>('desktop_scan_watch_roots', { profileId }),
   deleteWatchRoot: (watchRootId) => invoke<DesktopSnapshot>('desktop_delete_watch_root', { watchRootId }),
   toggleWatchRoot: (watchRootId, paused) =>
     invoke<DesktopSnapshot>('desktop_toggle_watch_root', { watchRootId, paused }),
+  updatePreferences: (preferences) => invoke<DesktopSnapshot>('desktop_update_preferences', { input: preferences }),
   addDiagnosticEvent: (event) => invoke<DesktopSnapshot>('desktop_add_diagnostic_event', { event })
 };
 
