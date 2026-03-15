@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use reqwest::Url;
@@ -546,12 +547,23 @@ pub async fn desktop_process_upload_queue(
     let file_bytes = fs::read(&job.path).map_err(|error| error.to_string())?;
     let raw_content = String::from_utf8_lossy(&file_bytes).to_string();
     if raw_content.len() > 15_000_000 {
-      storage::update_upload_job_status(
+      storage::update_upload_job_metadata(
         &state.db_path,
         &job.id,
         "failed_terminal",
         Some("failed"),
         None,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        &chrono_like::to_iso_string(std::time::SystemTime::now()),
         "payload_too_large",
         job.retries + 1,
       )?;
@@ -562,12 +574,23 @@ pub async fn desktop_process_upload_queue(
     match api_client::check_duplicate(&base_url, &access_token, &job.checksum, &job.file_kind, &job.format_id).await {
       Ok(duplicate) => {
         if duplicate.payload.duplicate {
-          storage::update_upload_job_status(
+          storage::update_upload_job_metadata(
             &state.db_path,
             &job.id,
             "duplicate_skipped_local",
             Some("skipped_duplicate"),
             Some(&duplicate.payload.upload_id),
+            "",
+            "",
+            &duplicate.request_id,
+            &duplicate.payload.reason,
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
             &duplicate.payload.reason,
             job.retries,
           )?;
@@ -585,12 +608,23 @@ pub async fn desktop_process_upload_queue(
         if error.is_auth_error() {
           return handle_auth_api_error(&state.db_path, &profile_id, "Duplicate preflight failed", &error);
         }
-        storage::update_upload_job_status(
+        storage::update_upload_job_metadata(
           &state.db_path,
           &job.id,
           "failed_retryable",
           Some("failed"),
           None,
+          "",
+          "",
+          &error.request_id,
+          "",
+          &retry_after_iso(job.retries + 1),
+          "",
+          "",
+          "",
+          "",
+          "",
+          &chrono_like::to_iso_string(std::time::SystemTime::now()),
           &error.to_string(),
           job.retries + 1,
         )?;
@@ -599,7 +633,26 @@ pub async fn desktop_process_upload_queue(
       }
     }
 
-    storage::update_upload_job_status(&state.db_path, &job.id, "uploading", Some("queued"), None, "", job.retries)?;
+    storage::update_upload_job_metadata(
+      &state.db_path,
+      &job.id,
+      "uploading",
+      Some("queued"),
+      None,
+      "",
+      "",
+      "",
+      "",
+      "",
+      &chrono_like::to_iso_string(std::time::SystemTime::now()),
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      job.retries,
+    )?;
     match api_client::create_upload(
       &base_url,
       &access_token,
@@ -621,12 +674,23 @@ pub async fn desktop_process_upload_queue(
         } else {
           Some("queued")
         };
-        storage::update_upload_job_status(
+        storage::update_upload_job_metadata(
           &state.db_path,
           &job.id,
           next_state,
           lifecycle_phase,
           Some(&created.payload.upload_id),
+          &created.payload.status,
+          &created.payload.checksum,
+          &created.request_id,
+          "",
+          "",
+          &chrono_like::to_iso_string(std::time::SystemTime::now()),
+          "",
+          "",
+          "",
+          "",
+          "",
           "",
           job.retries,
         )?;
@@ -642,12 +706,23 @@ pub async fn desktop_process_upload_queue(
         if error.is_auth_error() {
           return handle_auth_api_error(&state.db_path, &profile_id, "Upload request failed", &error);
         }
-        storage::update_upload_job_status(
+        storage::update_upload_job_metadata(
           &state.db_path,
           &job.id,
           "failed_retryable",
           Some("failed"),
           None,
+          "",
+          "",
+          &error.request_id,
+          "",
+          &retry_after_iso(job.retries + 1),
+          "",
+          "",
+          "",
+          "",
+          "",
+          &chrono_like::to_iso_string(std::time::SystemTime::now()),
           &error.to_string(),
           job.retries + 1,
         )?;
@@ -664,6 +739,55 @@ pub async fn desktop_poll_active_uploads(
   state: State<'_, AppState>,
 ) -> Result<DesktopSnapshot, String> {
   poll_active_uploads_for_profile(&state.db_path, &profile_id).await
+}
+
+#[tauri::command]
+pub fn desktop_retry_upload_job(
+  upload_job_id: String,
+  state: State<'_, AppState>,
+) -> Result<DesktopSnapshot, String> {
+  let snapshot = storage::retry_upload_job(&state.db_path, &upload_job_id)?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "info",
+    "queue",
+    "Queued local retry",
+    &format!("upload_job_id={}", upload_job_id),
+  )?;
+  Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn desktop_dismiss_duplicate_upload_job(
+  upload_job_id: String,
+  state: State<'_, AppState>,
+) -> Result<DesktopSnapshot, String> {
+  let snapshot = storage::dismiss_duplicate_upload_job(&state.db_path, &upload_job_id)?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "info",
+    "queue",
+    "Dismissed duplicate upload row",
+    &format!("upload_job_id={}", upload_job_id),
+  )?;
+  Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn desktop_open_upload_file_location(
+  upload_job_id: String,
+  state: State<'_, AppState>,
+) -> Result<(), String> {
+  let job = storage::load_upload_job_by_id(&state.db_path, &upload_job_id)?;
+  open_file_location(&job.path)?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "info",
+    "queue",
+    "Opened upload file location",
+    &format!("upload_job_id={},path={}", upload_job_id, job.path),
+  )?;
+  Ok(())
 }
 
 #[tauri::command]
@@ -703,6 +827,20 @@ fn map_upload_record_to_local_state(row: &UploadRecord) -> (&'static str, Option
   }
 }
 
+fn retry_after_iso(retries: u32) -> String {
+  let base_delay_seconds = 5_u64.saturating_mul(2_u64.saturating_pow(retries.min(5)));
+  let jitter_seconds = ((std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+    .subsec_nanos()
+    % 3_000_000_000) as u64)
+    / 1_000_000_000;
+  let retry_at = std::time::SystemTime::now()
+    .checked_add(std::time::Duration::from_secs(base_delay_seconds + jitter_seconds))
+    .unwrap_or_else(std::time::SystemTime::now);
+  chrono_like::to_iso_string(retry_at)
+}
+
 async fn poll_active_uploads_for_profile(db_path: &std::path::Path, profile_id: &str) -> Result<DesktopSnapshot, String> {
   let base_url = path_to_url(storage::load_profile_base_url(db_path, profile_id)?)?;
   let access_token = storage::load_access_token_for_profile(db_path, profile_id).map_err(|_| {
@@ -714,12 +852,23 @@ async fn poll_active_uploads_for_profile(db_path: &std::path::Path, profile_id: 
     match api_client::fetch_upload_detail(&base_url, &access_token, &job.upload_id).await {
       Ok(detail) => {
         let (local_state, lifecycle_phase, error) = map_upload_record_to_local_state(&detail.payload.row);
-        storage::update_upload_job_status(
+        storage::update_upload_job_metadata(
           db_path,
           &job.id,
           local_state,
           lifecycle_phase,
           Some(&job.upload_id),
+          &detail.payload.row.status,
+          "",
+          &detail.request_id,
+          "",
+          "",
+          detail.payload.row.queued_at.as_deref().unwrap_or(""),
+          detail.payload.row.processing_at.as_deref().unwrap_or(""),
+          detail.payload.row.parsed_at.as_deref().unwrap_or(""),
+          detail.payload.row.refreshing_at.as_deref().unwrap_or(""),
+          detail.payload.row.completed_at.as_deref().unwrap_or(""),
+          detail.payload.row.failed_at.as_deref().unwrap_or(""),
           &error,
           job.retries,
         )?;
@@ -728,12 +877,23 @@ async fn poll_active_uploads_for_profile(db_path: &std::path::Path, profile_id: 
         if error.is_auth_error() {
           return handle_auth_api_error(db_path, profile_id, "Upload polling failed", &error);
         }
-        storage::update_upload_job_status(
+        storage::update_upload_job_metadata(
           db_path,
           &job.id,
           "failed_retryable",
           Some("failed"),
           Some(&job.upload_id),
+          "",
+          "",
+          &error.request_id,
+          "",
+          &retry_after_iso(job.retries + 1),
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
           &error.to_string(),
           job.retries + 1,
         )?;
@@ -759,4 +919,101 @@ fn handle_auth_api_error(
     &format!("profile_id={},error={}", profile_id, error),
   )?;
   storage::load_snapshot(db_path)
+}
+
+fn open_file_location(path: &str) -> Result<(), String> {
+  let target = std::path::PathBuf::from(path);
+  if !target.exists() {
+    return Err(String::from("upload_file_not_found"));
+  }
+  #[cfg(target_os = "macos")]
+  {
+    Command::new("open")
+      .arg("-R")
+      .arg(&target)
+      .status()
+      .map_err(|error| error.to_string())?;
+    return Ok(());
+  }
+  #[cfg(target_os = "windows")]
+  {
+    Command::new("explorer")
+      .arg(format!("/select,{}", target.to_string_lossy()))
+      .status()
+      .map_err(|error| error.to_string())?;
+    return Ok(());
+  }
+  #[cfg(target_os = "linux")]
+  {
+    let directory = target.parent().unwrap_or(&target);
+    Command::new("xdg-open")
+      .arg(directory)
+      .status()
+      .map_err(|error| error.to_string())?;
+    return Ok(());
+  }
+  #[allow(unreachable_code)]
+  Err(String::from("open_file_location_unsupported"))
+}
+
+mod chrono_like {
+  pub fn to_iso_string(time: std::time::SystemTime) -> String {
+    let duration = time
+      .duration_since(std::time::UNIX_EPOCH)
+      .unwrap_or_else(|_| std::time::Duration::from_secs(0));
+    let secs = duration.as_secs() as i64;
+    let nanos = duration.subsec_nanos();
+    let datetime = time_format::DateTime::from_unix(secs, nanos);
+    datetime.to_iso_string()
+  }
+
+  mod time_format {
+    pub struct DateTime {
+      year: i32,
+      month: u32,
+      day: u32,
+      hour: u32,
+      minute: u32,
+      second: u32,
+      millis: u32,
+    }
+
+    impl DateTime {
+      pub fn from_unix(seconds: i64, nanos: u32) -> Self {
+        let days = seconds.div_euclid(86_400);
+        let seconds_of_day = seconds.rem_euclid(86_400);
+        let (year, month, day) = civil_from_days(days);
+        Self {
+          year,
+          month,
+          day,
+          hour: (seconds_of_day / 3_600) as u32,
+          minute: ((seconds_of_day % 3_600) / 60) as u32,
+          second: (seconds_of_day % 60) as u32,
+          millis: nanos / 1_000_000,
+        }
+      }
+
+      pub fn to_iso_string(&self) -> String {
+        format!(
+          "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+          self.year, self.month, self.day, self.hour, self.minute, self.second, self.millis
+        )
+      }
+    }
+
+    fn civil_from_days(days: i64) -> (i32, u32, u32) {
+      let z = days + 719_468;
+      let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+      let doe = z - era * 146_097;
+      let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+      let y = yoe + era * 400;
+      let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+      let mp = (5 * doy + 2) / 153;
+      let d = doy - (153 * mp + 2) / 5 + 1;
+      let m = mp + if mp < 10 { 3 } else { -9 };
+      let year = y + if m <= 2 { 1 } else { 0 };
+      (year as i32, m as u32, d as u32)
+    }
+  }
 }

@@ -176,7 +176,15 @@ export const OverviewPage = (): JSX.Element => {
 };
 
 export const UploadQueuePage = (): JSX.Element => {
-  const { snapshot, assignDetectedFileFormat } = useDesktop();
+  const {
+    snapshot,
+    selectedProfile,
+    assignDetectedFileFormat,
+    retryUploadJob,
+    dismissDuplicateUploadJob,
+    openUploadFileLocation,
+    openAuthWindow
+  } = useDesktop();
   const [filter, setFilter] = useState<'all' | 'awaiting' | 'queued' | 'complete'>('all');
   const [selectedJobId, setSelectedJobId] = useState('');
   const [selectedFormatId, setSelectedFormatId] = useState('');
@@ -197,6 +205,11 @@ export const UploadQueuePage = (): JSX.Element => {
   const selectedJob = useMemo(
     () => filteredJobs.find((job) => job.id === selectedJobId) ?? snapshot.uploadJobs.find((job) => job.id === selectedJobId) ?? null,
     [filteredJobs, selectedJobId, snapshot.uploadJobs]
+  );
+
+  const selectedAttempts = useMemo(
+    () => snapshot.uploadAttempts.filter((attempt) => attempt.uploadJobId === selectedJobId),
+    [selectedJobId, snapshot.uploadAttempts]
   );
 
   return (
@@ -229,6 +242,56 @@ export const UploadQueuePage = (): JSX.Element => {
               onSelect={(job) => {
                 setSelectedJobId(job.id);
               }}
+              actions={(job) => (
+                <Group gap="xs">
+                  <Button
+                    size="compact-xs"
+                    variant="subtle"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void openUploadFileLocation(job.id);
+                    }}
+                  >
+                    Reveal
+                  </Button>
+                  {job.localState === 'failed_retryable' ? (
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void retryUploadJob(job.id);
+                      }}
+                    >
+                      Retry
+                    </Button>
+                  ) : null}
+                  {job.localState === 'auth_blocked' && selectedProfile ? (
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void openAuthWindow(selectedProfile.id);
+                      }}
+                    >
+                      Re-auth
+                    </Button>
+                  ) : null}
+                  {job.localState === 'duplicate_skipped_local' ? (
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void dismissDuplicateUploadJob(job.id);
+                      }}
+                    >
+                      Dismiss
+                    </Button>
+                  ) : null}
+                </Group>
+              )}
             />
           </Stack>
         </Card>
@@ -248,14 +311,56 @@ export const UploadQueuePage = (): JSX.Element => {
                       <tr><th>Format</th><td>{selectedJob.formatId || '-'}</td></tr>
                       <tr><th>Local state</th><td>{selectedJob.localState}</td></tr>
                       <tr><th>Server lifecycle</th><td>{selectedJob.lifecyclePhase ?? '-'}</td></tr>
+                      <tr><th>Server status</th><td>{selectedJob.serverStatus || '-'}</td></tr>
                       <tr><th>Checksum</th><td className="desktop-mono">{selectedJob.checksum}</td></tr>
+                      <tr><th>Remote checksum</th><td className="desktop-mono">{selectedJob.remoteChecksum || '-'}</td></tr>
                       <tr><th>Upload ID</th><td className="desktop-mono">{selectedJob.uploadId || '-'}</td></tr>
+                      <tr><th>Request ID</th><td className="desktop-mono">{selectedJob.lastRequestId || '-'}</td></tr>
+                      <tr><th>Duplicate reason</th><td>{selectedJob.duplicateReason || '-'}</td></tr>
+                      <tr><th>Retry after</th><td>{selectedJob.nextRetryAfter || '-'}</td></tr>
+                      <tr><th>Queued</th><td>{selectedJob.queuedAt || '-'}</td></tr>
+                      <tr><th>Processing</th><td>{selectedJob.processingAt || '-'}</td></tr>
+                      <tr><th>Parsed</th><td>{selectedJob.parsedAt || '-'}</td></tr>
+                      <tr><th>Refreshing</th><td>{selectedJob.refreshingAt || '-'}</td></tr>
+                      <tr><th>Completed</th><td>{selectedJob.completedAt || '-'}</td></tr>
+                      <tr><th>Failed</th><td>{selectedJob.failedAt || '-'}</td></tr>
                       <tr><th>Retries</th><td>{selectedJob.retries}</td></tr>
                       <tr><th>Error</th><td>{selectedJob.error || '-'}</td></tr>
                       <tr><th>Updated</th><td>{new Date(selectedJob.updatedAt).toLocaleString()}</td></tr>
                     </tbody>
                   </table>
                 </div>
+                <Card withBorder className="desktop-subcard">
+                  <Stack gap="xs">
+                    <Text fw={600}>Attempt history</Text>
+                    {selectedAttempts.length === 0 ? (
+                      <Alert color="gray">No local attempts recorded yet.</Alert>
+                    ) : (
+                      <div className="desktop-table-wrap">
+                        <table className="desktop-table">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Status</th>
+                              <th>Detail</th>
+                              <th>Updated</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedAttempts.map((attempt) => (
+                              <tr key={attempt.id}>
+                                <td>{attempt.attemptNumber}</td>
+                                <td>{attempt.status}</td>
+                                <td className="desktop-mono">{attempt.detail}</td>
+                                <td>{new Date(attempt.updatedAt).toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </Stack>
+                </Card>
                 {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
                   <Card withBorder className="desktop-subcard">
                     <Stack gap="sm">

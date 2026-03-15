@@ -61,6 +61,9 @@ type DesktopClient = {
   toggleWatchRoot: (watchRootId: string, paused: boolean) => Promise<DesktopSnapshot>;
   processUploadQueue: (profileId: string) => Promise<DesktopSnapshot>;
   pollActiveUploads: (profileId: string) => Promise<DesktopSnapshot>;
+  retryUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
+  dismissDuplicateUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
+  openUploadFileLocation: (uploadJobId: string) => Promise<void>;
   updatePreferences: (preferences: DesktopPreferences) => Promise<DesktopSnapshot>;
   addDiagnosticEvent: (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>) => Promise<DesktopSnapshot>;
 };
@@ -184,6 +187,13 @@ const browserClient: DesktopClient = {
   async pollActiveUploads() {
     return mockSnapshot();
   },
+  async retryUploadJob() {
+    return mockSnapshot();
+  },
+  async dismissDuplicateUploadJob() {
+    return mockSnapshot();
+  },
+  async openUploadFileLocation() {},
   async updatePreferences() {
     return mockSnapshot();
   },
@@ -215,6 +225,10 @@ const tauriClient: DesktopClient = {
     invoke<DesktopSnapshot>('desktop_toggle_watch_root', { watchRootId, paused }),
   processUploadQueue: (profileId) => invoke<DesktopSnapshot>('desktop_process_upload_queue', { profileId }),
   pollActiveUploads: (profileId) => invoke<DesktopSnapshot>('desktop_poll_active_uploads', { profileId }),
+  retryUploadJob: (uploadJobId) => invoke<DesktopSnapshot>('desktop_retry_upload_job', { uploadJobId }),
+  dismissDuplicateUploadJob: (uploadJobId) =>
+    invoke<DesktopSnapshot>('desktop_dismiss_duplicate_upload_job', { uploadJobId }),
+  openUploadFileLocation: (uploadJobId) => invoke<void>('desktop_open_upload_file_location', { uploadJobId }),
   updatePreferences: (preferences) => invoke<DesktopSnapshot>('desktop_update_preferences', { input: preferences }),
   addDiagnosticEvent: (event) => invoke<DesktopSnapshot>('desktop_add_diagnostic_event', { event })
 };

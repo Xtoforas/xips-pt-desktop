@@ -31,7 +31,19 @@ pub fn open_db(db_path: &Path) -> Result<Connection, String> {
 }
 
 fn migrate(connection: &Connection) -> SqlResult<()> {
-  connection.execute_batch(INITIAL_MIGRATION_SQL)
+  connection.execute_batch(INITIAL_MIGRATION_SQL)?;
+  ensure_upload_job_column(connection, "server_status", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "remote_checksum", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "last_request_id", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "duplicate_reason", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "next_retry_after", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "queued_at", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "processing_at", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "parsed_at", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "refreshing_at", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "completed_at", "TEXT NOT NULL DEFAULT ''")?;
+  ensure_upload_job_column(connection, "failed_at", "TEXT NOT NULL DEFAULT ''")?;
+  Ok(())
 }
 
 pub fn load_snapshot(db_path: &Path) -> Result<DesktopSnapshot, String> {
@@ -360,12 +372,27 @@ pub fn save_scan_results(
           checksum,
           format_id,
           upload_id,
+          server_status,
+          remote_checksum,
+          last_request_id,
+          duplicate_reason,
+          next_retry_after,
+          queued_at,
+          processing_at,
+          parsed_at,
+          refreshing_at,
+          completed_at,
+          failed_at,
           error,
           retries,
           created_at,
           updated_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8, '', '', 0, ?9, ?10)
+        VALUES (
+          ?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8, '',
+          '', '', '', '', '', '', '', '', '', '', '',
+          '', 0, ?9, ?10
+        )
         ",
         params![
           upload_job_id,
@@ -525,12 +552,14 @@ pub fn load_profile_base_url(db_path: &Path, profile_id: &str) -> Result<PathBuf
 pub fn list_pending_upload_jobs_for_profile(db_path: &Path, profile_id: &str) -> Result<Vec<LocalUploadJob>, String> {
   let connection = open_db(db_path)?;
   let jobs = load_upload_jobs(&connection)?;
+  let now = now_iso();
   Ok(
     jobs
       .into_iter()
       .filter(|job| {
         job.profile_id == profile_id
-          && matches!(job.local_state.as_str(), "queued_local" | "failed_retryable" | "auth_blocked")
+          && matches!(job.local_state.as_str(), "queued_local" | "failed_retryable")
+          && (job.next_retry_after.is_empty() || job.next_retry_after <= now)
       })
       .collect(),
   )
@@ -554,12 +583,67 @@ pub fn list_active_upload_jobs_for_profile(db_path: &Path, profile_id: &str) -> 
   )
 }
 
-pub fn update_upload_job_status(
+pub fn load_upload_job_by_id(db_path: &Path, upload_job_id: &str) -> Result<LocalUploadJob, String> {
+  let connection = open_db(db_path)?;
+  let jobs = load_upload_jobs(&connection)?;
+  jobs
+    .into_iter()
+    .find(|job| job.id == upload_job_id)
+    .ok_or_else(|| String::from("upload_job_not_found"))
+}
+
+pub fn retry_upload_job(db_path: &Path, upload_job_id: &str) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  connection
+    .execute(
+      "
+      UPDATE upload_jobs
+      SET local_state = 'queued_local',
+          error = '',
+          next_retry_after = '',
+          updated_at = ?2
+      WHERE upload_job_id = ?1
+      ",
+      params![upload_job_id, now_iso()],
+    )
+    .map_err(|error| error.to_string())?;
+  load_snapshot(db_path)
+}
+
+pub fn dismiss_duplicate_upload_job(db_path: &Path, upload_job_id: &str) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  connection
+    .execute(
+      "
+      UPDATE upload_jobs
+      SET local_state = 'complete',
+          updated_at = ?2
+      WHERE upload_job_id = ?1
+      ",
+      params![upload_job_id, now_iso()],
+    )
+    .map_err(|error| error.to_string())?;
+  load_snapshot(db_path)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn update_upload_job_metadata(
   db_path: &Path,
   upload_job_id: &str,
   local_state: &str,
   lifecycle_phase: Option<&str>,
   upload_id: Option<&str>,
+  server_status: &str,
+  remote_checksum: &str,
+  last_request_id: &str,
+  duplicate_reason: &str,
+  next_retry_after: &str,
+  queued_at: &str,
+  processing_at: &str,
+  parsed_at: &str,
+  refreshing_at: &str,
+  completed_at: &str,
+  failed_at: &str,
   error: &str,
   retries: u32,
 ) -> Result<(), String> {
@@ -571,9 +655,20 @@ pub fn update_upload_job_status(
       SET local_state = ?2,
           lifecycle_phase = ?3,
           upload_id = COALESCE(?4, upload_id),
-          error = ?5,
-          retries = ?6,
-          updated_at = ?7
+          server_status = CASE WHEN ?5 = '' THEN server_status ELSE ?5 END,
+          remote_checksum = CASE WHEN ?6 = '' THEN remote_checksum ELSE ?6 END,
+          last_request_id = CASE WHEN ?7 = '' THEN last_request_id ELSE ?7 END,
+          duplicate_reason = CASE WHEN ?8 = '' THEN duplicate_reason ELSE ?8 END,
+          next_retry_after = ?9,
+          queued_at = CASE WHEN ?10 = '' THEN queued_at ELSE ?10 END,
+          processing_at = CASE WHEN ?11 = '' THEN processing_at ELSE ?11 END,
+          parsed_at = CASE WHEN ?12 = '' THEN parsed_at ELSE ?12 END,
+          refreshing_at = CASE WHEN ?13 = '' THEN refreshing_at ELSE ?13 END,
+          completed_at = CASE WHEN ?14 = '' THEN completed_at ELSE ?14 END,
+          failed_at = CASE WHEN ?15 = '' THEN failed_at ELSE ?15 END,
+          error = ?16,
+          retries = ?17,
+          updated_at = ?18
       WHERE upload_job_id = ?1
       ",
       params![
@@ -581,6 +676,17 @@ pub fn update_upload_job_status(
         local_state,
         lifecycle_phase,
         upload_id,
+        server_status,
+        remote_checksum,
+        last_request_id,
+        duplicate_reason,
+        next_retry_after,
+        queued_at,
+        processing_at,
+        parsed_at,
+        refreshing_at,
+        completed_at,
+        failed_at,
         error,
         retries,
         now_iso()
@@ -743,7 +849,9 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
   let mut statement = connection
     .prepare(
       "
-      SELECT upload_job_id, profile_id, filename, path, file_kind, local_state, lifecycle_phase, checksum, format_id, upload_id, error, retries, created_at, updated_at
+      SELECT upload_job_id, profile_id, filename, path, file_kind, local_state, lifecycle_phase, checksum, format_id, upload_id,
+             error, retries, created_at, updated_at, server_status, remote_checksum, last_request_id, duplicate_reason,
+             next_retry_after, queued_at, processing_at, parsed_at, refreshing_at, completed_at, failed_at
       FROM upload_jobs
       ORDER BY updated_at DESC
       ",
@@ -766,6 +874,17 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
         retries: row.get(11)?,
         created_at: row.get(12)?,
         updated_at: row.get(13)?,
+        server_status: row.get(14)?,
+        remote_checksum: row.get(15)?,
+        last_request_id: row.get(16)?,
+        duplicate_reason: row.get(17)?,
+        next_retry_after: row.get(18)?,
+        queued_at: row.get(19)?,
+        processing_at: row.get(20)?,
+        parsed_at: row.get(21)?,
+        refreshing_at: row.get(22)?,
+        completed_at: row.get(23)?,
+        failed_at: row.get(24)?,
       })
     })
     .map_err(|error| error.to_string())?;
@@ -924,6 +1043,20 @@ fn insert_diagnostic_event(
     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
     ",
     params![Uuid::new_v4().to_string(), level, category, message, detail, now_iso()],
+  )?;
+  Ok(())
+}
+
+fn ensure_upload_job_column(connection: &Connection, column_name: &str, column_sql: &str) -> SqlResult<()> {
+  let mut statement = connection.prepare("PRAGMA table_info(upload_jobs)")?;
+  let mapped = statement.query_map([], |row| row.get::<_, String>(1))?;
+  let columns = mapped.collect::<SqlResult<Vec<String>>>()?;
+  if columns.iter().any(|column| column == column_name) {
+    return Ok(());
+  }
+  connection.execute(
+    &format!("ALTER TABLE upload_jobs ADD COLUMN {column_name} {column_sql}"),
+    [],
   )?;
   Ok(())
 }

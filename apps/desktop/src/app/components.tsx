@@ -244,11 +244,13 @@ export const SummaryCard = ({
 export const QueueTable = ({
   jobs,
   selectedJobId,
-  onSelect
+  onSelect,
+  actions
 }: {
   jobs: LocalUploadJob[];
   selectedJobId?: string;
   onSelect?: (job: LocalUploadJob) => void;
+  actions?: (job: LocalUploadJob) => JSX.Element;
 }): JSX.Element => (
   <div className="desktop-table-wrap">
     <table className="desktop-table">
@@ -257,16 +259,18 @@ export const QueueTable = ({
           <th>File</th>
           <th>Kind</th>
           <th>Format</th>
+          <th>Checksum</th>
           <th>Local state</th>
           <th>Server state</th>
           <th>Retries</th>
           <th>Updated</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {jobs.length === 0 ? (
           <tr>
-            <td colSpan={7}>No queued uploads yet.</td>
+            <td colSpan={9}>No queued uploads yet.</td>
           </tr>
         ) : (
           jobs.map((job) => (
@@ -280,6 +284,9 @@ export const QueueTable = ({
                 <FileKindBadge fileKind={job.fileKind} />
               </td>
               <td>{job.formatId || '-'}</td>
+              <td className="desktop-mono">
+                {job.duplicateReason ? 'duplicate' : job.remoteChecksum ? 'uploaded' : 'pending'}
+              </td>
               <td>
                 <QueueStateBadge state={job.localState} />
               </td>
@@ -288,6 +295,7 @@ export const QueueTable = ({
               </td>
               <td>{job.retries}</td>
               <td>{new Date(job.updatedAt).toLocaleString()}</td>
+              <td>{actions ? actions(job) : '-'}</td>
             </tr>
           ))
         )}

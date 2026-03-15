@@ -235,6 +235,17 @@ export type LocalUploadJob = {
   checksum: string;
   formatId: string;
   uploadId: string;
+  serverStatus: string;
+  remoteChecksum: string;
+  lastRequestId: string;
+  duplicateReason: string;
+  nextRetryAfter: string;
+  queuedAt: string;
+  processingAt: string;
+  parsedAt: string;
+  refreshingAt: string;
+  completedAt: string;
+  failedAt: string;
   error: string;
   retries: number;
   createdAt: string;

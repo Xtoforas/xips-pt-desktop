@@ -75,6 +75,9 @@ type DesktopContextValue = {
   toggleWatchRoot: (watchRootId: string, paused: boolean) => Promise<void>;
   processUploadQueue: (profileId: string) => Promise<void>;
   pollActiveUploads: (profileId: string) => Promise<void>;
+  retryUploadJob: (uploadJobId: string) => Promise<void>;
+  dismissDuplicateUploadJob: (uploadJobId: string) => Promise<void>;
+  openUploadFileLocation: (uploadJobId: string) => Promise<void>;
   updatePreferences: (preferences: DesktopPreferences) => Promise<void>;
   addDiagnosticEvent: (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>) => Promise<void>;
 };
@@ -294,6 +297,20 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setSnapshot(next);
   }, []);
 
+  const retryUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
+    const next = await desktopClient.retryUploadJob(uploadJobId);
+    setSnapshot(next);
+  }, []);
+
+  const dismissDuplicateUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
+    const next = await desktopClient.dismissDuplicateUploadJob(uploadJobId);
+    setSnapshot(next);
+  }, []);
+
+  const openUploadFileLocation = useCallback(async (uploadJobId: string): Promise<void> => {
+    await desktopClient.openUploadFileLocation(uploadJobId);
+  }, []);
+
   const updatePreferences = useCallback(async (preferences: DesktopPreferences): Promise<void> => {
     const next = await desktopClient.updatePreferences(preferences);
     setSnapshot(next);
@@ -343,6 +360,9 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       toggleWatchRoot,
       processUploadQueue,
       pollActiveUploads,
+      retryUploadJob,
+      dismissDuplicateUploadJob,
+      openUploadFileLocation,
       updatePreferences,
       addDiagnosticEvent
     }),
@@ -376,6 +396,9 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       toggleWatchRoot,
       processUploadQueue,
       pollActiveUploads,
+      retryUploadJob,
+      dismissDuplicateUploadJob,
+      openUploadFileLocation,
       updatePreferences,
       addDiagnosticEvent
     ]

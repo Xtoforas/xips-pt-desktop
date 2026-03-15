@@ -110,6 +110,28 @@ pub struct LocalUploadJob {
   pub format_id: String,
   #[serde(rename = "uploadId")]
   pub upload_id: String,
+  #[serde(rename = "serverStatus")]
+  pub server_status: String,
+  #[serde(rename = "remoteChecksum")]
+  pub remote_checksum: String,
+  #[serde(rename = "lastRequestId")]
+  pub last_request_id: String,
+  #[serde(rename = "duplicateReason")]
+  pub duplicate_reason: String,
+  #[serde(rename = "nextRetryAfter")]
+  pub next_retry_after: String,
+  #[serde(rename = "queuedAt")]
+  pub queued_at: String,
+  #[serde(rename = "processingAt")]
+  pub processing_at: String,
+  #[serde(rename = "parsedAt")]
+  pub parsed_at: String,
+  #[serde(rename = "refreshingAt")]
+  pub refreshing_at: String,
+  #[serde(rename = "completedAt")]
+  pub completed_at: String,
+  #[serde(rename = "failedAt")]
+  pub failed_at: String,
   pub error: String,
   pub retries: u32,
   #[serde(rename = "createdAt")]
