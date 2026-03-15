@@ -8,11 +8,12 @@ import {
   type PropsWithChildren
 } from 'react';
 import type {
+  CardsResponse,
   DesktopPreferences,
   DesktopSnapshot,
   LocalDiagnosticEvent,
   LocalServerProfile,
-  LocalWatchRoot,
+  MyAggResponse,
   ServiceHealth,
   TournamentFormat
 } from '@xips/api-contract';
@@ -49,12 +50,18 @@ type DesktopContextValue = {
   loading: boolean;
   selectedProfile: LocalServerProfile | null;
   health: ServiceHealth | null;
+  cards: CardsResponse['rows'];
+  cardSource: CardsResponse['source'];
+  myAggCards: MyAggResponse['cards'];
+  myAggTeams: MyAggResponse['teams'];
   refreshSnapshot: () => Promise<void>;
   saveServerProfile: (input: SaveServerProfileInput) => Promise<void>;
   deleteServerProfile: (profileId: string) => Promise<void>;
   selectServerProfile: (profileId: string) => Promise<void>;
   refreshHealth: () => Promise<void>;
   refreshFormats: () => Promise<void>;
+  refreshCards: (formatId: string) => Promise<void>;
+  refreshMyAgg: (profileId: string) => Promise<void>;
   openAuthWindow: (profileId: string) => Promise<void>;
   completeAuth: (profileId: string) => Promise<void>;
   refreshMe: (profileId: string) => Promise<void>;
@@ -99,6 +106,10 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   const [snapshot, setSnapshot] = useState<DesktopSnapshot>(emptySnapshot);
   const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<ServiceHealth | null>(null);
+  const [cards, setCards] = useState<CardsResponse['rows']>([]);
+  const [cardSource, setCardSource] = useState<CardsResponse['source']>('admin');
+  const [myAggCards, setMyAggCards] = useState<MyAggResponse['cards']>([]);
+  const [myAggTeams, setMyAggTeams] = useState<MyAggResponse['teams']>([]);
 
   const refreshSnapshot = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -151,6 +162,16 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     snapshot.selectedProfileId
   ]);
 
+  useEffect(() => {
+    if (snapshot.authProfileId === snapshot.selectedProfileId && snapshot.authUser) {
+      return;
+    }
+    setCards([]);
+    setCardSource('admin');
+    setMyAggCards([]);
+    setMyAggTeams([]);
+  }, [snapshot.authProfileId, snapshot.authUser, snapshot.selectedProfileId]);
+
   const saveServerProfile = useCallback(async (input: SaveServerProfileInput): Promise<void> => {
     const next = await desktopClient.saveServerProfile(input);
     setSnapshot(next);
@@ -188,6 +209,27 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       cachedFormats: formats
     }));
   }, [snapshot.profiles, snapshot.selectedProfileId]);
+
+  const refreshCards = useCallback(
+    async (formatId: string): Promise<void> => {
+      const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
+      if (!selectedProfile || snapshot.authProfileId !== selectedProfile.id || !snapshot.authUser) {
+        setCards([]);
+        setCardSource('admin');
+        return;
+      }
+      const payload = await desktopClient.fetchCards(selectedProfile.id, formatId);
+      setCards(payload.rows);
+      setCardSource(payload.source);
+    },
+    [snapshot.authProfileId, snapshot.authUser, snapshot.profiles, snapshot.selectedProfileId]
+  );
+
+  const refreshMyAgg = useCallback(async (profileId: string): Promise<void> => {
+    const payload = await desktopClient.fetchMyAgg(profileId);
+    setMyAggCards(payload.cards);
+    setMyAggTeams(payload.teams);
+  }, []);
 
   const openAuthWindow = useCallback(async (profileId: string): Promise<void> => {
     await desktopClient.openAuthWindow(profileId);
@@ -276,12 +318,18 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       loading,
       selectedProfile,
       health,
+      cards,
+      cardSource,
+      myAggCards,
+      myAggTeams,
       refreshSnapshot,
       saveServerProfile,
       deleteServerProfile,
       selectServerProfile,
       refreshHealth,
       refreshFormats,
+      refreshCards,
+      refreshMyAgg,
       openAuthWindow,
       completeAuth,
       refreshMe,
@@ -303,12 +351,18 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       loading,
       selectedProfile,
       health,
+      cards,
+      cardSource,
+      myAggCards,
+      myAggTeams,
       refreshSnapshot,
       saveServerProfile,
       deleteServerProfile,
       selectServerProfile,
       refreshHealth,
       refreshFormats,
+      refreshCards,
+      refreshMyAgg,
       openAuthWindow,
       completeAuth,
       refreshMe,

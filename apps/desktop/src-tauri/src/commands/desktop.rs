@@ -6,7 +6,7 @@ use reqwest::Url;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::app_state::AppState;
-use crate::models::api::{ServiceHealth, TournamentFormat, UploadRecord};
+use crate::models::api::{CardsResponse, MyAggResponse, ServiceHealth, TournamentFormat, UploadRecord};
 use crate::models::local_state::{
   AddDiagnosticEventInput, AddWatchRootInput, AssignDetectedFileFormatInput, CompleteAuthExchangeInput, DesktopSnapshot,
   FailAuthExchangeInput, FinishAuthExchangeInput, SaveFormatRuleInput, SaveServerProfileInput, UpdatePreferencesInput,
@@ -133,6 +133,61 @@ pub async fn desktop_fetch_formats(
     }
   }
   result
+}
+
+#[tauri::command]
+pub async fn desktop_fetch_cards(
+  profile_id: String,
+  format_id: String,
+  state: State<'_, AppState>,
+) -> Result<CardsResponse, String> {
+  let base_url = path_to_url(storage::load_profile_base_url(&state.db_path, &profile_id)?)?;
+  let access_token = storage::load_access_token_for_profile(&state.db_path, &profile_id)?;
+  match api_client::fetch_cards(&base_url, &access_token, &format_id).await {
+    Ok(response) => {
+      storage::write_diagnostic_event(
+        &state.db_path,
+        "info",
+        "api",
+        "Fetched cards",
+        &format!("profile_id={},request_id={}", profile_id, response.request_id),
+      )?;
+      Ok(response.payload)
+    }
+    Err(error) => {
+      if error.is_auth_error() {
+        handle_auth_api_error(&state.db_path, &profile_id, "Card fetch failed", &error)?;
+      }
+      Err(error.to_string())
+    }
+  }
+}
+
+#[tauri::command]
+pub async fn desktop_fetch_my_agg(
+  profile_id: String,
+  state: State<'_, AppState>,
+) -> Result<MyAggResponse, String> {
+  let base_url = path_to_url(storage::load_profile_base_url(&state.db_path, &profile_id)?)?;
+  let access_token = storage::load_access_token_for_profile(&state.db_path, &profile_id)?;
+  match api_client::fetch_my_agg(&base_url, &access_token).await {
+    Ok(response) => {
+      storage::write_diagnostic_event(
+        &state.db_path,
+        "info",
+        "api",
+        "Fetched my aggregate data",
+        &format!("profile_id={},request_id={}", profile_id, response.request_id),
+      )?;
+      Ok(response.payload)
+    }
+    Err(error) => {
+      if error.is_auth_error() {
+        handle_auth_api_error(&state.db_path, &profile_id, "My aggregate fetch failed", &error)?;
+      }
+      Err(error.to_string())
+    }
+  }
 }
 
 #[tauri::command]

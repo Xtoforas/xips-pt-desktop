@@ -3,8 +3,8 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
 use crate::models::api::{
-  DuplicateCheckResponse, FormatsResponse, MeResponse, ServiceHealth, TournamentFormat, UploadCreateResponse,
-  UploadDetailResponse,
+  CardsResponse, DuplicateCheckResponse, FormatsResponse, MeResponse, MyAggResponse, ServiceHealth, TournamentFormat,
+  UploadCreateResponse, UploadDetailResponse,
 };
 
 pub struct ApiResponse<T> {
@@ -142,6 +142,37 @@ pub async fn fetch_upload_detail(
     &Client::new(),
     Method::GET,
     &format!("{}/api/v1/my/uploads/{}", base_url.trim_end_matches('/'), upload_id),
+    Some(access_token),
+    None,
+  )
+  .await
+}
+
+pub async fn fetch_cards(
+  base_url: &str,
+  access_token: &str,
+  format_id: &str,
+) -> Result<ApiResponse<CardsResponse>, ApiError> {
+  let suffix = if format_id.is_empty() {
+    String::new()
+  } else {
+    format!("&formatId={format_id}")
+  };
+  send_json::<CardsResponse>(
+    &Client::new(),
+    Method::GET,
+    &format!("{}/api/v1/cards?gameVersion=ootp27{}", base_url.trim_end_matches('/'), suffix),
+    Some(access_token),
+    None,
+  )
+  .await
+}
+
+pub async fn fetch_my_agg(base_url: &str, access_token: &str) -> Result<ApiResponse<MyAggResponse>, ApiError> {
+  send_json::<MyAggResponse>(
+    &Client::new(),
+    Method::GET,
+    &format!("{}/api/v1/my/agg", base_url.trim_end_matches('/')),
     Some(access_token),
     None,
   )

@@ -108,3 +108,29 @@ pub struct UploadDetailResponse {
   pub ok: bool,
   pub row: UploadRecord,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardRow {
+  pub card_id: u32,
+  pub player_name: String,
+  pub overall: u32,
+  pub tier: u32,
+  pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardsResponse {
+  pub ok: bool,
+  pub source: Option<String>,
+  pub rows: Vec<CardRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyAggResponse {
+  pub ok: bool,
+  pub cards: Vec<HashMap<String, Value>>,
+  pub teams: Vec<HashMap<String, Value>>,
+}

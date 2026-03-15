@@ -1,5 +1,5 @@
-import { Alert, Button, Card, Group, SimpleGrid, Stack, Text } from '@mantine/core';
-import { useMemo, useState } from 'react';
+import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Text } from '@mantine/core';
+import { useEffect, useMemo, useState } from 'react';
 import { useDesktop } from './DesktopContext';
 import {
   FormatRuleTable,
@@ -13,8 +13,21 @@ import {
 } from './components';
 
 export const OverviewPage = (): JSX.Element => {
-  const { snapshot, selectedProfile, health, refreshFormats, scanWatchRoots } = useDesktop();
+  const {
+    snapshot,
+    selectedProfile,
+    health,
+    cards,
+    cardSource,
+    myAggCards,
+    myAggTeams,
+    refreshFormats,
+    refreshCards,
+    refreshMyAgg,
+    scanWatchRoots
+  } = useDesktop();
   const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
+  const selectedFormatId = snapshot.cachedFormats[0]?.id ?? '';
   const completedCount = useMemo(
     () => snapshot.uploadJobs.filter((job) => job.localState === 'complete').length,
     [snapshot.uploadJobs]
@@ -23,6 +36,14 @@ export const OverviewPage = (): JSX.Element => {
     () => snapshot.uploadJobs.filter((job) => job.localState !== 'complete').length,
     [snapshot.uploadJobs]
   );
+
+  useEffect(() => {
+    if (!selectedProfile || !isAuthenticated) {
+      return;
+    }
+    void refreshMyAgg(selectedProfile.id);
+    void refreshCards(selectedFormatId);
+  }, [isAuthenticated, refreshCards, refreshMyAgg, selectedFormatId, selectedProfile]);
 
   return (
     <Stack gap="lg">
@@ -35,6 +56,7 @@ export const OverviewPage = (): JSX.Element => {
         <SummaryCard label="Watch folders" value={String(snapshot.watchRoots.length)} detail="Configured folder monitors" />
         <SummaryCard label="Pending uploads" value={String(pendingCount)} detail="Local queue work not yet complete" />
         <SummaryCard label="Completed" value={String(completedCount)} detail="Finished uploads in local history" />
+        <SummaryCard label="Cards" value={String(cards.length)} detail={`Source: ${cardSource ?? 'unknown'}`} />
       </SimpleGrid>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
         <Card withBorder className="desktop-card">
@@ -55,14 +77,43 @@ export const OverviewPage = (): JSX.Element => {
         </Card>
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
-            <Text fw={700}>Format cache</Text>
+            <Text fw={700}>Cards and personal aggregate</Text>
             <Text size="sm" c="dimmed">
-              Cached tournament formats used for folder rules and upload assignment.
+              Desktop view of your current card source and private aggregate rows.
             </Text>
-            <Text size="sm">Cached rows: {snapshot.cachedFormats.length}</Text>
+            <Group>
+              <Badge color={cardSource === 'user' ? 'teal' : 'blue'} variant="light">
+                {cardSource === 'user' ? 'Using your card list' : 'Using shared fallback'}
+              </Badge>
+              <Badge color="orange" variant="light">
+                Card rows {cards.length}
+              </Badge>
+              <Badge color="cyan" variant="light">
+                My agg cards {myAggCards.length}
+              </Badge>
+              <Badge color="grape" variant="light">
+                My agg teams {myAggTeams.length}
+              </Badge>
+            </Group>
             <Group>
               <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshFormats()}>
                 Refresh formats
+              </Button>
+              <Button size="xs" variant="light" disabled={!selectedProfile || !isAuthenticated} onClick={() => void refreshCards(selectedFormatId)}>
+                Refresh cards
+              </Button>
+              <Button
+                size="xs"
+                variant="light"
+                disabled={!selectedProfile || !isAuthenticated}
+                onClick={() => {
+                  if (!selectedProfile) {
+                    return;
+                  }
+                  void refreshMyAgg(selectedProfile.id);
+                }}
+              >
+                Refresh my agg
               </Button>
               <Button
                 size="xs"
@@ -344,6 +395,15 @@ export const WatchFoldersPage = (): JSX.Element => {
 
 export const FormatsPage = (): JSX.Element => {
   const { snapshot, selectedProfile, refreshFormats } = useDesktop();
+  const [selectedFormatId, setSelectedFormatId] = useState('');
+
+  useEffect(() => {
+    if (!selectedFormatId && snapshot.cachedFormats.length > 0) {
+      setSelectedFormatId(snapshot.cachedFormats[0]?.id ?? '');
+    }
+  }, [selectedFormatId, snapshot.cachedFormats]);
+
+  const selectedFormat = snapshot.cachedFormats.find((format) => format.id === selectedFormatId) ?? null;
 
   return (
     <Stack gap="lg">
@@ -365,6 +425,46 @@ export const FormatsPage = (): JSX.Element => {
         </Group>
       </Card>
       <Card withBorder className="desktop-card">
+        <Stack gap="sm">
+          <Text fw={700}>Selected format detail</Text>
+          <Select
+            value={selectedFormatId || null}
+            data={snapshot.cachedFormats.map((format) => ({
+              value: format.id,
+              label: format.name
+            }))}
+            placeholder="Choose a format"
+            onChange={(value) => {
+              setSelectedFormatId(value ?? '');
+            }}
+          />
+          {!selectedFormat ? (
+            <Alert color="gray">Select a format to inspect the live restriction metadata from the server.</Alert>
+          ) : (
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              <Card withBorder className="desktop-subcard">
+                <Stack gap={4}>
+                  <Text fw={600}>{selectedFormat.name}</Text>
+                  <Text size="sm" c="dimmed">Mode: {selectedFormat.mode || '-'}</Text>
+                  <Text size="sm" c="dimmed">Run environment: {selectedFormat.runEnvironment || '-'}</Text>
+                  <Text size="sm" c="dimmed">Park: {selectedFormat.parkKey || '-'}</Text>
+                  <Text size="sm" c="dimmed">Cap: {selectedFormat.capValue || '-'}</Text>
+                </Stack>
+              </Card>
+              <Card withBorder className="desktop-subcard">
+                <Stack gap={4}>
+                  <Text size="sm">OVR restrictions: {selectedFormat.ovrRestrictions.join(', ') || '-'}</Text>
+                  <Text size="sm">Era restrictions: {selectedFormat.eraRestrictions.join(', ') || '-'}</Text>
+                  <Text size="sm">Card type restrictions: {selectedFormat.cardTypeRestrictions.join(', ') || '-'}</Text>
+                  <Text size="sm">Variant limit: {selectedFormat.variantLimitValue || '-'}</Text>
+                  <Text size="sm">Format type: {selectedFormat.formatType || '-'}</Text>
+                </Stack>
+              </Card>
+            </SimpleGrid>
+          )}
+        </Stack>
+      </Card>
+      <Card withBorder className="desktop-card">
         <FormatsTable formats={snapshot.cachedFormats} />
       </Card>
     </Stack>
@@ -373,7 +473,35 @@ export const FormatsPage = (): JSX.Element => {
 
 export const HistoryPage = (): JSX.Element => {
   const { snapshot } = useDesktop();
-  const rows = useMemo(() => snapshot.uploadJobs.filter((job) => job.localState === 'complete'), [snapshot.uploadJobs]);
+  const [fileKindFilter, setFileKindFilter] = useState('all');
+  const [lifecycleFilter, setLifecycleFilter] = useState('all');
+  const [formatFilter, setFormatFilter] = useState('all');
+  const [sortKey, setSortKey] = useState<'updated' | 'filename' | 'retries'>('updated');
+
+  const rows = useMemo(() => {
+    const filtered = snapshot.uploadJobs.filter((job) => {
+      if (fileKindFilter !== 'all' && job.fileKind !== fileKindFilter) {
+        return false;
+      }
+      if (lifecycleFilter !== 'all' && (job.lifecyclePhase ?? 'none') !== lifecycleFilter) {
+        return false;
+      }
+      if (formatFilter !== 'all' && job.formatId !== formatFilter) {
+        return false;
+      }
+      return ['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState);
+    });
+
+    return [...filtered].sort((left, right) => {
+      if (sortKey === 'filename') {
+        return left.filename.localeCompare(right.filename);
+      }
+      if (sortKey === 'retries') {
+        return right.retries - left.retries;
+      }
+      return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+    });
+  }, [fileKindFilter, formatFilter, lifecycleFilter, snapshot.uploadJobs, sortKey]);
 
   return (
     <Stack gap="lg">
@@ -381,8 +509,80 @@ export const HistoryPage = (): JSX.Element => {
         <h2 className="desktop-page-title">History</h2>
         <p className="desktop-page-subtitle">Completed uploads and terminal rows from the local desktop history.</p>
       </div>
+      <Group grow>
+        <Select
+          value={fileKindFilter}
+          data={[
+            { value: 'all', label: 'All file kinds' },
+            { value: 'stats_export', label: 'Stats exports' },
+            { value: 'card_catalog', label: 'Card catalogs' }
+          ]}
+          onChange={(value) => setFileKindFilter(value ?? 'all')}
+        />
+        <Select
+          value={lifecycleFilter}
+          data={[
+            { value: 'all', label: 'All lifecycle states' },
+            { value: 'complete', label: 'Complete' },
+            { value: 'failed', label: 'Failed' },
+            { value: 'skipped_duplicate', label: 'Skipped duplicate' }
+          ]}
+          onChange={(value) => setLifecycleFilter(value ?? 'all')}
+        />
+        <Select
+          value={formatFilter}
+          data={[
+            { value: 'all', label: 'All formats' },
+            ...snapshot.cachedFormats.map((format) => ({
+              value: format.id,
+              label: format.name
+            }))
+          ]}
+          onChange={(value) => setFormatFilter(value ?? 'all')}
+        />
+        <Select
+          value={sortKey}
+          data={[
+            { value: 'updated', label: 'Sort by updated' },
+            { value: 'filename', label: 'Sort by filename' },
+            { value: 'retries', label: 'Sort by retries' }
+          ]}
+          onChange={(value) => setSortKey((value as 'updated' | 'filename' | 'retries') ?? 'updated')}
+        />
+      </Group>
       <Card withBorder className="desktop-card">
-        <QueueTable jobs={rows} />
+        <div className="desktop-table-wrap">
+          <table className="desktop-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Kind</th>
+                <th>Format</th>
+                <th>Lifecycle</th>
+                <th>Retries</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No history rows match the current filters.</td>
+                </tr>
+              ) : (
+                rows.map((job) => (
+                  <tr key={job.id}>
+                    <td>{job.filename}</td>
+                    <td>{job.fileKind}</td>
+                    <td>{job.formatId || '-'}</td>
+                    <td>{job.lifecyclePhase ?? '-'}</td>
+                    <td>{job.retries}</td>
+                    <td>{new Date(job.updatedAt).toLocaleString()}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </Stack>
   );

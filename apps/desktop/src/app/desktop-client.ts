@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  CardsResponse,
   DesktopPreferences,
   DesktopSnapshot,
   LocalDetectedFile,
@@ -7,6 +8,7 @@ import type {
   LocalFormatRule,
   LocalServerProfile,
   LocalWatchRoot,
+  MyAggResponse,
   ServiceHealth,
   TournamentFormat
 } from '@xips/api-contract';
@@ -44,6 +46,8 @@ type DesktopClient = {
   selectServerProfile: (profileId: string) => Promise<DesktopSnapshot>;
   checkServerHealth: (profileId: string) => Promise<ServiceHealth>;
   fetchFormats: (profileId: string) => Promise<TournamentFormat[]>;
+  fetchCards: (profileId: string, formatId: string) => Promise<CardsResponse>;
+  fetchMyAgg: (profileId: string) => Promise<MyAggResponse>;
   openAuthWindow: (profileId: string) => Promise<void>;
   completeAuth: (profileId: string) => Promise<void>;
   refreshMe: (profileId: string) => Promise<DesktopSnapshot>;
@@ -131,6 +135,20 @@ const browserClient: DesktopClient = {
   async fetchFormats() {
     return [];
   },
+  async fetchCards() {
+    return {
+      ok: true,
+      rows: [],
+      source: 'admin'
+    };
+  },
+  async fetchMyAgg() {
+    return {
+      ok: true,
+      cards: [],
+      teams: []
+    };
+  },
   async openAuthWindow() {},
   async completeAuth() {},
   async refreshMe() {
@@ -181,6 +199,8 @@ const tauriClient: DesktopClient = {
   selectServerProfile: (profileId) => invoke<DesktopSnapshot>('desktop_select_server_profile', { profileId }),
   checkServerHealth: (profileId) => invoke<ServiceHealth>('desktop_check_server_health', { profileId }),
   fetchFormats: (profileId) => invoke<TournamentFormat[]>('desktop_fetch_formats', { profileId }),
+  fetchCards: (profileId, formatId) => invoke<CardsResponse>('desktop_fetch_cards', { profileId, formatId }),
+  fetchMyAgg: (profileId) => invoke<MyAggResponse>('desktop_fetch_my_agg', { profileId }),
   openAuthWindow: (profileId) => invoke<void>('desktop_open_auth_window', { profileId }),
   completeAuth: (profileId) => invoke<void>('desktop_complete_auth', { input: { profileId } }),
   refreshMe: (profileId) => invoke<DesktopSnapshot>('desktop_refresh_me', { profileId }),
