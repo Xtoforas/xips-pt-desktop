@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use reqwest::Url;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -10,7 +11,7 @@ use crate::models::local_state::{
   AddDiagnosticEventInput, AddWatchRootInput, AssignDetectedFileFormatInput, CompleteAuthExchangeInput, DesktopSnapshot,
   FailAuthExchangeInput, FinishAuthExchangeInput, SaveFormatRuleInput, SaveServerProfileInput, UpdatePreferencesInput,
 };
-use crate::services::{api_client, scanner, storage};
+use crate::services::{api_client, file_watcher, scanner, storage};
 
 const AUTH_WINDOW_LABEL: &str = "discord-auth";
 const SNAPSHOT_EVENT: &str = "desktop:snapshot-updated";
@@ -323,9 +324,11 @@ pub async fn desktop_logout(
 #[tauri::command]
 pub fn desktop_add_watch_root(
   input: AddWatchRootInput,
+  app: AppHandle,
   state: State<'_, AppState>,
 ) -> Result<DesktopSnapshot, String> {
   let snapshot = storage::add_watch_root(&state.db_path, input.clone())?;
+  file_watcher::restart(&app, &state)?;
   storage::write_diagnostic_event(
     &state.db_path,
     "info",
@@ -374,9 +377,11 @@ pub fn desktop_delete_format_rule(
 #[tauri::command]
 pub fn desktop_delete_watch_root(
   watch_root_id: String,
+  app: AppHandle,
   state: State<'_, AppState>,
 ) -> Result<DesktopSnapshot, String> {
   let snapshot = storage::delete_watch_root(&state.db_path, &watch_root_id)?;
+  file_watcher::restart(&app, &state)?;
   storage::write_diagnostic_event(
     &state.db_path,
     "warn",
@@ -391,9 +396,11 @@ pub fn desktop_delete_watch_root(
 pub fn desktop_toggle_watch_root(
   watch_root_id: String,
   paused: bool,
+  app: AppHandle,
   state: State<'_, AppState>,
 ) -> Result<DesktopSnapshot, String> {
   let snapshot = storage::toggle_watch_root(&state.db_path, &watch_root_id, paused)?;
+  file_watcher::restart(&app, &state)?;
   storage::write_diagnostic_event(
     &state.db_path,
     "info",
@@ -616,7 +623,10 @@ pub fn create_app_state(app: &AppHandle) -> Result<AppState, String> {
   let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
   let db_path = app_data_dir.join("desktop-state.sqlite3");
   storage::ensure_db(&db_path)?;
-  Ok(AppState { db_path })
+  Ok(AppState {
+    db_path,
+    watcher_controller: Arc::new(Mutex::new(None)),
+  })
 }
 
 fn path_to_url(path: PathBuf) -> Result<String, String> {

@@ -18,6 +18,7 @@ fn main() {
   tauri::Builder::default()
     .setup(|app| {
       let state = create_app_state(app.handle())?;
+      services::file_watcher::restart(app.handle(), &state)?;
       app.manage(state);
       Ok(())
     })
