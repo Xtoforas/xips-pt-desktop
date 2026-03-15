@@ -14,6 +14,7 @@ import {
 
 export const OverviewPage = (): JSX.Element => {
   const { snapshot, selectedProfile, health, refreshFormats, scanWatchRoots } = useDesktop();
+  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
   const completedCount = useMemo(
     () => snapshot.uploadJobs.filter((job) => job.localState === 'complete').length,
     [snapshot.uploadJobs]
@@ -47,8 +48,8 @@ export const OverviewPage = (): JSX.Element => {
                 {health?.ok ? 'Server reachable' : 'Run health check from the top bar.'}
               </Alert>
             </Group>
-            <Text size="sm">Signed in user: {snapshot.authUser?.displayName ?? 'Not signed in'}</Text>
-            <Text size="sm">Token expiry: {snapshot.tokenExpiresAt || 'No token issued'}</Text>
+            <Text size="sm">Signed in user: {isAuthenticated ? snapshot.authUser?.displayName : 'Not signed in'}</Text>
+            <Text size="sm">Token expiry: {isAuthenticated ? snapshot.tokenExpiresAt : 'No token issued'}</Text>
             <Text size="sm">Detected files: {snapshot.detectedFiles.length}</Text>
           </Stack>
         </Card>

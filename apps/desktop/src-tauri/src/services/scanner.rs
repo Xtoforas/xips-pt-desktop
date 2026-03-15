@@ -35,6 +35,9 @@ pub fn scan_watch_roots(watch_roots: &[LocalWatchRoot], format_rules: &[FormatRu
       if path.extension().and_then(|value| value.to_str()).unwrap_or_default().to_lowercase() != "csv" {
         return Ok(());
       }
+      if should_ignore_path(path) {
+        return Ok(());
+      }
       let bytes = fs::read(path).map_err(|error| error.to_string())?;
       let header_line = String::from_utf8_lossy(&bytes)
         .lines()
@@ -45,7 +48,9 @@ pub fn scan_watch_roots(watch_roots: &[LocalWatchRoot], format_rules: &[FormatRu
       let file_kind = detect_kind(&header).to_string();
       let checksum = checksum_hex(&bytes);
       let format_id = resolve_format_id(path, watch_root, format_rules);
-      let local_state = if file_kind == "stats_export" && format_id.is_empty() {
+      let local_state = if file_kind == "unknown" {
+        String::from("ignored")
+      } else if file_kind == "stats_export" && format_id.is_empty() {
         String::from("awaiting_format_assignment")
       } else {
         String::from("queued_local")
@@ -63,6 +68,15 @@ pub fn scan_watch_roots(watch_roots: &[LocalWatchRoot], format_rules: &[FormatRu
     })?;
   }
   Ok(results)
+}
+
+fn should_ignore_path(path: &Path) -> bool {
+  let filename = path.file_name().and_then(|value| value.to_str()).unwrap_or_default().to_lowercase();
+  filename.starts_with('.')
+    || filename.starts_with("~$")
+    || filename.ends_with(".tmp")
+    || filename.ends_with(".part")
+    || filename.ends_with(".crdownload")
 }
 
 fn collect_files(path: &Path, recursive: bool, visit: &mut dyn FnMut(&Path) -> Result<(), String>) -> Result<(), String> {

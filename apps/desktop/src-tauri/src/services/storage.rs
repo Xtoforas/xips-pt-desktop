@@ -38,6 +38,7 @@ pub fn load_snapshot(db_path: &Path) -> Result<DesktopSnapshot, String> {
   let connection = open_db(db_path)?;
   let profiles = load_profiles(&connection)?;
   let selected_profile_id = load_setting(&connection, "selected_profile_id")?;
+  let auth_profile_id = load_setting(&connection, "auth_profile_id")?;
   let auth_user = load_auth_user(&connection)?;
   let token_expires_at = auth_user
     .as_ref()
@@ -56,6 +57,7 @@ pub fn load_snapshot(db_path: &Path) -> Result<DesktopSnapshot, String> {
   Ok(DesktopSnapshot {
     profiles,
     selected_profile_id,
+    auth_profile_id,
     auth_user,
     token_expires_at,
     watch_roots,
@@ -339,6 +341,10 @@ pub fn save_scan_results(
       )
       .map_err(|error| error.to_string())?;
 
+    if row.file_kind == "unknown" {
+      continue;
+    }
+
     let upload_job_id = Uuid::new_v4().to_string();
     connection
       .execute(
@@ -422,6 +428,88 @@ pub fn write_diagnostic_event(
   insert_diagnostic_event(&connection, level, category, message, detail).map_err(|error| error.to_string())
 }
 
+pub fn save_auth_session(
+  db_path: &Path,
+  profile_id: &str,
+  user: &SessionUser,
+  access_token: &str,
+  expires_at: &str,
+) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  let now = now_iso();
+  connection.execute("DELETE FROM auth_state", []).map_err(|error| error.to_string())?;
+  connection
+    .execute(
+      "
+      INSERT INTO auth_state (
+        auth_state_id,
+        user_id,
+        discord_id,
+        display_name,
+        role,
+        token_expires_at,
+        created_at,
+        updated_at
+      )
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      ",
+      params![
+        Uuid::new_v4().to_string(),
+        user.user_id,
+        user.discord_id,
+        user.display_name,
+        user.role,
+        expires_at,
+        now,
+        now
+      ],
+    )
+    .map_err(|error| error.to_string())?;
+  save_setting(&connection, "auth_profile_id", profile_id).map_err(|error| error.to_string())?;
+  save_setting(&connection, "auth_bearer_token", access_token).map_err(|error| error.to_string())?;
+  save_setting(&connection, "token_expires_at", expires_at).map_err(|error| error.to_string())?;
+  load_snapshot(db_path)
+}
+
+pub fn clear_auth_session(db_path: &Path) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  connection.execute("DELETE FROM auth_state", []).map_err(|error| error.to_string())?;
+  save_setting(&connection, "auth_profile_id", "").map_err(|error| error.to_string())?;
+  save_setting(&connection, "auth_bearer_token", "").map_err(|error| error.to_string())?;
+  save_setting(&connection, "token_expires_at", "").map_err(|error| error.to_string())?;
+  load_snapshot(db_path)
+}
+
+pub fn load_access_token_for_profile(db_path: &Path, profile_id: &str) -> Result<String, String> {
+  let connection = open_db(db_path)?;
+  let auth_profile_id = load_setting(&connection, "auth_profile_id")?;
+  if auth_profile_id != profile_id {
+    return Err(String::from("authentication_required"));
+  }
+  let access_token = load_setting(&connection, "auth_bearer_token")?;
+  if access_token.is_empty() {
+    return Err(String::from("authentication_required"));
+  }
+  Ok(access_token)
+}
+
+pub fn mark_all_profile_jobs_auth_blocked(db_path: &Path, profile_id: &str) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  connection
+    .execute(
+      "
+      UPDATE upload_jobs
+      SET local_state = 'auth_blocked',
+          updated_at = ?2
+      WHERE profile_id = ?1
+        AND local_state NOT IN ('complete', 'duplicate_skipped_local', 'failed_terminal')
+      ",
+      params![profile_id, now_iso()],
+    )
+    .map_err(|error| error.to_string())?;
+  load_snapshot(db_path)
+}
+
 pub fn load_profile_base_url(db_path: &Path, profile_id: &str) -> Result<PathBuf, String> {
   let connection = open_db(db_path)?;
   let base_url = connection
@@ -432,6 +520,111 @@ pub fn load_profile_base_url(db_path: &Path, profile_id: &str) -> Result<PathBuf
     )
     .map_err(|error| error.to_string())?;
   Ok(PathBuf::from(base_url))
+}
+
+pub fn list_pending_upload_jobs_for_profile(db_path: &Path, profile_id: &str) -> Result<Vec<LocalUploadJob>, String> {
+  let connection = open_db(db_path)?;
+  let jobs = load_upload_jobs(&connection)?;
+  Ok(
+    jobs
+      .into_iter()
+      .filter(|job| {
+        job.profile_id == profile_id
+          && matches!(job.local_state.as_str(), "queued_local" | "failed_retryable" | "auth_blocked")
+      })
+      .collect(),
+  )
+}
+
+pub fn list_active_upload_jobs_for_profile(db_path: &Path, profile_id: &str) -> Result<Vec<LocalUploadJob>, String> {
+  let connection = open_db(db_path)?;
+  let jobs = load_upload_jobs(&connection)?;
+  Ok(
+    jobs
+      .into_iter()
+      .filter(|job| {
+        job.profile_id == profile_id
+          && !job.upload_id.is_empty()
+          && !matches!(
+            job.local_state.as_str(),
+            "complete" | "duplicate_skipped_local" | "failed_terminal"
+          )
+      })
+      .collect(),
+  )
+}
+
+pub fn update_upload_job_status(
+  db_path: &Path,
+  upload_job_id: &str,
+  local_state: &str,
+  lifecycle_phase: Option<&str>,
+  upload_id: Option<&str>,
+  error: &str,
+  retries: u32,
+) -> Result<(), String> {
+  let connection = open_db(db_path)?;
+  connection
+    .execute(
+      "
+      UPDATE upload_jobs
+      SET local_state = ?2,
+          lifecycle_phase = ?3,
+          upload_id = COALESCE(?4, upload_id),
+          error = ?5,
+          retries = ?6,
+          updated_at = ?7
+      WHERE upload_job_id = ?1
+      ",
+      params![
+        upload_job_id,
+        local_state,
+        lifecycle_phase,
+        upload_id,
+        error,
+        retries,
+        now_iso()
+      ],
+    )
+    .map_err(|error| error.to_string())?;
+  Ok(())
+}
+
+pub fn append_upload_attempt(
+  db_path: &Path,
+  upload_job_id: &str,
+  attempt_number: u32,
+  status: &str,
+  detail: &str,
+) -> Result<(), String> {
+  let connection = open_db(db_path)?;
+  let now = now_iso();
+  connection
+    .execute(
+      "
+      INSERT INTO upload_attempts (
+        upload_attempt_id,
+        upload_job_id,
+        attempt_number,
+        status,
+        detail,
+        created_at,
+        updated_at
+      )
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+      ",
+      params![
+        Uuid::new_v4().to_string(),
+        upload_job_id,
+        attempt_number,
+        status,
+        detail,
+        now,
+        now
+      ],
+    )
+    .map_err(|error| error.to_string())?;
+  Ok(())
 }
 
 fn load_profiles(connection: &Connection) -> Result<Vec<LocalServerProfile>, String> {

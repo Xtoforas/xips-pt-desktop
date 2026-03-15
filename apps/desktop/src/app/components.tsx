@@ -69,7 +69,19 @@ export const DesktopSidebar = (): JSX.Element => {
 };
 
 export const DesktopTopbar = (): JSX.Element => {
-  const { snapshot, selectedProfile, selectServerProfile, refreshHealth } = useDesktop();
+  const {
+    snapshot,
+    selectedProfile,
+    selectServerProfile,
+    refreshHealth,
+    openAuthWindow,
+    completeAuth,
+    refreshMe,
+    logout,
+    processUploadQueue,
+    pollActiveUploads
+  } = useDesktop();
+  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
 
   return (
     <header className="desktop-topbar">
@@ -90,10 +102,20 @@ export const DesktopTopbar = (): JSX.Element => {
         <Badge color="blue" variant="light">
           OOTP27
         </Badge>
-        <AuthStateBadge authenticated={snapshot.authUser !== null} />
+        <AuthStateBadge authenticated={isAuthenticated} />
+        {snapshot.authUser && isAuthenticated ? (
+          <Badge color="teal" variant="light">
+            {snapshot.authUser.displayName}
+          </Badge>
+        ) : null}
         {selectedProfile ? (
           <Text size="sm" className="desktop-mono">
             {selectedProfile.baseUrl}
+          </Text>
+        ) : null}
+        {snapshot.tokenExpiresAt && isAuthenticated ? (
+          <Text size="xs" c="dimmed">
+            Token {new Date(snapshot.tokenExpiresAt).toLocaleString()}
           </Text>
         ) : null}
       </Group>
@@ -104,6 +126,28 @@ export const DesktopTopbar = (): JSX.Element => {
         <Button size="xs" variant="light" onClick={() => void refreshHealth()}>
           Refresh health
         </Button>
+        {selectedProfile ? (
+          <>
+            <Button size="xs" variant="light" onClick={() => void openAuthWindow(selectedProfile.id)}>
+              Sign in
+            </Button>
+            <Button size="xs" variant="light" onClick={() => void completeAuth(selectedProfile.id)}>
+              Finish sign in
+            </Button>
+            <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void refreshMe(selectedProfile.id)}>
+              Validate auth
+            </Button>
+            <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void processUploadQueue(selectedProfile.id)}>
+              Run queue
+            </Button>
+            <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void pollActiveUploads(selectedProfile.id)}>
+              Poll uploads
+            </Button>
+            <Button size="xs" color="red" variant="light" disabled={!isAuthenticated} onClick={() => void logout(selectedProfile.id)}>
+              Logout
+            </Button>
+          </>
+        ) : null}
       </Group>
     </header>
   );

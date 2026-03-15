@@ -6,10 +6,13 @@ mod services;
 
 use commands::desktop::{
   create_app_state, desktop_add_diagnostic_event, desktop_add_watch_root, desktop_assign_detected_file_format,
-  desktop_check_server_health, desktop_delete_format_rule, desktop_delete_server_profile, desktop_delete_watch_root,
-  desktop_fetch_formats, desktop_get_snapshot, desktop_save_format_rule, desktop_save_server_profile,
+  desktop_check_server_health, desktop_complete_auth, desktop_delete_format_rule, desktop_delete_server_profile,
+  desktop_delete_watch_root, desktop_fail_auth_exchange, desktop_fetch_formats, desktop_finish_auth_exchange,
+  desktop_get_snapshot, desktop_logout, desktop_open_auth_window, desktop_poll_active_uploads,
+  desktop_process_upload_queue, desktop_refresh_me, desktop_save_format_rule, desktop_save_server_profile,
   desktop_scan_watch_roots, desktop_select_server_profile, desktop_toggle_watch_root, desktop_update_preferences,
 };
+use tauri::Manager;
 
 fn main() {
   tauri::Builder::default()
@@ -25,6 +28,12 @@ fn main() {
       desktop_select_server_profile,
       desktop_check_server_health,
       desktop_fetch_formats,
+      desktop_open_auth_window,
+      desktop_complete_auth,
+      desktop_finish_auth_exchange,
+      desktop_fail_auth_exchange,
+      desktop_refresh_me,
+      desktop_logout,
       desktop_add_watch_root,
       desktop_save_format_rule,
       desktop_delete_format_rule,
@@ -33,6 +42,8 @@ fn main() {
       desktop_update_preferences,
       desktop_scan_watch_roots,
       desktop_assign_detected_file_format,
+      desktop_process_upload_queue,
+      desktop_poll_active_uploads,
       desktop_add_diagnostic_event
     ])
     .run(tauri::generate_context!())

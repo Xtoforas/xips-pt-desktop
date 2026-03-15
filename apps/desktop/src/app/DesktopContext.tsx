@@ -55,6 +55,10 @@ type DesktopContextValue = {
   selectServerProfile: (profileId: string) => Promise<void>;
   refreshHealth: () => Promise<void>;
   refreshFormats: () => Promise<void>;
+  openAuthWindow: (profileId: string) => Promise<void>;
+  completeAuth: (profileId: string) => Promise<void>;
+  refreshMe: (profileId: string) => Promise<void>;
+  logout: (profileId: string) => Promise<void>;
   addWatchRoot: (input: AddWatchRootInput) => Promise<void>;
   saveFormatRule: (input: SaveFormatRuleInput) => Promise<void>;
   deleteFormatRule: (formatRuleId: string) => Promise<void>;
@@ -62,6 +66,8 @@ type DesktopContextValue = {
   assignDetectedFileFormat: (input: AssignDetectedFileFormatInput) => Promise<void>;
   deleteWatchRoot: (watchRootId: string) => Promise<void>;
   toggleWatchRoot: (watchRootId: string, paused: boolean) => Promise<void>;
+  processUploadQueue: (profileId: string) => Promise<void>;
+  pollActiveUploads: (profileId: string) => Promise<void>;
   updatePreferences: (preferences: DesktopPreferences) => Promise<void>;
   addDiagnosticEvent: (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>) => Promise<void>;
 };
@@ -69,6 +75,7 @@ type DesktopContextValue = {
 const emptySnapshot: DesktopSnapshot = {
   profiles: [],
   selectedProfileId: '',
+  authProfileId: '',
   authUser: null,
   tokenExpiresAt: '',
   watchRoots: [],
@@ -106,6 +113,43 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   useEffect(() => {
     void refreshSnapshot();
   }, [refreshSnapshot]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.__TAURI_INTERNALS__ !== 'object') {
+      return;
+    }
+    let active = true;
+    let unlisten: (() => void) | null = null;
+    void import('@tauri-apps/api/event').then(async ({ listen }) => {
+      const stop = await listen<boolean>('desktop:snapshot-updated', async () => {
+        if (active) {
+          await refreshSnapshot();
+        }
+      });
+      unlisten = () => {
+        void stop();
+      };
+    });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, [refreshSnapshot]);
+
+  useEffect(() => {
+    if (!snapshot.selectedProfileId || snapshot.authProfileId !== snapshot.selectedProfileId || !snapshot.authUser) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void desktopClient.pollActiveUploads(snapshot.selectedProfileId).then(setSnapshot);
+    }, Math.max(snapshot.preferences.pollingIntervalSeconds, 3) * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [
+    snapshot.authProfileId,
+    snapshot.authUser,
+    snapshot.preferences.pollingIntervalSeconds,
+    snapshot.selectedProfileId
+  ]);
 
   const saveServerProfile = useCallback(async (input: SaveServerProfileInput): Promise<void> => {
     const next = await desktopClient.saveServerProfile(input);
@@ -145,6 +189,24 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     }));
   }, [snapshot.profiles, snapshot.selectedProfileId]);
 
+  const openAuthWindow = useCallback(async (profileId: string): Promise<void> => {
+    await desktopClient.openAuthWindow(profileId);
+  }, []);
+
+  const completeAuth = useCallback(async (profileId: string): Promise<void> => {
+    await desktopClient.completeAuth(profileId);
+  }, []);
+
+  const refreshMe = useCallback(async (profileId: string): Promise<void> => {
+    const next = await desktopClient.refreshMe(profileId);
+    setSnapshot(next);
+  }, []);
+
+  const logout = useCallback(async (profileId: string): Promise<void> => {
+    const next = await desktopClient.logout(profileId);
+    setSnapshot(next);
+  }, []);
+
   const addWatchRoot = useCallback(async (input: AddWatchRootInput): Promise<void> => {
     const next = await desktopClient.addWatchRoot(input);
     setSnapshot(next);
@@ -180,6 +242,16 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setSnapshot(next);
   }, []);
 
+  const processUploadQueue = useCallback(async (profileId: string): Promise<void> => {
+    const next = await desktopClient.processUploadQueue(profileId);
+    setSnapshot(next);
+  }, []);
+
+  const pollActiveUploads = useCallback(async (profileId: string): Promise<void> => {
+    const next = await desktopClient.pollActiveUploads(profileId);
+    setSnapshot(next);
+  }, []);
+
   const updatePreferences = useCallback(async (preferences: DesktopPreferences): Promise<void> => {
     const next = await desktopClient.updatePreferences(preferences);
     setSnapshot(next);
@@ -210,6 +282,10 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       selectServerProfile,
       refreshHealth,
       refreshFormats,
+      openAuthWindow,
+      completeAuth,
+      refreshMe,
+      logout,
       addWatchRoot,
       saveFormatRule,
       deleteFormatRule,
@@ -217,6 +293,8 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       assignDetectedFileFormat,
       deleteWatchRoot,
       toggleWatchRoot,
+      processUploadQueue,
+      pollActiveUploads,
       updatePreferences,
       addDiagnosticEvent
     }),
@@ -231,6 +309,10 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       selectServerProfile,
       refreshHealth,
       refreshFormats,
+      openAuthWindow,
+      completeAuth,
+      refreshMe,
+      logout,
       addWatchRoot,
       saveFormatRule,
       deleteFormatRule,
@@ -238,6 +320,8 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       assignDetectedFileFormat,
       deleteWatchRoot,
       toggleWatchRoot,
+      processUploadQueue,
+      pollActiveUploads,
       updatePreferences,
       addDiagnosticEvent
     ]

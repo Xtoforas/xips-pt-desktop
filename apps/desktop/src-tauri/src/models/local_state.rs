@@ -150,6 +150,8 @@ pub struct DesktopSnapshot {
   pub profiles: Vec<LocalServerProfile>,
   #[serde(rename = "selectedProfileId")]
   pub selected_profile_id: String,
+  #[serde(rename = "authProfileId")]
+  pub auth_profile_id: String,
   #[serde(rename = "authUser")]
   pub auth_user: Option<SessionUser>,
   #[serde(rename = "tokenExpiresAt")]
@@ -225,6 +227,27 @@ pub struct AssignDetectedFileFormatInput {
 pub struct AddDiagnosticEventInput {
   pub level: String,
   pub category: String,
+  pub message: String,
+  pub detail: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CompleteAuthExchangeInput {
+  #[serde(rename = "profileId")]
+  pub profile_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FinishAuthExchangeInput {
+  #[serde(rename = "profileId")]
+  pub profile_id: String,
+  pub payload: crate::models::api::DesktopExchangeResponse,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FailAuthExchangeInput {
+  #[serde(rename = "profileId")]
+  pub profile_id: String,
   pub message: String,
   pub detail: String,
 }

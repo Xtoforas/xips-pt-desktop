@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,4 +34,77 @@ pub struct TournamentFormat {
 pub struct FormatsResponse {
   pub ok: bool,
   pub rows: Vec<TournamentFormat>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiSessionUser {
+  pub user_id: String,
+  pub discord_id: String,
+  pub display_name: String,
+  pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeResponse {
+  pub ok: bool,
+  pub user: ApiSessionUser,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopExchangeResponse {
+  pub ok: bool,
+  pub access_token: String,
+  pub token_type: String,
+  pub expires_at: String,
+  pub user: ApiSessionUser,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateCheckResponse {
+  pub ok: bool,
+  pub duplicate: bool,
+  pub upload_id: String,
+  pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadCreateResponse {
+  pub ok: bool,
+  pub upload_id: String,
+  pub status: String,
+  pub skipped: bool,
+  pub checksum: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadRecord {
+  pub id: String,
+  pub file_kind: String,
+  pub game_version: String,
+  pub status: String,
+  pub error: String,
+  pub imported_at: String,
+  pub row_count: u32,
+  pub queued_at: Option<String>,
+  pub processing_at: Option<String>,
+  pub parsed_at: Option<String>,
+  pub refreshing_at: Option<String>,
+  pub completed_at: Option<String>,
+  pub failed_at: Option<String>,
+  pub lifecycle_phase: Option<String>,
+  pub duplicate_of_upload_id: Option<String>,
+  pub context_json: HashMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadDetailResponse {
+  pub ok: bool,
+  pub row: UploadRecord,
 }

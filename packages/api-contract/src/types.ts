@@ -195,7 +195,7 @@ export type LocalDetectedFile = {
   filename: string;
   fileKind: 'stats_export' | 'card_catalog' | 'unknown';
   checksum: string;
-  localState: 'detected' | 'awaiting_format_assignment' | 'ignored';
+  localState: 'detected' | 'queued_local' | 'awaiting_format_assignment' | 'ignored';
   formatId: string;
   createdAt: string;
   updatedAt: string;
@@ -261,6 +261,7 @@ export type DesktopPreferences = {
 export type DesktopSnapshot = {
   profiles: LocalServerProfile[];
   selectedProfileId: string;
+  authProfileId: string;
   authUser: SessionUser | null;
   tokenExpiresAt: string;
   watchRoots: LocalWatchRoot[];
