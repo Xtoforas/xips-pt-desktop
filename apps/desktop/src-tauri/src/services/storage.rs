@@ -222,6 +222,50 @@ pub fn update_preferences(db_path: &Path, input: UpdatePreferencesInput) -> Resu
   load_snapshot(db_path)
 }
 
+pub fn assign_detected_file_format(
+  db_path: &Path,
+  detected_file_id: &str,
+  format_id: &str,
+) -> Result<DesktopSnapshot, String> {
+  let connection = open_db(db_path)?;
+  connection
+    .execute(
+      "
+      UPDATE detected_files
+      SET format_id = ?2,
+          local_state = 'queued_local',
+          updated_at = ?3
+      WHERE detected_file_id = ?1
+      ",
+      params![detected_file_id, format_id, now_iso()],
+    )
+    .map_err(|error| error.to_string())?;
+
+  let row = connection
+    .query_row(
+      "SELECT profile_id, path FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
+      params![detected_file_id],
+      |result| Ok((result.get::<_, String>(0)?, result.get::<_, String>(1)?)),
+    )
+    .map_err(|error| error.to_string())?;
+
+  connection
+    .execute(
+      "
+      UPDATE upload_jobs
+      SET format_id = ?3,
+          local_state = 'queued_local',
+          updated_at = ?4
+      WHERE profile_id = ?1
+        AND path = ?2
+      ",
+      params![row.0, row.1, format_id, now_iso()],
+    )
+    .map_err(|error| error.to_string())?;
+
+  load_snapshot(db_path)
+}
+
 pub fn list_watch_roots_for_profile(db_path: &Path, profile_id: &str) -> Result<Vec<LocalWatchRoot>, String> {
   let connection = open_db(db_path)?;
   let watch_roots = load_watch_roots(&connection)?;

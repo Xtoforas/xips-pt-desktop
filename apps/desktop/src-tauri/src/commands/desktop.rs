@@ -5,8 +5,8 @@ use tauri::{AppHandle, Manager, State};
 use crate::app_state::AppState;
 use crate::models::api::{ServiceHealth, TournamentFormat};
 use crate::models::local_state::{
-  AddDiagnosticEventInput, AddWatchRootInput, DesktopSnapshot, SaveFormatRuleInput, SaveServerProfileInput,
-  UpdatePreferencesInput,
+  AddDiagnosticEventInput, AddWatchRootInput, AssignDetectedFileFormatInput, DesktopSnapshot, SaveFormatRuleInput,
+  SaveServerProfileInput, UpdatePreferencesInput,
 };
 use crate::services::{api_client, scanner, storage};
 
@@ -250,6 +250,22 @@ pub fn desktop_scan_watch_roots(
     "watcher",
     "Scanned watch roots",
     &format!("profile_id={},detected_files={}", profile_id, scanned.len()),
+  )?;
+  Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn desktop_assign_detected_file_format(
+  input: AssignDetectedFileFormatInput,
+  state: State<'_, AppState>,
+) -> Result<DesktopSnapshot, String> {
+  let snapshot = storage::assign_detected_file_format(&state.db_path, &input.detected_file_id, &input.format_id)?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "info",
+    "queue",
+    "Assigned detected file format",
+    &format!("detected_file_id={},format_id={}", input.detected_file_id, input.format_id),
   )?;
   Ok(snapshot)
 }

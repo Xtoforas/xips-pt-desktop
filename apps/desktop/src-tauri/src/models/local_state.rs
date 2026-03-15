@@ -214,6 +214,14 @@ pub struct UpdatePreferencesInput {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct AssignDetectedFileFormatInput {
+  #[serde(rename = "detectedFileId")]
+  pub detected_file_id: String,
+  #[serde(rename = "formatId")]
+  pub format_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct AddDiagnosticEventInput {
   pub level: String,
   pub category: String,

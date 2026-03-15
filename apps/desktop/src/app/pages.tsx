@@ -86,14 +86,48 @@ export const OverviewPage = (): JSX.Element => {
           <QueueTable jobs={snapshot.uploadJobs.slice(0, 8)} />
         </Stack>
       </Card>
+      <Card withBorder className="desktop-card">
+        <Stack gap="sm">
+          <Text fw={700}>Awaiting format assignment</Text>
+          {snapshot.detectedFiles.filter((file) => file.localState === 'awaiting_format_assignment').length === 0 ? (
+            <Alert color="gray">No scanned files are waiting for format assignment.</Alert>
+          ) : (
+            <div className="desktop-table-wrap">
+              <table className="desktop-table">
+                <thead>
+                  <tr>
+                    <th>File</th>
+                    <th>Kind</th>
+                    <th>Checksum</th>
+                    <th>State</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.detectedFiles
+                    .filter((file) => file.localState === 'awaiting_format_assignment')
+                    .map((file) => (
+                      <tr key={file.id}>
+                        <td>{file.filename}</td>
+                        <td>{file.fileKind}</td>
+                        <td className="desktop-mono">{file.checksum.slice(0, 16)}...</td>
+                        <td>{file.localState}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Stack>
+      </Card>
     </Stack>
   );
 };
 
 export const UploadQueuePage = (): JSX.Element => {
-  const { snapshot } = useDesktop();
+  const { snapshot, assignDetectedFileFormat } = useDesktop();
   const [filter, setFilter] = useState<'all' | 'awaiting' | 'queued' | 'complete'>('all');
   const [selectedJobId, setSelectedJobId] = useState('');
+  const [selectedFormatId, setSelectedFormatId] = useState('');
 
   const filteredJobs = useMemo(() => {
     switch (filter) {
@@ -152,23 +186,60 @@ export const UploadQueuePage = (): JSX.Element => {
             {!selectedJob ? (
               <Alert color="gray">Select a queue row to inspect its file path, checksum, and lifecycle details.</Alert>
             ) : (
-              <div className="desktop-table-wrap">
-                <table className="desktop-table">
-                  <tbody>
-                    <tr><th>File</th><td>{selectedJob.filename}</td></tr>
-                    <tr><th>Path</th><td className="desktop-mono">{selectedJob.path}</td></tr>
-                    <tr><th>Kind</th><td>{selectedJob.fileKind}</td></tr>
-                    <tr><th>Format</th><td>{selectedJob.formatId || '-'}</td></tr>
-                    <tr><th>Local state</th><td>{selectedJob.localState}</td></tr>
-                    <tr><th>Server lifecycle</th><td>{selectedJob.lifecyclePhase ?? '-'}</td></tr>
-                    <tr><th>Checksum</th><td className="desktop-mono">{selectedJob.checksum}</td></tr>
-                    <tr><th>Upload ID</th><td className="desktop-mono">{selectedJob.uploadId || '-'}</td></tr>
-                    <tr><th>Retries</th><td>{selectedJob.retries}</td></tr>
-                    <tr><th>Error</th><td>{selectedJob.error || '-'}</td></tr>
-                    <tr><th>Updated</th><td>{new Date(selectedJob.updatedAt).toLocaleString()}</td></tr>
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div className="desktop-table-wrap">
+                  <table className="desktop-table">
+                    <tbody>
+                      <tr><th>File</th><td>{selectedJob.filename}</td></tr>
+                      <tr><th>Path</th><td className="desktop-mono">{selectedJob.path}</td></tr>
+                      <tr><th>Kind</th><td>{selectedJob.fileKind}</td></tr>
+                      <tr><th>Format</th><td>{selectedJob.formatId || '-'}</td></tr>
+                      <tr><th>Local state</th><td>{selectedJob.localState}</td></tr>
+                      <tr><th>Server lifecycle</th><td>{selectedJob.lifecyclePhase ?? '-'}</td></tr>
+                      <tr><th>Checksum</th><td className="desktop-mono">{selectedJob.checksum}</td></tr>
+                      <tr><th>Upload ID</th><td className="desktop-mono">{selectedJob.uploadId || '-'}</td></tr>
+                      <tr><th>Retries</th><td>{selectedJob.retries}</td></tr>
+                      <tr><th>Error</th><td>{selectedJob.error || '-'}</td></tr>
+                      <tr><th>Updated</th><td>{new Date(selectedJob.updatedAt).toLocaleString()}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
+                  <Card withBorder className="desktop-subcard">
+                    <Stack gap="sm">
+                      <Text fw={600}>Assign tournament format</Text>
+                      <select value={selectedFormatId} onChange={(event) => setSelectedFormatId(event.currentTarget.value)}>
+                        <option value="">Choose a format</option>
+                        {snapshot.cachedFormats.map((format) => (
+                          <option key={format.id} value={format.id}>
+                            {format.name}
+                          </option>
+                        ))}
+                      </select>
+                      <Group justify="flex-end">
+                        <Button
+                          size="xs"
+                          disabled={!selectedFormatId}
+                          onClick={() => {
+                            const detectedFile = snapshot.detectedFiles.find((file) => file.path === selectedJob.path) ?? null;
+                            if (!detectedFile) {
+                              return;
+                            }
+                            void assignDetectedFileFormat({
+                              detectedFileId: detectedFile.id,
+                              formatId: selectedFormatId
+                            }).then(() => {
+                              setSelectedFormatId('');
+                            });
+                          }}
+                        >
+                          Assign format
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Card>
+                ) : null}
+              </>
             )}
           </Stack>
         </Card>

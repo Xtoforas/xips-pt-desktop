@@ -39,6 +39,11 @@ type SaveFormatRuleInput = {
   formatName: string;
 };
 
+type AssignDetectedFileFormatInput = {
+  detectedFileId: string;
+  formatId: string;
+};
+
 type DesktopContextValue = {
   snapshot: DesktopSnapshot;
   loading: boolean;
@@ -54,6 +59,7 @@ type DesktopContextValue = {
   saveFormatRule: (input: SaveFormatRuleInput) => Promise<void>;
   deleteFormatRule: (formatRuleId: string) => Promise<void>;
   scanWatchRoots: (profileId: string) => Promise<void>;
+  assignDetectedFileFormat: (input: AssignDetectedFileFormatInput) => Promise<void>;
   deleteWatchRoot: (watchRootId: string) => Promise<void>;
   toggleWatchRoot: (watchRootId: string, paused: boolean) => Promise<void>;
   updatePreferences: (preferences: DesktopPreferences) => Promise<void>;
@@ -159,6 +165,11 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setSnapshot(next);
   }, []);
 
+  const assignDetectedFileFormat = useCallback(async (input: AssignDetectedFileFormatInput): Promise<void> => {
+    const next = await desktopClient.assignDetectedFileFormat(input);
+    setSnapshot(next);
+  }, []);
+
   const deleteWatchRoot = useCallback(async (watchRootId: string): Promise<void> => {
     const next = await desktopClient.deleteWatchRoot(watchRootId);
     setSnapshot(next);
@@ -203,6 +214,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       saveFormatRule,
       deleteFormatRule,
       scanWatchRoots,
+      assignDetectedFileFormat,
       deleteWatchRoot,
       toggleWatchRoot,
       updatePreferences,
@@ -223,6 +235,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       saveFormatRule,
       deleteFormatRule,
       scanWatchRoots,
+      assignDetectedFileFormat,
       deleteWatchRoot,
       toggleWatchRoot,
       updatePreferences,
