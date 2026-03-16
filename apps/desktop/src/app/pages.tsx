@@ -80,12 +80,12 @@ export const OverviewPage = (): JSX.Element => {
   }, [isAuthenticated, refreshCards, refreshMyAgg, selectedFormatId, selectedProfile]);
 
   return (
-    <Stack gap="lg">
+    <Stack gap="md">
       <div>
         <h2 className="desktop-page-title">Overview</h2>
         <p className="desktop-page-subtitle">Desktop upload mission control aligned with the xips-pt website shell.</p>
       </div>
-      <SimpleGrid cols={{ base: 1, md: 2, xl: 4 }}>
+      <SimpleGrid cols={{ base: 1, md: 2, xl: 5 }}>
         <SummaryCard label="Server" value={selectedProfile?.name ?? 'None'} detail={selectedProfile?.baseUrl ?? 'No server selected'} />
         <SummaryCard label="Watch folders" value={String(snapshot.watchRoots.length)} detail="Configured folder monitors" />
         <SummaryCard label="Pending uploads" value={String(pendingCount)} detail="Local queue work not yet complete" />
@@ -166,12 +166,48 @@ export const OverviewPage = (): JSX.Element => {
           </Stack>
         </Card>
       </SimpleGrid>
-      <Card withBorder className="desktop-card">
-        <Stack gap="sm">
-          <Text fw={700}>Recent upload queue</Text>
-          <QueueTable jobs={snapshot.uploadJobs.slice(0, 8)} />
-        </Stack>
-      </Card>
+      <SimpleGrid cols={{ base: 1, xl: 2 }}>
+        <Card withBorder className="desktop-card">
+          <Stack gap="sm">
+            <Text fw={700}>Recent upload queue</Text>
+            <QueueTable jobs={snapshot.uploadJobs.slice(0, 5)} />
+          </Stack>
+        </Card>
+        <Card withBorder className="desktop-card">
+          <Stack gap="sm">
+            <Text fw={700}>Awaiting format assignment</Text>
+            {snapshot.detectedFiles.filter((file) => file.localState === 'awaiting_format_assignment').length === 0 ? (
+              <Alert color="gray">No scanned files are waiting for format assignment.</Alert>
+            ) : (
+              <div className="desktop-table-wrap">
+                <table className="desktop-table">
+                  <thead>
+                    <tr>
+                      <th>File</th>
+                      <th>Kind</th>
+                      <th>Checksum</th>
+                      <th>State</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshot.detectedFiles
+                      .filter((file) => file.localState === 'awaiting_format_assignment')
+                      .slice(0, 5)
+                      .map((file) => (
+                        <tr key={file.id}>
+                          <td>{file.filename}</td>
+                          <td>{file.fileKind}</td>
+                          <td className="desktop-mono">{file.checksum.slice(0, 16)}...</td>
+                          <td>{file.localState}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Stack>
+        </Card>
+      </SimpleGrid>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
@@ -190,7 +226,7 @@ export const OverviewPage = (): JSX.Element => {
                     </tr>
                   </thead>
                   <tbody>
-                    {recentActivity.map((job) => (
+                    {recentActivity.slice(0, 4).map((job) => (
                       <tr key={job.id}>
                         <td>{job.filename}</td>
                         <td>{job.formatId || 'Unassigned'}</td>
@@ -232,39 +268,6 @@ export const OverviewPage = (): JSX.Element => {
           </Stack>
         </Card>
       </SimpleGrid>
-      <Card withBorder className="desktop-card">
-        <Stack gap="sm">
-          <Text fw={700}>Awaiting format assignment</Text>
-          {snapshot.detectedFiles.filter((file) => file.localState === 'awaiting_format_assignment').length === 0 ? (
-            <Alert color="gray">No scanned files are waiting for format assignment.</Alert>
-          ) : (
-            <div className="desktop-table-wrap">
-              <table className="desktop-table">
-                <thead>
-                  <tr>
-                    <th>File</th>
-                    <th>Kind</th>
-                    <th>Checksum</th>
-                    <th>State</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {snapshot.detectedFiles
-                    .filter((file) => file.localState === 'awaiting_format_assignment')
-                    .map((file) => (
-                      <tr key={file.id}>
-                        <td>{file.filename}</td>
-                        <td>{file.fileKind}</td>
-                        <td className="desktop-mono">{file.checksum.slice(0, 16)}...</td>
-                        <td>{file.localState}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Stack>
-      </Card>
     </Stack>
   );
 };

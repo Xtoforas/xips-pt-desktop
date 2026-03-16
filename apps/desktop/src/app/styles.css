@@ -42,8 +42,8 @@ a {
 .desktop-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 18px 16px;
+  gap: 14px;
+  padding: 16px 14px;
   background: linear-gradient(180deg, #171a1e 0%, #121418 100%);
   border-right: 1px solid var(--line-0);
 }
@@ -111,14 +111,14 @@ a {
 }
 
 .desktop-topbar {
-  min-height: 64px;
+  min-height: 56px;
   border-bottom: 1px solid var(--line-0);
   background: #14181d;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 20px;
+  gap: 10px;
+  padding: 10px 16px;
 }
 
 .desktop-topbar-alert {
@@ -127,8 +127,8 @@ a {
 
 .desktop-content {
   display: grid;
-  gap: 18px;
-  padding: 24px 20px 28px;
+  gap: 14px;
+  padding: 16px;
 }
 
 .desktop-oobe-wrap {
@@ -182,9 +182,9 @@ a {
 }
 
 .desktop-page-subtitle {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.14em;
 }
@@ -198,7 +198,7 @@ a {
 
 .desktop-stat {
   font-family: "JetBrains Mono", monospace;
-  font-size: 1.4rem;
+  font-size: 1.1rem;
   font-weight: 700;
 }
 
@@ -233,14 +233,14 @@ a {
   font-size: 0.68rem;
   letter-spacing: 0.11em;
   text-transform: uppercase;
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
 
 .desktop-table td {
-  padding: 12px;
+  padding: 9px 10px;
   border-top: 1px solid #27303a;
   color: #d7e6fb;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   white-space: nowrap;
 }
 
