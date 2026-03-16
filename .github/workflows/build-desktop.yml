@@ -25,39 +25,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  select-platforms:
+    name: Select platforms
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Build matrix
+        id: set-matrix
+        env:
+          REQUESTED_PLATFORM: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.platform || 'all' }}
+        run: |
+          case "$REQUESTED_PLATFORM" in
+            windows)
+              MATRIX='{"include":[{"platform":"windows","label":"Windows","os":"windows-latest","bundles":"nsis,msi","artifact_paths":"apps/desktop/src-tauri/target/release/bundle/nsis/**\napps/desktop/src-tauri/target/release/bundle/msi/**"}]}'
+              ;;
+            macos)
+              MATRIX='{"include":[{"platform":"macos","label":"macOS","os":"macos-latest","bundles":"app,dmg","artifact_paths":"apps/desktop/src-tauri/target/release/bundle/macos/**\napps/desktop/src-tauri/target/release/bundle/dmg/**"}]}'
+              ;;
+            linux)
+              MATRIX='{"include":[{"platform":"linux","label":"Linux","os":"ubuntu-24.04","bundles":"appimage,deb,rpm","artifact_paths":"apps/desktop/src-tauri/target/release/bundle/appimage/**\napps/desktop/src-tauri/target/release/bundle/deb/**\napps/desktop/src-tauri/target/release/bundle/rpm/**"}]}'
+              ;;
+            *)
+              MATRIX='{"include":[{"platform":"windows","label":"Windows","os":"windows-latest","bundles":"nsis,msi","artifact_paths":"apps/desktop/src-tauri/target/release/bundle/nsis/**\napps/desktop/src-tauri/target/release/bundle/msi/**"},{"platform":"macos","label":"macOS","os":"macos-latest","bundles":"app,dmg","artifact_paths":"apps/desktop/src-tauri/target/release/bundle/macos/**\napps/desktop/src-tauri/target/release/bundle/dmg/**"},{"platform":"linux","label":"Linux","os":"ubuntu-24.04","bundles":"appimage,deb,rpm","artifact_paths":"apps/desktop/src-tauri/target/release/bundle/appimage/**\napps/desktop/src-tauri/target/release/bundle/deb/**\napps/desktop/src-tauri/target/release/bundle/rpm/**"}]}'
+              ;;
+          esac
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
   package:
+    needs: select-platforms
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
-    if: |
-      github.event_name == 'push' ||
-      github.event.inputs.platform == 'all' ||
-      github.event.inputs.platform == matrix.platform
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: windows
-            label: Windows
-            os: windows-latest
-            bundles: nsis,msi
-            artifact_paths: |
-              apps/desktop/src-tauri/target/release/bundle/nsis/**
-              apps/desktop/src-tauri/target/release/bundle/msi/**
-          - platform: macos
-            label: macOS
-            os: macos-latest
-            bundles: app,dmg
-            artifact_paths: |
-              apps/desktop/src-tauri/target/release/bundle/macos/**
-              apps/desktop/src-tauri/target/release/bundle/dmg/**
-          - platform: linux
-            label: Linux
-            os: ubuntu-24.04
-            bundles: appimage,deb,rpm
-            artifact_paths: |
-              apps/desktop/src-tauri/target/release/bundle/appimage/**
-              apps/desktop/src-tauri/target/release/bundle/deb/**
-              apps/desktop/src-tauri/target/release/bundle/rpm/**
+      matrix: ${{ fromJson(needs.select-platforms.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
