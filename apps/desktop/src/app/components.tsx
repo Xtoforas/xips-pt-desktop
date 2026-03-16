@@ -71,11 +71,11 @@ export const DesktopSidebar = (): JSX.Element => {
 export const DesktopTopbar = (): JSX.Element => {
   const {
     snapshot,
+    authFlowState,
     selectedProfile,
     selectServerProfile,
     refreshHealth,
     openAuthWindow,
-    completeAuth,
     refreshMe,
     logout,
     processUploadQueue,
@@ -118,6 +118,11 @@ export const DesktopTopbar = (): JSX.Element => {
             Token {new Date(snapshot.tokenExpiresAt).toLocaleString()}
           </Text>
         ) : null}
+        {authFlowState === 'waiting' ? (
+          <Badge color="orange" variant="light">
+            Completing sign-in...
+          </Badge>
+        ) : null}
       </Group>
       <Group gap="sm">
         {!selectedProfile ? (
@@ -135,9 +140,6 @@ export const DesktopTopbar = (): JSX.Element => {
           <>
             <Button size="xs" variant="light" onClick={() => void openAuthWindow(selectedProfile.id)}>
               Sign in
-            </Button>
-            <Button size="xs" variant="light" onClick={() => void completeAuth(selectedProfile.id)}>
-              Finish sign in
             </Button>
             <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void refreshMe(selectedProfile.id)}>
               Validate auth
@@ -161,18 +163,19 @@ export const DesktopTopbar = (): JSX.Element => {
 export const OnboardingGate = (): JSX.Element => {
   const {
     snapshot,
+    authFlowError,
+    authFlowState,
     selectedProfile,
     health,
     saveServerProfile,
     refreshHealth,
     openAuthWindow,
-    completeAuth,
     refreshMe
   } = useDesktop();
   const [profileName, setProfileName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [busyAction, setBusyAction] = useState<'save' | 'health' | 'signin' | 'finish' | 'validate' | ''>('');
+  const [busyAction, setBusyAction] = useState<'save' | 'health' | 'signin' | 'validate' | ''>('');
   const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
   const hasSelectedProfile = selectedProfile !== null;
 
@@ -227,21 +230,6 @@ export const OnboardingGate = (): JSX.Element => {
     }
   };
 
-  const handleFinishSignin = async (): Promise<void> => {
-    if (!selectedProfile) {
-      return;
-    }
-    setBusyAction('finish');
-    setErrorMessage('');
-    try {
-      await completeAuth(selectedProfile.id);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to complete the desktop auth exchange.');
-    } finally {
-      setBusyAction('');
-    }
-  };
-
   const handleValidateAuth = async (): Promise<void> => {
     if (!selectedProfile) {
       return;
@@ -269,6 +257,11 @@ export const OnboardingGate = (): JSX.Element => {
           {errorMessage ? (
             <Alert color="red" title="Setup problem">
               {errorMessage}
+            </Alert>
+          ) : null}
+          {authFlowError ? (
+            <Alert color="red" title="Desktop sign-in problem">
+              {authFlowError}
             </Alert>
           ) : null}
           <div className="desktop-oobe-grid">
@@ -354,7 +347,7 @@ export const OnboardingGate = (): JSX.Element => {
                   </Badge>
                 </Group>
                 <Text size="sm" c="dimmed">
-                  Open the website login flow in the auth popup, finish Discord sign-in, then mint and validate the desktop token.
+                  Open the website login flow in the auth popup. As soon as Discord auth finishes, the desktop app will complete token exchange and close the window automatically.
                 </Text>
                 <div className="desktop-oobe-status-list">
                   <div>
@@ -363,7 +356,13 @@ export const OnboardingGate = (): JSX.Element => {
                   </div>
                   <div>
                     <Text className="desktop-micro-label">Auth state</Text>
-                    <Text>{isAuthenticated ? snapshot.authUser?.displayName ?? 'Signed in' : 'Signed out'}</Text>
+                    <Text>
+                      {isAuthenticated
+                        ? snapshot.authUser?.displayName ?? 'Signed in'
+                        : authFlowState === 'waiting'
+                          ? 'Waiting for callback'
+                          : 'Signed out'}
+                    </Text>
                   </div>
                   <div>
                     <Text className="desktop-micro-label">Token expiry</Text>
@@ -373,18 +372,10 @@ export const OnboardingGate = (): JSX.Element => {
                 <Group>
                   <Button
                     disabled={!selectedProfile}
-                    loading={busyAction === 'signin'}
+                    loading={busyAction === 'signin' || authFlowState === 'waiting'}
                     onClick={() => void handleOpenSignin()}
                   >
                     Open sign-in
-                  </Button>
-                  <Button
-                    variant="light"
-                    disabled={!selectedProfile}
-                    loading={busyAction === 'finish'}
-                    onClick={() => void handleFinishSignin()}
-                  >
-                    Finish sign-in
                   </Button>
                   <Button
                     variant="subtle"
