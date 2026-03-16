@@ -78,8 +78,7 @@ export const DesktopTopbar = (): JSX.Element => {
     openAuthWindow,
     refreshMe,
     logout,
-    processUploadQueue,
-    pollActiveUploads
+    processUploadQueue
   } = useDesktop();
   const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
 
@@ -138,17 +137,21 @@ export const DesktopTopbar = (): JSX.Element => {
         </Button>
         {selectedProfile ? (
           <>
-            <Button size="xs" variant="light" onClick={() => void openAuthWindow(selectedProfile.id)}>
-              Sign in
-            </Button>
+            {!isAuthenticated ? (
+              <Button
+                size="xs"
+                variant="light"
+                disabled={authFlowState === 'waiting'}
+                onClick={() => void openAuthWindow(selectedProfile.id)}
+              >
+                Sign in
+              </Button>
+            ) : null}
             <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void refreshMe(selectedProfile.id)}>
               Validate auth
             </Button>
             <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void processUploadQueue(selectedProfile.id)}>
-              Run queue
-            </Button>
-            <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void pollActiveUploads(selectedProfile.id)}>
-              Poll uploads
+              Upload queue
             </Button>
             <Button size="xs" color="red" variant="light" disabled={!isAuthenticated} onClick={() => void logout(selectedProfile.id)}>
               Logout
