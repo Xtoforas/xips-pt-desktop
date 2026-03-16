@@ -84,7 +84,7 @@ export const uploadRecordSchema = z.object({
   failedAt: z.string().optional(),
   lifecyclePhase: lifecyclePhaseSchema.default('queued'),
   duplicateOfUploadId: z.string().optional(),
-  contextJson: z.record(z.string(), z.string()).default({})
+  contextJson: z.record(z.string(), z.lazy(() => jsonValueSchema)).default({})
 });
 
 export type UploadRecord = z.infer<typeof uploadRecordSchema>;
@@ -123,8 +123,15 @@ export const duplicateCheckResponseSchema = z.object({
 export type DuplicateCheckResponse = z.infer<typeof duplicateCheckResponseSchema>;
 
 const primitiveSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
-const primitiveArraySchema = z.array(primitiveSchema);
-const valueSchema = z.union([primitiveSchema, primitiveArraySchema]);
+const jsonValueSchema: z.ZodType<
+  string | number | boolean | null | Array<string | number | boolean | null> | Record<string, unknown> | unknown[]
+> = z.lazy(() =>
+  z.union([
+    primitiveSchema,
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema)
+  ])
+);
 
 export const cardsResponseSchema = z.object({
   ok: z.boolean(),
@@ -144,8 +151,8 @@ export type CardsResponse = z.infer<typeof cardsResponseSchema>;
 
 export const myAggResponseSchema = z.object({
   ok: z.boolean(),
-  cards: z.array(z.record(z.string(), valueSchema)).default([]),
-  teams: z.array(z.record(z.string(), valueSchema)).default([])
+  cards: z.array(z.record(z.string(), jsonValueSchema)).default([]),
+  teams: z.array(z.record(z.string(), jsonValueSchema)).default([])
 });
 
 export type MyAggResponse = z.infer<typeof myAggResponseSchema>;
