@@ -1003,7 +1003,7 @@ export const DiagnosticsPage = (): JSX.Element => {
 };
 
 export const SettingsPage = (): JSX.Element => {
-  const { snapshot, deleteServerProfile, updatePreferences } = useDesktop();
+  const { snapshot, deleteServerProfile, refreshHealth, refreshMe, selectServerProfile, updatePreferences } = useDesktop();
 
   return (
     <Stack gap="lg">
@@ -1023,16 +1023,40 @@ export const SettingsPage = (): JSX.Element => {
           ) : (
             snapshot.profiles.map((profile) => (
               <Card key={profile.id} withBorder className="desktop-subcard">
-                <Group justify="space-between">
+                <Group justify="space-between" align="flex-start">
                   <div>
                     <Text fw={600}>{profile.name}</Text>
                     <Text size="sm" c="dimmed" className="desktop-mono">
                       {profile.baseUrl}
                     </Text>
+                    <Text size="xs" c="dimmed">
+                      {snapshot.selectedProfileId === profile.id ? 'Selected server' : 'Saved server'}
+                    </Text>
                   </div>
-                  <Button size="xs" color="red" variant="light" onClick={() => void deleteServerProfile(profile.id)}>
-                    Remove
-                  </Button>
+                  <Group gap="xs">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      onClick={() => {
+                        void selectServerProfile(profile.id).then(() => refreshHealth());
+                      }}
+                    >
+                      Check health
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      disabled={snapshot.authProfileId !== profile.id || !snapshot.authUser}
+                      onClick={() => {
+                        void selectServerProfile(profile.id).then(() => refreshMe(profile.id));
+                      }}
+                    >
+                      Check auth
+                    </Button>
+                    <Button size="xs" color="red" variant="light" onClick={() => void deleteServerProfile(profile.id)}>
+                      Remove
+                    </Button>
+                  </Group>
                 </Group>
               </Card>
             ))

@@ -74,9 +74,7 @@ export const DesktopTopbar = (): JSX.Element => {
     authFlowState,
     selectedProfile,
     selectServerProfile,
-    refreshHealth,
     openAuthWindow,
-    refreshMe,
     logout,
     processUploadQueue
   } = useDesktop();
@@ -132,9 +130,6 @@ export const DesktopTopbar = (): JSX.Element => {
         <Badge color="orange" variant="light">
           Pending {snapshot.uploadJobs.filter((job) => job.localState !== 'complete').length}
         </Badge>
-        <Button size="xs" variant="light" onClick={() => void refreshHealth()}>
-          Refresh health
-        </Button>
         {selectedProfile ? (
           <>
             {!isAuthenticated ? (
@@ -147,9 +142,6 @@ export const DesktopTopbar = (): JSX.Element => {
                 Sign in
               </Button>
             ) : null}
-            <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void refreshMe(selectedProfile.id)}>
-              Validate auth
-            </Button>
             <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void processUploadQueue(selectedProfile.id)}>
               Upload queue
             </Button>

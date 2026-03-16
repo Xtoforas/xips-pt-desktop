@@ -168,6 +168,61 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, [snapshot.authProfileId, snapshot.authUser, snapshot.selectedProfileId]);
 
   useEffect(() => {
+    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
+    if (!selectedProfile) {
+      setHealth(null);
+      return;
+    }
+    let active = true;
+    const run = (): void => {
+      void desktopClient
+        .checkServerHealth(selectedProfile.id)
+        .then((result) => {
+          if (active) {
+            setHealth(result);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setHealth(null);
+          }
+        });
+    };
+    run();
+    const intervalId = window.setInterval(run, Math.max(snapshot.preferences.pollingIntervalSeconds, 5) * 6000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [snapshot.preferences.pollingIntervalSeconds, snapshot.profiles, snapshot.selectedProfileId]);
+
+  useEffect(() => {
+    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
+    if (!selectedProfile || snapshot.authProfileId !== selectedProfile.id || !snapshot.authUser) {
+      return;
+    }
+    let active = true;
+    const run = (): void => {
+      void desktopClient.refreshMe(selectedProfile.id).then((next) => {
+        if (active) {
+          setSnapshot(next);
+        }
+      });
+    };
+    const intervalId = window.setInterval(run, Math.max(snapshot.preferences.pollingIntervalSeconds, 5) * 12000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    snapshot.authProfileId,
+    snapshot.authUser,
+    snapshot.preferences.pollingIntervalSeconds,
+    snapshot.profiles,
+    snapshot.selectedProfileId
+  ]);
+
+  useEffect(() => {
     if (!pendingAuthProfileId) {
       return;
     }
