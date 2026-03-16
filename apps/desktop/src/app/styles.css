@@ -121,6 +121,14 @@ a {
   padding: 10px 16px;
 }
 
+.desktop-topbar-left {
+  min-width: 0;
+}
+
+.desktop-server-field {
+  flex-shrink: 0;
+}
+
 .desktop-topbar-alert {
   max-width: 320px;
 }
@@ -208,6 +216,13 @@ a {
 
 .desktop-select-wrap {
   min-width: 260px;
+}
+
+.desktop-topbar-endpoint {
+  max-width: min(28vw, 420px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desktop-table-wrap {

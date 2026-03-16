@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, HoverCard, Select, Stack, Text, TextInput } from '@mantine/core';
 import { NavLink, useLocation } from 'react-router-dom';
 import type { DesktopPreferences, LocalFormatRule, LocalServerProfile, LocalWatchRoot, LocalUploadJob, TournamentFormat } from '@xips/api-contract';
 import { useState } from 'react';
@@ -82,31 +82,25 @@ export const DesktopTopbar = (): JSX.Element => {
 
   return (
     <header className="desktop-topbar">
-      <Group gap="sm" wrap="wrap">
-        <div className="desktop-select-wrap">
-          <span>Server</span>
+      <Group gap="sm" wrap="wrap" className="desktop-topbar-left">
+        <Group gap="xs" wrap="nowrap" className="desktop-server-field">
+          <Text size="sm" fw={600}>
+            Server
+          </Text>
           <Select
             value={snapshot.selectedProfileId || null}
             data={serverOptions(snapshot.profiles)}
             placeholder="Select a server"
+            className="desktop-select-wrap"
             onChange={(value) => {
               if (value) {
                 void selectServerProfile(value);
               }
             }}
           />
-        </div>
-        <Badge color="blue" variant="light">
-          OOTP27
-        </Badge>
-        <AuthStateBadge authenticated={isAuthenticated} />
-        {snapshot.authUser && isAuthenticated ? (
-          <Badge color="teal" variant="light">
-            {snapshot.authUser.displayName}
-          </Badge>
-        ) : null}
+        </Group>
         {selectedProfile ? (
-          <Text size="sm" className="desktop-mono">
+          <Text size="sm" c="dimmed" className="desktop-mono desktop-topbar-endpoint">
             {selectedProfile.baseUrl}
           </Text>
         ) : null}
@@ -145,9 +139,25 @@ export const DesktopTopbar = (): JSX.Element => {
             <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void processUploadQueue(selectedProfile.id)}>
               Upload queue
             </Button>
-            <Button size="xs" color="red" variant="light" disabled={!isAuthenticated} onClick={() => void logout(selectedProfile.id)}>
-              Logout
-            </Button>
+            {snapshot.authUser && isAuthenticated ? (
+              <HoverCard shadow="md" position="bottom-end" withArrow>
+                <HoverCard.Target>
+                  <Button size="xs" variant="subtle">
+                    {snapshot.authUser.displayName}
+                  </Button>
+                </HoverCard.Target>
+                <HoverCard.Dropdown>
+                  <Stack gap="xs">
+                    <Text size="sm" fw={600}>
+                      {snapshot.authUser.displayName}
+                    </Text>
+                    <Button size="xs" color="red" variant="light" onClick={() => void logout(selectedProfile.id)}>
+                      Logout
+                    </Button>
+                  </Stack>
+                </HoverCard.Dropdown>
+              </HoverCard>
+            ) : null}
           </>
         ) : null}
       </Group>
@@ -438,12 +448,6 @@ const localStateColor = (value: LocalUploadJob['localState']): string => {
       return 'gray';
   }
 };
-
-export const AuthStateBadge = ({ authenticated }: { authenticated: boolean }): JSX.Element => (
-  <Badge color={authenticated ? 'teal' : 'gray'} variant="light">
-    {authenticated ? 'Signed in' : 'Signed out'}
-  </Badge>
-);
 
 export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind'] }): JSX.Element => (
   <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">

@@ -33,7 +33,6 @@ export const OverviewPage = (): JSX.Element => {
   const {
     snapshot,
     selectedProfile,
-    health,
     cards,
     cardSource,
     myAggCards,
@@ -83,32 +82,8 @@ export const OverviewPage = (): JSX.Element => {
     <Stack gap="md">
       <div>
         <h2 className="desktop-page-title">Overview</h2>
-        <p className="desktop-page-subtitle">Desktop upload mission control aligned with the xips-pt website shell.</p>
       </div>
-      <SimpleGrid cols={{ base: 1, md: 2, xl: 5 }}>
-        <SummaryCard label="Server" value={selectedProfile?.name ?? 'None'} detail={selectedProfile?.baseUrl ?? 'No server selected'} />
-        <SummaryCard label="Watch folders" value={String(snapshot.watchRoots.length)} detail="Configured folder monitors" />
-        <SummaryCard label="Pending uploads" value={String(pendingCount)} detail="Local queue work not yet complete" />
-        <SummaryCard label="Completed" value={String(completedCount)} detail="Finished uploads in local history" />
-        <SummaryCard label="Cards" value={String(cards.length)} detail={`Source: ${cardSource ?? 'unknown'}`} />
-      </SimpleGrid>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
-        <Card withBorder className="desktop-card">
-          <Stack gap="sm">
-            <Text fw={700}>Auth and server</Text>
-            <Text size="sm" c="dimmed">
-              Current server health and identity state.
-            </Text>
-            <Group>
-              <Alert color={health?.ok ? 'teal' : 'gray'} title="Health">
-                {health?.ok ? 'Server reachable' : 'Run health check from the top bar.'}
-              </Alert>
-            </Group>
-            <Text size="sm">Signed in user: {isAuthenticated ? snapshot.authUser?.displayName : 'Not signed in'}</Text>
-            <Text size="sm">Token expiry: {isAuthenticated ? snapshot.tokenExpiresAt : 'No token issued'}</Text>
-            <Text size="sm">Detected files: {snapshot.detectedFiles.length}</Text>
-          </Stack>
-        </Card>
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
             <Text fw={700}>Cards and personal aggregate</Text>
@@ -267,6 +242,13 @@ export const OverviewPage = (): JSX.Element => {
             )}
           </Stack>
         </Card>
+      </SimpleGrid>
+      <SimpleGrid cols={{ base: 1, md: 2, xl: 5 }}>
+        <SummaryCard label="Server" value={selectedProfile?.name ?? 'None'} detail={selectedProfile?.baseUrl ?? 'No server selected'} />
+        <SummaryCard label="Watch folders" value={String(snapshot.watchRoots.length)} detail="Configured folder monitors" />
+        <SummaryCard label="Pending uploads" value={String(pendingCount)} detail="Local queue work not yet complete" />
+        <SummaryCard label="Completed" value={String(completedCount)} detail="Finished uploads in local history" />
+        <SummaryCard label="Cards" value={String(cards.length)} detail={`Source: ${cardSource ?? 'unknown'}`} />
       </SimpleGrid>
     </Stack>
   );
@@ -1003,7 +985,8 @@ export const DiagnosticsPage = (): JSX.Element => {
 };
 
 export const SettingsPage = (): JSX.Element => {
-  const { snapshot, deleteServerProfile, refreshHealth, refreshMe, selectServerProfile, updatePreferences } = useDesktop();
+  const { snapshot, selectedProfile, health, deleteServerProfile, refreshHealth, refreshMe, selectServerProfile, updatePreferences } = useDesktop();
+  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
 
   return (
     <Stack gap="lg">
@@ -1015,6 +998,23 @@ export const SettingsPage = (): JSX.Element => {
         <ServerProfileForm />
         <PreferencesForm preferences={snapshot.preferences} onSave={updatePreferences} />
       </SimpleGrid>
+      <Card withBorder className="desktop-card">
+        <Stack gap="sm">
+          <Text fw={700}>Auth and server</Text>
+          <Text size="sm" c="dimmed">
+            Current server health and signed-in desktop identity state.
+          </Text>
+          <Group>
+            <Alert color={health?.ok ? 'teal' : 'gray'} title="Health">
+              {health?.ok ? 'Server reachable' : 'Server not checked yet.'}
+            </Alert>
+          </Group>
+          <Text size="sm">Selected server: {selectedProfile?.name ?? 'No server selected'}</Text>
+          <Text size="sm">Signed in user: {isAuthenticated ? snapshot.authUser?.displayName : 'Not signed in'}</Text>
+          <Text size="sm">Token expiry: {isAuthenticated ? snapshot.tokenExpiresAt : 'No token issued'}</Text>
+          <Text size="sm">Detected files: {snapshot.detectedFiles.length}</Text>
+        </Stack>
+      </Card>
       <Card withBorder className="desktop-card">
         <Stack gap="sm">
           <Text fw={700}>Saved server profiles</Text>
