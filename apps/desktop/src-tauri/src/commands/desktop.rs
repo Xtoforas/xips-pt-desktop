@@ -868,6 +868,16 @@ pub fn create_app_state(app: &AppHandle) -> Result<AppState, String> {
   let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
   let db_path = app_data_dir.join("desktop-state.sqlite3");
   storage::ensure_db(&db_path)?;
+  let repaired_jobs = storage::repair_stale_upload_jobs(&db_path)?;
+  if repaired_jobs > 0 {
+    storage::write_diagnostic_event(
+      &db_path,
+      "warn",
+      "queue",
+      "Repaired stale upload jobs during startup",
+      &format!("repaired_jobs={}", repaired_jobs),
+    )?;
+  }
   Ok(AppState {
     db_path,
     watcher_controller: Arc::new(Mutex::new(None)),

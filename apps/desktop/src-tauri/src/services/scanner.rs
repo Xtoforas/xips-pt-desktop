@@ -158,3 +158,92 @@ fn resolve_format_id(path: &Path, watch_root: &LocalWatchRoot, format_rules: &[F
   }
   String::new()
 }
+
+#[cfg(test)]
+mod tests {
+  use super::{detect_kind, resolve_format_id, should_ignore_path};
+  use crate::models::local_state::LocalWatchRoot;
+  use crate::services::scanner::FormatRuleMatch;
+  use std::path::Path;
+
+  fn watch_root() -> LocalWatchRoot {
+    LocalWatchRoot {
+      id: String::from("root-1"),
+      profile_id: String::from("profile-1"),
+      path: String::from("/tmp"),
+      recursive: false,
+      paused: false,
+      created_at: String::from("2026-01-01T00:00:00.000Z"),
+      updated_at: String::from("2026-01-01T00:00:00.000Z"),
+    }
+  }
+
+  #[test]
+  fn ignores_hidden_and_partial_downloads() {
+    assert!(should_ignore_path(Path::new("/tmp/.hidden.csv")));
+    assert!(should_ignore_path(Path::new("/tmp/~$temp.csv")));
+    assert!(should_ignore_path(Path::new("/tmp/file.csv.part")));
+    assert!(should_ignore_path(Path::new("/tmp/file.csv.crdownload")));
+    assert!(!should_ignore_path(Path::new("/tmp/file.csv")));
+  }
+
+  #[test]
+  fn detects_card_catalog_headers() {
+    let header = ["Card ID", "Card Type", "Throws", "Position", "Tier", "Packs"]
+      .iter()
+      .map(|value| value.to_string())
+      .collect::<Vec<String>>();
+    assert_eq!(detect_kind(&header), "card_catalog");
+  }
+
+  #[test]
+  fn detects_stats_export_headers() {
+    let header = ["POS", "CID", "vLvl", "PA", "IP", "ERA+", "FRM", "ARM"]
+      .iter()
+      .map(|value| value.to_string())
+      .collect::<Vec<String>>();
+    assert_eq!(detect_kind(&header), "stats_export");
+  }
+
+  #[test]
+  fn resolves_folder_rule_before_filename_match() {
+    let root = watch_root();
+    let rules = vec![
+      FormatRuleMatch {
+        watch_root_id: root.id.clone(),
+        match_type: String::from("folder"),
+        pattern: String::new(),
+        format_id: String::from("folder-format"),
+      },
+      FormatRuleMatch {
+        watch_root_id: root.id.clone(),
+        match_type: String::from("filename"),
+        pattern: String::from("sortable_stats"),
+        format_id: String::from("filename-format"),
+      },
+    ];
+    let format_id = resolve_format_id(
+      Path::new("/tmp/pt27_statistics_player_statistics_-_sortable_stats_statsexport.csv"),
+      &root,
+      &rules,
+    );
+    assert_eq!(format_id, "folder-format");
+  }
+
+  #[test]
+  fn resolves_filename_rule_when_no_folder_rule_exists() {
+    let root = watch_root();
+    let rules = vec![FormatRuleMatch {
+      watch_root_id: root.id.clone(),
+      match_type: String::from("filename"),
+      pattern: String::from("sortable_stats"),
+      format_id: String::from("filename-format"),
+    }];
+    let format_id = resolve_format_id(
+      Path::new("/tmp/pt27_statistics_player_statistics_-_sortable_stats_statsexport.csv"),
+      &root,
+      &rules,
+    );
+    assert_eq!(format_id, "filename-format");
+  }
+}

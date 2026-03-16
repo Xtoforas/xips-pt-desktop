@@ -118,3 +118,23 @@ fn jittered_interval(base_seconds: u32) -> Duration {
     % 900) as u64;
   Duration::from_secs(effective_seconds) + Duration::from_millis(jitter_millis)
 }
+
+#[cfg(test)]
+mod tests {
+  use super::jittered_interval;
+  use std::time::Duration;
+
+  #[test]
+  fn jittered_interval_respects_minimum_base() {
+    let interval = jittered_interval(1);
+    assert!(interval >= Duration::from_secs(3));
+    assert!(interval < Duration::from_millis(3900));
+  }
+
+  #[test]
+  fn jittered_interval_stays_within_one_second_of_base() {
+    let interval = jittered_interval(8);
+    assert!(interval >= Duration::from_secs(8));
+    assert!(interval < Duration::from_millis(8900));
+  }
+}

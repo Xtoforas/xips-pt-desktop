@@ -495,6 +495,20 @@ pub fn save_auth_session(
   save_setting(&connection, "auth_profile_id", profile_id).map_err(|error| error.to_string())?;
   save_setting(&connection, "auth_bearer_token", access_token).map_err(|error| error.to_string())?;
   save_setting(&connection, "token_expires_at", expires_at).map_err(|error| error.to_string())?;
+  connection
+    .execute(
+      "
+      UPDATE upload_jobs
+      SET local_state = 'queued_local',
+          error = '',
+          next_retry_after = '',
+          updated_at = ?2
+      WHERE profile_id = ?1
+        AND local_state = 'auth_blocked'
+      ",
+      params![profile_id, now_iso()],
+    )
+    .map_err(|error| error.to_string())?;
   load_snapshot(db_path)
 }
 
@@ -731,6 +745,41 @@ pub fn append_upload_attempt(
     )
     .map_err(|error| error.to_string())?;
   Ok(())
+}
+
+pub fn repair_stale_upload_jobs(db_path: &Path) -> Result<usize, String> {
+  let connection = open_db(db_path)?;
+  let repaired_uploading = connection
+    .execute(
+      "
+      UPDATE upload_jobs
+      SET local_state = 'queued_local',
+          error = '',
+          next_retry_after = '',
+          updated_at = ?1
+      WHERE upload_id = ''
+        AND local_state IN ('uploading', 'uploaded_waiting_server', 'server_queued', 'server_processing', 'server_refresh_pending', 'server_refreshing')
+      ",
+      params![now_iso()],
+    )
+    .map_err(|error| error.to_string())?;
+  let repaired_auth_blocked = connection
+    .execute(
+      "
+      UPDATE upload_jobs
+      SET local_state = 'queued_local',
+          updated_at = ?1
+      WHERE local_state = 'auth_blocked'
+        AND profile_id = (
+          SELECT setting_value
+          FROM app_settings
+          WHERE setting_key = 'auth_profile_id'
+        )
+      ",
+      params![now_iso()],
+    )
+    .map_err(|error| error.to_string())?;
+  Ok(repaired_uploading + repaired_auth_blocked)
 }
 
 fn load_profiles(connection: &Connection) -> Result<Vec<LocalServerProfile>, String> {

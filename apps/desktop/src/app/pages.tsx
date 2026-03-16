@@ -810,7 +810,7 @@ export const HistoryPage = (): JSX.Element => {
 };
 
 export const DiagnosticsPage = (): JSX.Element => {
-  const { snapshot, exportDiagnosticsBundle, openAppDataDirectory } = useDesktop();
+  const { health, refreshHealth, selectedProfile, snapshot, exportDiagnosticsBundle, openAppDataDirectory } = useDesktop();
   const [lastExportPath, setLastExportPath] = useState('');
   const recentFailures = useMemo(
     () => snapshot.diagnostics.filter((event) => event.level === 'error').slice(0, 8),
@@ -835,9 +835,20 @@ export const DiagnosticsPage = (): JSX.Element => {
             <Text size="sm">Authenticated profile: {snapshot.authProfileId || 'None'}</Text>
             <Text size="sm">User: {snapshot.authUser?.displayName ?? 'Not signed in'}</Text>
             <Text size="sm">Token expiry: {snapshot.tokenExpiresAt || 'No token issued'}</Text>
+            <Text size="sm">Health status: {health?.ok ? 'Reachable' : 'Unknown'}</Text>
+            <Text size="sm">Queue depth: {health?.queueDepth ?? 0}</Text>
+            <Text size="sm">Failed jobs: {health?.failedJobs ?? 0}</Text>
             <Text size="sm">Watch roots: {snapshot.watchRoots.length}</Text>
             <Text size="sm">Cached formats: {snapshot.cachedFormats.length}</Text>
             <Group>
+              <Button
+                size="xs"
+                variant="light"
+                disabled={!selectedProfile}
+                onClick={() => void refreshHealth()}
+              >
+                Refresh health snapshot
+              </Button>
               <Button
                 size="xs"
                 variant="light"
@@ -848,7 +859,7 @@ export const DiagnosticsPage = (): JSX.Element => {
                 Export diagnostics
               </Button>
               <Button size="xs" variant="light" onClick={() => void openAppDataDirectory()}>
-                Open app data
+                Open logs folder
               </Button>
             </Group>
             {lastExportPath ? (
