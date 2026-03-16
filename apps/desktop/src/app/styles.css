@@ -121,10 +121,42 @@ a {
   padding: 12px 20px;
 }
 
+.desktop-topbar-alert {
+  max-width: 320px;
+}
+
 .desktop-content {
   display: grid;
   gap: 18px;
   padding: 24px 20px 28px;
+}
+
+.desktop-oobe-wrap {
+  display: grid;
+  min-height: calc(100vh - 120px);
+  align-items: start;
+}
+
+.desktop-oobe-hero {
+  background:
+    radial-gradient(circle at top left, rgba(47, 128, 237, 0.18), transparent 28%),
+    linear-gradient(180deg, #161a20 0%, #13171c 100%);
+  border: 1px solid var(--line-0);
+}
+
+.desktop-oobe-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.desktop-oobe-status-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #27303a;
+  background: #121820;
 }
 
 .desktop-card {
@@ -249,5 +281,9 @@ a {
   .desktop-topbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .desktop-oobe-grid {
+    grid-template-columns: 1fr;
   }
 }

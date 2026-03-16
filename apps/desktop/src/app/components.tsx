@@ -1,4 +1,4 @@
-import { Badge, Button, Card, Group, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Select, Stack, Text, TextInput } from '@mantine/core';
 import { NavLink, useLocation } from 'react-router-dom';
 import type { DesktopPreferences, LocalFormatRule, LocalServerProfile, LocalWatchRoot, LocalUploadJob, TournamentFormat } from '@xips/api-contract';
 import { useState } from 'react';
@@ -120,6 +120,11 @@ export const DesktopTopbar = (): JSX.Element => {
         ) : null}
       </Group>
       <Group gap="sm">
+        {!selectedProfile ? (
+          <Alert className="desktop-topbar-alert" color="blue" variant="light" title="Setup required">
+            Add a server profile below to start sign-in.
+          </Alert>
+        ) : null}
         <Badge color="orange" variant="light">
           Pending {snapshot.uploadJobs.filter((job) => job.localState !== 'complete').length}
         </Badge>
@@ -150,6 +155,257 @@ export const DesktopTopbar = (): JSX.Element => {
         ) : null}
       </Group>
     </header>
+  );
+};
+
+export const OnboardingGate = (): JSX.Element => {
+  const {
+    snapshot,
+    selectedProfile,
+    health,
+    saveServerProfile,
+    refreshHealth,
+    openAuthWindow,
+    completeAuth,
+    refreshMe
+  } = useDesktop();
+  const [profileName, setProfileName] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [busyAction, setBusyAction] = useState<'save' | 'health' | 'signin' | 'finish' | 'validate' | ''>('');
+  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
+  const hasSelectedProfile = selectedProfile !== null;
+
+  const handleSaveProfile = async (): Promise<void> => {
+    if (!profileName.trim() || !baseUrl.trim()) {
+      setErrorMessage('Enter a profile name and the xips-pt base URL first.');
+      return;
+    }
+    setBusyAction('save');
+    setErrorMessage('');
+    try {
+      await saveServerProfile({
+        name: profileName.trim(),
+        baseUrl: baseUrl.trim()
+      });
+      setProfileName('');
+      setBaseUrl('');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save server profile.');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleCheckServer = async (): Promise<void> => {
+    if (!selectedProfile) {
+      return;
+    }
+    setBusyAction('health');
+    setErrorMessage('');
+    try {
+      await refreshHealth();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to contact the selected server.');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleOpenSignin = async (): Promise<void> => {
+    if (!selectedProfile) {
+      return;
+    }
+    setBusyAction('signin');
+    setErrorMessage('');
+    try {
+      await openAuthWindow(selectedProfile.id);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to open the Discord sign-in window.');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleFinishSignin = async (): Promise<void> => {
+    if (!selectedProfile) {
+      return;
+    }
+    setBusyAction('finish');
+    setErrorMessage('');
+    try {
+      await completeAuth(selectedProfile.id);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to complete the desktop auth exchange.');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleValidateAuth = async (): Promise<void> => {
+    if (!selectedProfile) {
+      return;
+    }
+    setBusyAction('validate');
+    setErrorMessage('');
+    try {
+      await refreshMe(selectedProfile.id);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Auth validation failed.');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  return (
+    <div className="desktop-oobe-wrap">
+      <Card withBorder className="desktop-oobe-hero">
+        <Stack gap="lg">
+          <div>
+            <Text className="desktop-micro-label">First Run Setup</Text>
+            <h2 className="desktop-page-title">Connect xips-pt desktop to your server first</h2>
+            <p className="desktop-page-subtitle">Add a server, verify it responds, then finish the Discord-backed desktop sign-in flow.</p>
+          </div>
+          {errorMessage ? (
+            <Alert color="red" title="Setup problem">
+              {errorMessage}
+            </Alert>
+          ) : null}
+          <div className="desktop-oobe-grid">
+            <Card withBorder className="desktop-card">
+              <Stack gap="sm">
+                <Group justify="space-between">
+                  <Text fw={700}>1. Add server</Text>
+                  <Badge color={hasSelectedProfile ? 'teal' : 'blue'} variant="light">
+                    {hasSelectedProfile ? 'Done' : 'Required'}
+                  </Badge>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Create the first server profile for the xips-pt instance this desktop app should talk to.
+                </Text>
+                <TextInput
+                  label="Profile name"
+                  placeholder="Local xips-pt"
+                  value={profileName}
+                  onChange={(event) => setProfileName(event.currentTarget.value)}
+                />
+                <TextInput
+                  label="Base URL"
+                  placeholder="http://localhost:8080"
+                  value={baseUrl}
+                  onChange={(event) => setBaseUrl(event.currentTarget.value)}
+                />
+                {selectedProfile ? (
+                  <Alert color="gray" variant="light" title="Selected server">
+                    <div>{selectedProfile.name}</div>
+                    <div className="desktop-mono">{selectedProfile.baseUrl}</div>
+                  </Alert>
+                ) : null}
+                <Group justify="flex-end">
+                  <Button loading={busyAction === 'save'} onClick={() => void handleSaveProfile()}>
+                    Save server
+                  </Button>
+                </Group>
+              </Stack>
+            </Card>
+            <Card withBorder className="desktop-card">
+              <Stack gap="sm">
+                <Group justify="space-between">
+                  <Text fw={700}>2. Verify server</Text>
+                  <Badge color={health?.ok ? 'teal' : 'gray'} variant="light">
+                    {health?.ok ? 'Healthy' : 'Unchecked'}
+                  </Badge>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Make sure the selected server responds before opening the auth flow.
+                </Text>
+                <div className="desktop-oobe-status-list">
+                  <div>
+                    <Text className="desktop-micro-label">Service</Text>
+                    <Text>{health?.service ?? 'Not checked yet'}</Text>
+                  </div>
+                  <div>
+                    <Text className="desktop-micro-label">Queue depth</Text>
+                    <Text>{health?.queueDepth ?? 0}</Text>
+                  </div>
+                  <div>
+                    <Text className="desktop-micro-label">Failed jobs</Text>
+                    <Text>{health?.failedJobs ?? 0}</Text>
+                  </div>
+                </div>
+                <Group justify="flex-end">
+                  <Button
+                    variant="light"
+                    disabled={!selectedProfile}
+                    loading={busyAction === 'health'}
+                    onClick={() => void handleCheckServer()}
+                  >
+                    Check server
+                  </Button>
+                </Group>
+              </Stack>
+            </Card>
+            <Card withBorder className="desktop-card">
+              <Stack gap="sm">
+                <Group justify="space-between">
+                  <Text fw={700}>3. Sign in with Discord</Text>
+                  <Badge color={isAuthenticated ? 'teal' : 'orange'} variant="light">
+                    {isAuthenticated ? 'Connected' : 'Pending'}
+                  </Badge>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Open the website login flow in the auth popup, finish Discord sign-in, then mint and validate the desktop token.
+                </Text>
+                <div className="desktop-oobe-status-list">
+                  <div>
+                    <Text className="desktop-micro-label">Selected profile</Text>
+                    <Text>{selectedProfile?.name ?? 'No server selected'}</Text>
+                  </div>
+                  <div>
+                    <Text className="desktop-micro-label">Auth state</Text>
+                    <Text>{isAuthenticated ? snapshot.authUser?.displayName ?? 'Signed in' : 'Signed out'}</Text>
+                  </div>
+                  <div>
+                    <Text className="desktop-micro-label">Token expiry</Text>
+                    <Text>{snapshot.tokenExpiresAt || 'No token issued yet'}</Text>
+                  </div>
+                </div>
+                <Group>
+                  <Button
+                    disabled={!selectedProfile}
+                    loading={busyAction === 'signin'}
+                    onClick={() => void handleOpenSignin()}
+                  >
+                    Open sign-in
+                  </Button>
+                  <Button
+                    variant="light"
+                    disabled={!selectedProfile}
+                    loading={busyAction === 'finish'}
+                    onClick={() => void handleFinishSignin()}
+                  >
+                    Finish sign-in
+                  </Button>
+                  <Button
+                    variant="subtle"
+                    disabled={!selectedProfile}
+                    loading={busyAction === 'validate'}
+                    onClick={() => void handleValidateAuth()}
+                  >
+                    Validate auth
+                  </Button>
+                </Group>
+                {isAuthenticated ? (
+                  <Alert color="teal" title="Setup complete">
+                    The desktop app is connected. You can now configure watch folders and upload flows.
+                  </Alert>
+                ) : null}
+              </Stack>
+            </Card>
+          </div>
+        </Stack>
+      </Card>
+    </div>
   );
 };
 
