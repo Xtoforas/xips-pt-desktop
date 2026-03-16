@@ -12,6 +12,23 @@ import {
   WatchRootTable
 } from './components';
 
+const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
+  <Group gap="xs" wrap="nowrap">
+    <span className="desktop-mono">{value || '-'}</span>
+    {value ? (
+      <Button
+        size="compact-xs"
+        variant="light"
+        onClick={() => {
+          void navigator.clipboard.writeText(value);
+        }}
+      >
+        Copy
+      </Button>
+    ) : null}
+  </Group>
+);
+
 export const OverviewPage = (): JSX.Element => {
   const {
     snapshot,
@@ -36,6 +53,23 @@ export const OverviewPage = (): JSX.Element => {
     () => snapshot.uploadJobs.filter((job) => job.localState !== 'complete').length,
     [snapshot.uploadJobs]
   );
+  const recentActivity = useMemo(
+    () =>
+      [...snapshot.uploadJobs]
+        .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+        .slice(0, 8),
+    [snapshot.uploadJobs]
+  );
+  const formatSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    snapshot.uploadJobs.forEach((job) => {
+      const key = job.formatId || 'Unassigned';
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return [...counts.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 6);
+  }, [snapshot.uploadJobs]);
 
   useEffect(() => {
     if (!selectedProfile || !isAuthenticated) {
@@ -138,6 +172,66 @@ export const OverviewPage = (): JSX.Element => {
           <QueueTable jobs={snapshot.uploadJobs.slice(0, 8)} />
         </Stack>
       </Card>
+      <SimpleGrid cols={{ base: 1, xl: 2 }}>
+        <Card withBorder className="desktop-card">
+          <Stack gap="sm">
+            <Text fw={700}>Recent activity</Text>
+            {recentActivity.length === 0 ? (
+              <Alert color="gray">No upload activity recorded yet.</Alert>
+            ) : (
+              <div className="desktop-table-wrap">
+                <table className="desktop-table">
+                  <thead>
+                    <tr>
+                      <th>File</th>
+                      <th>Format</th>
+                      <th>State</th>
+                      <th>Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentActivity.map((job) => (
+                      <tr key={job.id}>
+                        <td>{job.filename}</td>
+                        <td>{job.formatId || 'Unassigned'}</td>
+                        <td>{job.lifecyclePhase ?? job.localState}</td>
+                        <td>{new Date(job.updatedAt).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Stack>
+        </Card>
+        <Card withBorder className="desktop-card">
+          <Stack gap="sm">
+            <Text fw={700}>Format activity</Text>
+            {formatSummary.length === 0 ? (
+              <Alert color="gray">No format-linked uploads yet.</Alert>
+            ) : (
+              <div className="desktop-table-wrap">
+                <table className="desktop-table">
+                  <thead>
+                    <tr>
+                      <th>Format</th>
+                      <th>Uploads</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formatSummary.map(([formatId, count]) => (
+                      <tr key={formatId}>
+                        <td>{formatId}</td>
+                        <td>{count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Stack>
+        </Card>
+      </SimpleGrid>
       <Card withBorder className="desktop-card">
         <Stack gap="sm">
           <Text fw={700}>Awaiting format assignment</Text>
@@ -306,16 +400,17 @@ export const UploadQueuePage = (): JSX.Element => {
                   <table className="desktop-table">
                     <tbody>
                       <tr><th>File</th><td>{selectedJob.filename}</td></tr>
+                      <tr><th>Local job ID</th><td><TechnicalValue value={selectedJob.id} /></td></tr>
                       <tr><th>Path</th><td className="desktop-mono">{selectedJob.path}</td></tr>
                       <tr><th>Kind</th><td>{selectedJob.fileKind}</td></tr>
                       <tr><th>Format</th><td>{selectedJob.formatId || '-'}</td></tr>
                       <tr><th>Local state</th><td>{selectedJob.localState}</td></tr>
                       <tr><th>Server lifecycle</th><td>{selectedJob.lifecyclePhase ?? '-'}</td></tr>
                       <tr><th>Server status</th><td>{selectedJob.serverStatus || '-'}</td></tr>
-                      <tr><th>Checksum</th><td className="desktop-mono">{selectedJob.checksum}</td></tr>
-                      <tr><th>Remote checksum</th><td className="desktop-mono">{selectedJob.remoteChecksum || '-'}</td></tr>
-                      <tr><th>Upload ID</th><td className="desktop-mono">{selectedJob.uploadId || '-'}</td></tr>
-                      <tr><th>Request ID</th><td className="desktop-mono">{selectedJob.lastRequestId || '-'}</td></tr>
+                      <tr><th>Checksum</th><td><TechnicalValue value={selectedJob.checksum} /></td></tr>
+                      <tr><th>Remote checksum</th><td><TechnicalValue value={selectedJob.remoteChecksum} /></td></tr>
+                      <tr><th>Upload ID</th><td><TechnicalValue value={selectedJob.uploadId} /></td></tr>
+                      <tr><th>Request ID</th><td><TechnicalValue value={selectedJob.lastRequestId} /></td></tr>
                       <tr><th>Duplicate reason</th><td>{selectedJob.duplicateReason || '-'}</td></tr>
                       <tr><th>Retry after</th><td>{selectedJob.nextRetryAfter || '-'}</td></tr>
                       <tr><th>Queued</th><td>{selectedJob.queuedAt || '-'}</td></tr>
@@ -581,9 +676,17 @@ export const HistoryPage = (): JSX.Element => {
   const [fileKindFilter, setFileKindFilter] = useState('all');
   const [lifecycleFilter, setLifecycleFilter] = useState('all');
   const [formatFilter, setFormatFilter] = useState('all');
+  const [dateRangeFilter, setDateRangeFilter] = useState<'all' | '1' | '7' | '30'>('all');
   const [sortKey, setSortKey] = useState<'updated' | 'filename' | 'retries'>('updated');
 
   const rows = useMemo(() => {
+    const cutoff = (() => {
+      if (dateRangeFilter === 'all') {
+        return Number.NEGATIVE_INFINITY;
+      }
+      const days = Number.parseInt(dateRangeFilter, 10);
+      return Date.now() - days * 24 * 60 * 60 * 1000;
+    })();
     const filtered = snapshot.uploadJobs.filter((job) => {
       if (fileKindFilter !== 'all' && job.fileKind !== fileKindFilter) {
         return false;
@@ -592,6 +695,9 @@ export const HistoryPage = (): JSX.Element => {
         return false;
       }
       if (formatFilter !== 'all' && job.formatId !== formatFilter) {
+        return false;
+      }
+      if (Date.parse(job.updatedAt) < cutoff) {
         return false;
       }
       return ['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState);
@@ -606,7 +712,7 @@ export const HistoryPage = (): JSX.Element => {
       }
       return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
     });
-  }, [fileKindFilter, formatFilter, lifecycleFilter, snapshot.uploadJobs, sortKey]);
+  }, [dateRangeFilter, fileKindFilter, formatFilter, lifecycleFilter, snapshot.uploadJobs, sortKey]);
 
   return (
     <Stack gap="lg">
@@ -654,6 +760,16 @@ export const HistoryPage = (): JSX.Element => {
           ]}
           onChange={(value) => setSortKey((value as 'updated' | 'filename' | 'retries') ?? 'updated')}
         />
+        <Select
+          value={dateRangeFilter}
+          data={[
+            { value: 'all', label: 'All dates' },
+            { value: '1', label: 'Last 24 hours' },
+            { value: '7', label: 'Last 7 days' },
+            { value: '30', label: 'Last 30 days' }
+          ]}
+          onChange={(value) => setDateRangeFilter((value as 'all' | '1' | '7' | '30') ?? 'all')}
+        />
       </Group>
       <Card withBorder className="desktop-card">
         <div className="desktop-table-wrap">
@@ -694,7 +810,16 @@ export const HistoryPage = (): JSX.Element => {
 };
 
 export const DiagnosticsPage = (): JSX.Element => {
-  const { snapshot } = useDesktop();
+  const { snapshot, exportDiagnosticsBundle, openAppDataDirectory } = useDesktop();
+  const [lastExportPath, setLastExportPath] = useState('');
+  const recentFailures = useMemo(
+    () => snapshot.diagnostics.filter((event) => event.level === 'error').slice(0, 8),
+    [snapshot.diagnostics]
+  );
+  const recentApiEvents = useMemo(
+    () => snapshot.diagnostics.filter((event) => event.category === 'api').slice(0, 12),
+    [snapshot.diagnostics]
+  );
 
   return (
     <Stack gap="lg">
@@ -702,6 +827,136 @@ export const DiagnosticsPage = (): JSX.Element => {
         <h2 className="desktop-page-title">Diagnostics</h2>
         <p className="desktop-page-subtitle">Request state, auth state, queue metadata, and recent events.</p>
       </div>
+      <SimpleGrid cols={{ base: 1, xl: 2 }}>
+        <Card withBorder className="desktop-card">
+          <Stack gap="sm">
+            <Text fw={700}>Auth and server</Text>
+            <Text size="sm">Selected profile: {snapshot.selectedProfileId || 'None'}</Text>
+            <Text size="sm">Authenticated profile: {snapshot.authProfileId || 'None'}</Text>
+            <Text size="sm">User: {snapshot.authUser?.displayName ?? 'Not signed in'}</Text>
+            <Text size="sm">Token expiry: {snapshot.tokenExpiresAt || 'No token issued'}</Text>
+            <Text size="sm">Watch roots: {snapshot.watchRoots.length}</Text>
+            <Text size="sm">Cached formats: {snapshot.cachedFormats.length}</Text>
+            <Group>
+              <Button
+                size="xs"
+                variant="light"
+                onClick={() => {
+                  void exportDiagnosticsBundle().then((path) => setLastExportPath(path));
+                }}
+              >
+                Export diagnostics
+              </Button>
+              <Button size="xs" variant="light" onClick={() => void openAppDataDirectory()}>
+                Open app data
+              </Button>
+            </Group>
+            {lastExportPath ? (
+              <Alert color="teal" title="Export ready">
+                <span className="desktop-mono">{lastExportPath}</span>
+              </Alert>
+            ) : null}
+          </Stack>
+        </Card>
+        <Card withBorder className="desktop-card">
+          <Stack gap="sm">
+            <Text fw={700}>Queue inspector</Text>
+            <Text size="sm">Detected files: {snapshot.detectedFiles.length}</Text>
+            <Text size="sm">Upload jobs: {snapshot.uploadJobs.length}</Text>
+            <Text size="sm">Active uploads: {snapshot.uploadJobs.filter((job) => job.uploadId && job.localState !== 'complete').length}</Text>
+            <Text size="sm">Retryable failures: {snapshot.uploadJobs.filter((job) => job.localState === 'failed_retryable').length}</Text>
+            <Text size="sm">Auth blocked: {snapshot.uploadJobs.filter((job) => job.localState === 'auth_blocked').length}</Text>
+            <Text size="sm">Recorded attempts: {snapshot.uploadAttempts.length}</Text>
+          </Stack>
+        </Card>
+      </SimpleGrid>
+      <Card withBorder className="desktop-card">
+        <Stack gap="sm">
+          <Text fw={700}>Watch roots</Text>
+          {snapshot.watchRoots.length === 0 ? (
+            <Alert color="gray">No watch roots configured.</Alert>
+          ) : (
+            <div className="desktop-table-wrap">
+              <table className="desktop-table">
+                <thead>
+                  <tr>
+                    <th>Path</th>
+                    <th>Status</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.watchRoots.map((root) => (
+                    <tr key={root.id}>
+                      <td className="desktop-mono">{root.path}</td>
+                      <td>{root.paused ? 'Paused' : 'Active'}</td>
+                      <td>{new Date(root.updatedAt).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Stack>
+      </Card>
+      <SimpleGrid cols={{ base: 1, xl: 2 }}>
+        <Card withBorder className="desktop-card">
+          <Stack gap="sm">
+            <Text fw={700}>Recent failures</Text>
+            {recentFailures.length === 0 ? (
+              <Alert color="gray">No recent error events captured.</Alert>
+            ) : (
+              recentFailures.map((event) => (
+                <Card key={event.id} withBorder className="desktop-subcard">
+                  <Stack gap={4}>
+                    <Group justify="space-between">
+                      <Text fw={600}>{event.message}</Text>
+                      <Text size="xs" c="dimmed">
+                        {new Date(event.createdAt).toLocaleString()}
+                      </Text>
+                    </Group>
+                    <Text size="sm" c="dimmed">
+                      {event.category}
+                    </Text>
+                    <Text size="sm" className="desktop-mono">
+                      {event.detail}
+                    </Text>
+                  </Stack>
+                </Card>
+              ))
+            )}
+          </Stack>
+        </Card>
+        <Card withBorder className="desktop-card">
+          <Stack gap="sm">
+            <Text fw={700}>Recent API requests</Text>
+            {recentApiEvents.length === 0 ? (
+              <Alert color="gray">No API events captured yet.</Alert>
+            ) : (
+              <div className="desktop-table-wrap">
+                <table className="desktop-table">
+                  <thead>
+                    <tr>
+                      <th>When</th>
+                      <th>Message</th>
+                      <th>Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentApiEvents.map((event) => (
+                      <tr key={event.id}>
+                        <td>{new Date(event.createdAt).toLocaleString()}</td>
+                        <td>{event.message}</td>
+                        <td className="desktop-mono">{event.detail}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Stack>
+        </Card>
+      </SimpleGrid>
       <Card withBorder className="desktop-card">
         <Stack gap="sm">
           <Text fw={700}>Recent events</Text>

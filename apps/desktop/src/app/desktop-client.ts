@@ -66,6 +66,8 @@ type DesktopClient = {
   openUploadFileLocation: (uploadJobId: string) => Promise<void>;
   updatePreferences: (preferences: DesktopPreferences) => Promise<DesktopSnapshot>;
   addDiagnosticEvent: (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>) => Promise<DesktopSnapshot>;
+  exportDiagnosticsBundle: () => Promise<string>;
+  openAppDataDirectory: () => Promise<void>;
 };
 
 const mockProfiles: LocalServerProfile[] = [
@@ -199,7 +201,11 @@ const browserClient: DesktopClient = {
   },
   async addDiagnosticEvent() {
     return mockSnapshot();
-  }
+  },
+  async exportDiagnosticsBundle() {
+    return '';
+  },
+  async openAppDataDirectory() {}
 };
 
 const tauriClient: DesktopClient = {
@@ -230,7 +236,9 @@ const tauriClient: DesktopClient = {
     invoke<DesktopSnapshot>('desktop_dismiss_duplicate_upload_job', { uploadJobId }),
   openUploadFileLocation: (uploadJobId) => invoke<void>('desktop_open_upload_file_location', { uploadJobId }),
   updatePreferences: (preferences) => invoke<DesktopSnapshot>('desktop_update_preferences', { input: preferences }),
-  addDiagnosticEvent: (event) => invoke<DesktopSnapshot>('desktop_add_diagnostic_event', { event })
+  addDiagnosticEvent: (event) => invoke<DesktopSnapshot>('desktop_add_diagnostic_event', { event }),
+  exportDiagnosticsBundle: () => invoke<string>('desktop_export_diagnostics_bundle'),
+  openAppDataDirectory: () => invoke<void>('desktop_open_app_data_directory')
 };
 
 export const desktopClient = isTauri() ? tauriClient : browserClient;

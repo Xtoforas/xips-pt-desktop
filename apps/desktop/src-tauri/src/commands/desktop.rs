@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -529,15 +530,26 @@ pub async fn desktop_process_upload_queue(
   profile_id: String,
   state: State<'_, AppState>,
 ) -> Result<DesktopSnapshot, String> {
-  let base_url = path_to_url(storage::load_profile_base_url(&state.db_path, &profile_id)?)?;
-  let access_token = storage::load_access_token_for_profile(&state.db_path, &profile_id).map_err(|_| {
-    let _ = storage::mark_all_profile_jobs_auth_blocked(&state.db_path, &profile_id);
+  let _queue_guard = state
+    .queue_lock
+    .lock()
+    .await;
+  process_upload_queue_for_profile(&state.db_path, &profile_id).await
+}
+
+pub(crate) async fn process_upload_queue_for_profile(
+  db_path: &Path,
+  profile_id: &str,
+) -> Result<DesktopSnapshot, String> {
+  let base_url = path_to_url(storage::load_profile_base_url(db_path, profile_id)?)?;
+  let access_token = storage::load_access_token_for_profile(db_path, profile_id).map_err(|_| {
+    let _ = storage::mark_all_profile_jobs_auth_blocked(db_path, profile_id);
     String::from("authentication_required")
   })?;
-  let jobs = storage::list_pending_upload_jobs_for_profile(&state.db_path, &profile_id)?;
+  let jobs = storage::list_pending_upload_jobs_for_profile(db_path, profile_id)?;
   for (index, job) in jobs.iter().enumerate() {
     storage::append_upload_attempt(
-      &state.db_path,
+      db_path,
       &job.id,
       (job.retries + 1).max((index as u32) + 1),
       "running",
@@ -546,9 +558,9 @@ pub async fn desktop_process_upload_queue(
 
     let file_bytes = fs::read(&job.path).map_err(|error| error.to_string())?;
     let raw_content = String::from_utf8_lossy(&file_bytes).to_string();
-    if raw_content.len() > 15_000_000 {
-      storage::update_upload_job_metadata(
-        &state.db_path,
+      if raw_content.len() > 15_000_000 {
+        storage::update_upload_job_metadata(
+        db_path,
         &job.id,
         "failed_terminal",
         Some("failed"),
@@ -566,8 +578,8 @@ pub async fn desktop_process_upload_queue(
         &chrono_like::to_iso_string(std::time::SystemTime::now()),
         "payload_too_large",
         job.retries + 1,
-      )?;
-      storage::append_upload_attempt(&state.db_path, &job.id, job.retries + 1, "failed", "payload_too_large")?;
+        )?;
+      storage::append_upload_attempt(db_path, &job.id, job.retries + 1, "failed", "payload_too_large")?;
       continue;
     }
 
@@ -575,7 +587,7 @@ pub async fn desktop_process_upload_queue(
       Ok(duplicate) => {
         if duplicate.payload.duplicate {
           storage::update_upload_job_metadata(
-            &state.db_path,
+            db_path,
             &job.id,
             "duplicate_skipped_local",
             Some("skipped_duplicate"),
@@ -595,7 +607,7 @@ pub async fn desktop_process_upload_queue(
             job.retries,
           )?;
           storage::append_upload_attempt(
-            &state.db_path,
+            db_path,
             &job.id,
             job.retries + 1,
             "complete",
@@ -606,10 +618,10 @@ pub async fn desktop_process_upload_queue(
       }
       Err(error) => {
         if error.is_auth_error() {
-          return handle_auth_api_error(&state.db_path, &profile_id, "Duplicate preflight failed", &error);
+          return handle_auth_api_error(db_path, profile_id, "Duplicate preflight failed", &error);
         }
         storage::update_upload_job_metadata(
-          &state.db_path,
+          db_path,
           &job.id,
           "failed_retryable",
           Some("failed"),
@@ -628,13 +640,13 @@ pub async fn desktop_process_upload_queue(
           &error.to_string(),
           job.retries + 1,
         )?;
-        storage::append_upload_attempt(&state.db_path, &job.id, job.retries + 1, "failed", &error.to_string())?;
+        storage::append_upload_attempt(db_path, &job.id, job.retries + 1, "failed", &error.to_string())?;
         continue;
       }
     }
 
     storage::update_upload_job_metadata(
-      &state.db_path,
+      db_path,
       &job.id,
       "uploading",
       Some("queued"),
@@ -675,7 +687,7 @@ pub async fn desktop_process_upload_queue(
           Some("queued")
         };
         storage::update_upload_job_metadata(
-          &state.db_path,
+          db_path,
           &job.id,
           next_state,
           lifecycle_phase,
@@ -695,7 +707,7 @@ pub async fn desktop_process_upload_queue(
           job.retries,
         )?;
         storage::append_upload_attempt(
-          &state.db_path,
+          db_path,
           &job.id,
           job.retries + 1,
           "complete",
@@ -704,10 +716,10 @@ pub async fn desktop_process_upload_queue(
       }
       Err(error) => {
         if error.is_auth_error() {
-          return handle_auth_api_error(&state.db_path, &profile_id, "Upload request failed", &error);
+          return handle_auth_api_error(db_path, profile_id, "Upload request failed", &error);
         }
         storage::update_upload_job_metadata(
-          &state.db_path,
+          db_path,
           &job.id,
           "failed_retryable",
           Some("failed"),
@@ -726,11 +738,11 @@ pub async fn desktop_process_upload_queue(
           &error.to_string(),
           job.retries + 1,
         )?;
-        storage::append_upload_attempt(&state.db_path, &job.id, job.retries + 1, "failed", &error.to_string())?;
+        storage::append_upload_attempt(db_path, &job.id, job.retries + 1, "failed", &error.to_string())?;
       }
     }
   }
-  poll_active_uploads_for_profile(&state.db_path, &profile_id).await
+  poll_active_uploads_for_profile(db_path, profile_id).await
 }
 
 #[tauri::command]
@@ -738,6 +750,10 @@ pub async fn desktop_poll_active_uploads(
   profile_id: String,
   state: State<'_, AppState>,
 ) -> Result<DesktopSnapshot, String> {
+  let _queue_guard = state
+    .queue_lock
+    .lock()
+    .await;
   poll_active_uploads_for_profile(&state.db_path, &profile_id).await
 }
 
@@ -798,6 +814,56 @@ pub fn desktop_add_diagnostic_event(
   storage::add_diagnostic_event(&state.db_path, event)
 }
 
+#[tauri::command]
+pub fn desktop_export_diagnostics_bundle(
+  app: AppHandle,
+  state: State<'_, AppState>,
+) -> Result<String, String> {
+  let snapshot = storage::load_snapshot(&state.db_path)?;
+  let export_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|error| error.to_string())?
+    .join("exports");
+  fs::create_dir_all(&export_dir).map_err(|error| error.to_string())?;
+  let generated_at = chrono_like::to_iso_string(std::time::SystemTime::now());
+  let export_path = export_dir.join(format!("diagnostics-{}.json", generated_at.replace(':', "-")));
+  let payload = serde_json::json!({
+    "generatedAt": generated_at,
+    "platform": std::env::consts::OS,
+    "arch": std::env::consts::ARCH,
+    "snapshot": snapshot
+  });
+  let bytes = serde_json::to_vec_pretty(&payload).map_err(|error| error.to_string())?;
+  fs::write(&export_path, bytes).map_err(|error| error.to_string())?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "info",
+    "diagnostics",
+    "Exported diagnostics bundle",
+    &format!("path={}", export_path.to_string_lossy()),
+  )?;
+  Ok(export_path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn desktop_open_app_data_directory(
+  app: AppHandle,
+  state: State<'_, AppState>,
+) -> Result<(), String> {
+  let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+  fs::create_dir_all(&app_data_dir).map_err(|error| error.to_string())?;
+  open_path_location(&app_data_dir)?;
+  storage::write_diagnostic_event(
+    &state.db_path,
+    "info",
+    "diagnostics",
+    "Opened app data directory",
+    &format!("path={}", app_data_dir.to_string_lossy()),
+  )?;
+  Ok(())
+}
+
 pub fn create_app_state(app: &AppHandle) -> Result<AppState, String> {
   let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
   let db_path = app_data_dir.join("desktop-state.sqlite3");
@@ -805,6 +871,8 @@ pub fn create_app_state(app: &AppHandle) -> Result<AppState, String> {
   Ok(AppState {
     db_path,
     watcher_controller: Arc::new(Mutex::new(None)),
+    dispatcher_controller: Arc::new(Mutex::new(None)),
+    queue_lock: Arc::new(tokio::sync::Mutex::new(())),
   })
 }
 
@@ -922,25 +990,36 @@ fn handle_auth_api_error(
 }
 
 fn open_file_location(path: &str) -> Result<(), String> {
-  let target = std::path::PathBuf::from(path);
+  open_path_location(&std::path::PathBuf::from(path))
+}
+
+fn open_path_location(target: &std::path::Path) -> Result<(), String> {
   if !target.exists() {
-    return Err(String::from("upload_file_not_found"));
+    return Err(String::from("path_not_found"));
   }
   #[cfg(target_os = "macos")]
   {
-    Command::new("open")
-      .arg("-R")
-      .arg(&target)
-      .status()
-      .map_err(|error| error.to_string())?;
+    if target.is_dir() {
+      Command::new("open").arg(target).status().map_err(|error| error.to_string())?;
+    } else {
+      Command::new("open")
+        .arg("-R")
+        .arg(target)
+        .status()
+        .map_err(|error| error.to_string())?;
+    }
     return Ok(());
   }
   #[cfg(target_os = "windows")]
   {
-    Command::new("explorer")
-      .arg(format!("/select,{}", target.to_string_lossy()))
-      .status()
-      .map_err(|error| error.to_string())?;
+    if target.is_dir() {
+      Command::new("explorer").arg(target).status().map_err(|error| error.to_string())?;
+    } else {
+      Command::new("explorer")
+        .arg(format!("/select,{}", target.to_string_lossy()))
+        .status()
+        .map_err(|error| error.to_string())?;
+    }
     return Ok(());
   }
   #[cfg(target_os = "linux")]

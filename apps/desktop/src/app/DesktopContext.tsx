@@ -80,6 +80,8 @@ type DesktopContextValue = {
   openUploadFileLocation: (uploadJobId: string) => Promise<void>;
   updatePreferences: (preferences: DesktopPreferences) => Promise<void>;
   addDiagnosticEvent: (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>) => Promise<void>;
+  exportDiagnosticsBundle: () => Promise<string>;
+  openAppDataDirectory: () => Promise<void>;
 };
 
 const emptySnapshot: DesktopSnapshot = {
@@ -149,21 +151,6 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       unlisten?.();
     };
   }, [refreshSnapshot]);
-
-  useEffect(() => {
-    if (!snapshot.selectedProfileId || snapshot.authProfileId !== snapshot.selectedProfileId || !snapshot.authUser) {
-      return;
-    }
-    const intervalId = window.setInterval(() => {
-      void desktopClient.pollActiveUploads(snapshot.selectedProfileId).then(setSnapshot);
-    }, Math.max(snapshot.preferences.pollingIntervalSeconds, 3) * 1000);
-    return () => window.clearInterval(intervalId);
-  }, [
-    snapshot.authProfileId,
-    snapshot.authUser,
-    snapshot.preferences.pollingIntervalSeconds,
-    snapshot.selectedProfileId
-  ]);
 
   useEffect(() => {
     if (snapshot.authProfileId === snapshot.selectedProfileId && snapshot.authUser) {
@@ -324,6 +311,12 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     []
   );
 
+  const exportDiagnosticsBundle = useCallback(async (): Promise<string> => desktopClient.exportDiagnosticsBundle(), []);
+
+  const openAppDataDirectory = useCallback(async (): Promise<void> => {
+    await desktopClient.openAppDataDirectory();
+  }, []);
+
   const selectedProfile = useMemo(
     () => snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null,
     [snapshot.profiles, snapshot.selectedProfileId]
@@ -364,7 +357,9 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       dismissDuplicateUploadJob,
       openUploadFileLocation,
       updatePreferences,
-      addDiagnosticEvent
+      addDiagnosticEvent,
+      exportDiagnosticsBundle,
+      openAppDataDirectory
     }),
     [
       snapshot,
@@ -400,7 +395,9 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       dismissDuplicateUploadJob,
       openUploadFileLocation,
       updatePreferences,
-      addDiagnosticEvent
+      addDiagnosticEvent,
+      exportDiagnosticsBundle,
+      openAppDataDirectory
     ]
   );
 
