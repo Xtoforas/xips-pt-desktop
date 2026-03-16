@@ -1,7 +1,20 @@
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+
+fn deserialize_stringish<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  match Option::<Value>::deserialize(deserializer)? {
+    None | Some(Value::Null) => Ok(String::new()),
+    Some(Value::String(value)) => Ok(value),
+    Some(Value::Number(value)) => Ok(value.to_string()),
+    Some(Value::Bool(value)) => Ok(value.to_string()),
+    Some(value) => Err(de::Error::custom(format!("unsupported scalar value: {value}"))),
+  }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,7 +36,9 @@ pub struct TournamentFormat {
   pub run_environment: String,
   pub park_key: String,
   pub mode: String,
+  #[serde(deserialize_with = "deserialize_stringish")]
   pub cap_value: String,
+  #[serde(deserialize_with = "deserialize_stringish")]
   pub variant_limit_value: String,
   pub ovr_restrictions: Vec<String>,
   pub era_restrictions: Vec<String>,
@@ -117,6 +132,35 @@ pub struct CardRow {
   pub overall: u32,
   pub tier: u32,
   pub updated_at: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::TournamentFormat;
+
+  #[test]
+  fn parses_live_format_scalars() {
+    let parsed = serde_json::from_str::<TournamentFormat>(
+      r#"{
+        "id":"6145900f-ff18-45eb-b309-2515320eb7c5",
+        "mode":"Best of 5",
+        "name":"Q-Bronze-Bo5-T16",
+        "parkKey":"Heinsohn Ballpark 2026",
+        "capValue":null,
+        "formatType":"Quick",
+        "gameVersion":"ootp27",
+        "runEnvironment":"2026",
+        "eraRestrictions":[],
+        "ovrRestrictions":["40-49 (low iron)"],
+        "variantLimitValue":10,
+        "cardTypeRestrictions":[]
+      }"#,
+    )
+    .expect("format should deserialize");
+
+    assert_eq!(parsed.cap_value, "");
+    assert_eq!(parsed.variant_limit_value, "10");
+  }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

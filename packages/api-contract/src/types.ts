@@ -34,6 +34,16 @@ export const serviceHealthSchema = z.object({
 
 export type ServiceHealth = z.infer<typeof serviceHealthSchema>;
 
+const formatScalarSchema = z.preprocess((value) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  return value;
+}, z.string());
+
 export const tournamentFormatSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -42,8 +52,8 @@ export const tournamentFormatSchema = z.object({
   runEnvironment: z.string().default(''),
   parkKey: z.string().default(''),
   mode: z.string().default(''),
-  capValue: z.string().default(''),
-  variantLimitValue: z.string().default(''),
+  capValue: formatScalarSchema,
+  variantLimitValue: formatScalarSchema,
   ovrRestrictions: z.array(z.string()).default([]),
   eraRestrictions: z.array(z.string()).default([]),
   cardTypeRestrictions: z.array(z.string()).default([])
