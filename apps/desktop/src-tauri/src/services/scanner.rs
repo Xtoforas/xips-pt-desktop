@@ -12,7 +12,6 @@ pub struct ScanResult {
   pub filename: String,
   pub file_kind: String,
   pub checksum: String,
-  pub local_state: String,
   pub format_id: String,
 }
 
@@ -48,20 +47,12 @@ pub fn scan_watch_roots(watch_roots: &[LocalWatchRoot], format_rules: &[FormatRu
       let file_kind = detect_kind(&header).to_string();
       let checksum = checksum_hex(&bytes);
       let format_id = resolve_format_id(path, watch_root, format_rules);
-      let local_state = if file_kind == "unknown" {
-        String::from("ignored")
-      } else if file_kind == "stats_export" && format_id.is_empty() {
-        String::from("awaiting_format_assignment")
-      } else {
-        String::from("queued_local")
-      };
       results.push(ScanResult {
         watch_root_id: watch_root.id.clone(),
         path: path.to_string_lossy().to_string(),
         filename: path.file_name().and_then(|value| value.to_str()).unwrap_or_default().to_string(),
         file_kind,
         checksum,
-        local_state,
         format_id,
       });
       Ok(())

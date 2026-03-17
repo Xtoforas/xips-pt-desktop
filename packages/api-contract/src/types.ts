@@ -214,6 +214,7 @@ export type LocalDetectedFile = {
   fileKind: 'stats_export' | 'card_catalog' | 'unknown';
   checksum: string;
   localState: 'detected' | 'queued_local' | 'awaiting_format_assignment' | 'ignored';
+  localPresence: 'present' | 'missing';
   formatId: string;
   tournamentId: string;
   createdAt: string;
@@ -235,6 +236,7 @@ export type LocalUploadJob = {
   filename: string;
   path: string;
   fileKind: 'stats_export' | 'card_catalog';
+  localPresence: 'present' | 'missing';
   localState:
     | 'detected'
     | 'awaiting_format_assignment'

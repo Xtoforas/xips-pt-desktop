@@ -6,6 +6,7 @@ import {
   FormatsTable,
   formatFileKindLabel,
   formatLifecycleLabel,
+  formatLocalPresenceLabel,
   formatQueueStateLabel,
   PreferencesForm,
   QueueTable,
@@ -39,7 +40,12 @@ export const OverviewPage = (): JSX.Element => {
     [snapshot.uploadJobs]
   );
   const pendingCount = useMemo(
-    () => snapshot.uploadJobs.filter((job) => job.localState !== 'complete').length,
+    () =>
+      snapshot.uploadJobs.filter(
+        (job) =>
+          !['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState) &&
+          (job.localPresence === 'present' || Boolean(job.uploadId))
+      ).length,
     [snapshot.uploadJobs]
   );
   const recentActivity = useMemo(
@@ -75,7 +81,7 @@ export const OverviewPage = (): JSX.Element => {
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
             <Text fw={700}>Awaiting format assignment</Text>
-            {snapshot.detectedFiles.filter((file) => file.localState === 'awaiting_format_assignment').length === 0 ? (
+            {snapshot.detectedFiles.filter((file) => file.localPresence === 'present' && file.localState === 'awaiting_format_assignment').length === 0 ? (
               <Alert color="gray">No scanned files are waiting for format assignment.</Alert>
             ) : (
               <div className="desktop-table-wrap">
@@ -90,7 +96,7 @@ export const OverviewPage = (): JSX.Element => {
                   </thead>
                   <tbody>
                     {snapshot.detectedFiles
-                      .filter((file) => file.localState === 'awaiting_format_assignment')
+                      .filter((file) => file.localPresence === 'present' && file.localState === 'awaiting_format_assignment')
                       .slice(0, 5)
                       .map((file) => (
                         <tr key={file.id}>
@@ -195,11 +201,15 @@ export const UploadQueuePage = (): JSX.Element => {
   const filteredJobs = useMemo(() => {
     switch (filter) {
       case 'awaiting':
-        return snapshot.uploadJobs.filter((job) => job.localState === 'awaiting_format_assignment');
+        return snapshot.uploadJobs.filter((job) => job.localPresence === 'present' && job.localState === 'awaiting_format_assignment');
       case 'queued':
-        return snapshot.uploadJobs.filter((job) => job.localState !== 'complete');
+        return snapshot.uploadJobs.filter(
+          (job) =>
+            !['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState) &&
+            (job.localPresence === 'present' || Boolean(job.uploadId))
+        );
       case 'complete':
-        return snapshot.uploadJobs.filter((job) => job.localState === 'complete');
+        return snapshot.uploadJobs.filter((job) => ['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState));
       default:
         return snapshot.uploadJobs;
     }
@@ -342,6 +352,7 @@ export const UploadQueuePage = (): JSX.Element => {
                       <tr><th>Local job ID</th><td><TechnicalValue value={selectedJob.id} /></td></tr>
                       <tr><th>Path</th><td className="desktop-mono">{selectedJob.path}</td></tr>
                       <tr><th>Kind</th><td>{formatFileKindLabel(selectedJob.fileKind)}</td></tr>
+                      <tr><th>Local file</th><td>{formatLocalPresenceLabel(selectedJob.localPresence)}</td></tr>
                       <tr><th>Format</th><td>{selectedJobFormat ? `${selectedJobFormat.name} (${selectedJob.formatId})` : selectedJob.formatId || '-'}</td></tr>
                       <tr><th>Tournament ID</th><td>{selectedJob.tournamentId || '-'}</td></tr>
                       <tr><th>Local state</th><td>{formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind)}</td></tr>
@@ -396,7 +407,7 @@ export const UploadQueuePage = (): JSX.Element => {
                     )}
                   </Stack>
                 </Card>
-                {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
+                {selectedJob.localPresence === 'present' && selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
                   <Card withBorder className="desktop-subcard">
                     <Stack gap="sm">
                       <Text fw={600}>Assign tournament export</Text>

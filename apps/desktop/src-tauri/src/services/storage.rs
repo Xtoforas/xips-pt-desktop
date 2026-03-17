@@ -41,9 +41,21 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
     )?;
     ensure_table_column(
         connection,
+        "detected_files",
+        "local_presence",
+        "TEXT NOT NULL DEFAULT 'present'",
+    )?;
+    ensure_table_column(
+        connection,
         "upload_jobs",
         "tournament_id",
         "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_table_column(
+        connection,
+        "upload_jobs",
+        "local_presence",
+        "TEXT NOT NULL DEFAULT 'present'",
     )?;
     ensure_upload_job_column(connection, "server_status", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "remote_checksum", "TEXT NOT NULL DEFAULT ''")?;
@@ -462,56 +474,174 @@ pub fn save_scan_results(
     let connection = open_db(db_path)?;
     connection
         .execute(
-            "DELETE FROM detected_files WHERE profile_id = ?1",
+            "UPDATE detected_files SET local_presence = 'missing' WHERE profile_id = ?1",
             params![profile_id],
         )
         .map_err(|error| error.to_string())?;
     connection
         .execute(
-            "DELETE FROM upload_jobs WHERE profile_id = ?1",
+            "UPDATE upload_jobs SET local_presence = 'missing' WHERE profile_id = ?1",
             params![profile_id],
         )
         .map_err(|error| error.to_string())?;
 
     for row in rows {
         let now = now_iso();
-        let detected_file_id = Uuid::new_v4().to_string();
-        connection
-            .execute(
-                "
-        INSERT INTO detected_files (
-          detected_file_id,
-          profile_id,
-          watch_root_id,
-          path,
-          filename,
-          file_kind,
-          checksum,
-          local_state,
-          format_id,
-          tournament_id,
-          created_at,
-          updated_at
-        )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '', ?10, ?11)
-        ",
-                params![
-                    detected_file_id,
-                    profile_id,
-                    row.watch_root_id,
-                    row.path,
-                    row.filename,
-                    row.file_kind,
-                    row.checksum,
-                    row.local_state,
-                    row.format_id,
-                    now,
-                    now
-                ],
-            )
-            .map_err(|error| error.to_string())?;
+        let existing_detected =
+            load_detected_file_by_path_and_profile(&connection, profile_id, &row.path)?;
+        let existing_upload_job = load_upload_job_by_content(
+            &connection,
+            profile_id,
+            &row.path,
+            &row.file_kind,
+            &row.checksum,
+        )?;
+
+        let effective_format_id = if !row.format_id.is_empty() {
+            row.format_id.clone()
+        } else if let Some(job) = &existing_upload_job {
+            job.format_id.clone()
+        } else if let Some(detected) = &existing_detected {
+            detected.format_id.clone()
+        } else {
+            String::new()
+        };
+        let effective_tournament_id = if let Some(job) = &existing_upload_job {
+            job.tournament_id.clone()
+        } else if let Some(detected) = &existing_detected {
+            detected.tournament_id.clone()
+        } else {
+            String::new()
+        };
+        let detected_state = derive_detected_file_state(
+            &row.file_kind,
+            &effective_format_id,
+            existing_upload_job.as_ref(),
+        );
+
+        if let Some(detected) = existing_detected {
+            connection
+                .execute(
+                    "
+          UPDATE detected_files
+          SET watch_root_id = ?2,
+              path = ?3,
+              filename = ?4,
+              file_kind = ?5,
+              checksum = ?6,
+              local_state = ?7,
+              local_presence = 'present',
+              format_id = ?8,
+              tournament_id = ?9,
+              updated_at = ?10
+          WHERE detected_file_id = ?1
+          ",
+                    params![
+                        detected.id,
+                        row.watch_root_id,
+                        row.path,
+                        row.filename,
+                        row.file_kind,
+                        row.checksum,
+                        detected_state,
+                        effective_format_id,
+                        effective_tournament_id,
+                        now
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+        } else {
+            let detected_file_id = Uuid::new_v4().to_string();
+            connection
+                .execute(
+                    "
+          INSERT INTO detected_files (
+            detected_file_id,
+            profile_id,
+            watch_root_id,
+            path,
+            filename,
+            file_kind,
+            checksum,
+            local_state,
+            local_presence,
+            format_id,
+            tournament_id,
+            created_at,
+            updated_at
+          )
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'present', ?9, ?10, ?11, ?12)
+          ",
+                    params![
+                        detected_file_id,
+                        profile_id,
+                        row.watch_root_id,
+                        row.path,
+                        row.filename,
+                        row.file_kind,
+                        row.checksum,
+                        detected_state,
+                        effective_format_id,
+                        effective_tournament_id,
+                        now,
+                        now
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+        }
 
         if row.file_kind == "unknown" {
+            continue;
+        }
+
+        if let Some(job) = existing_upload_job {
+            let next_local_state = derive_existing_upload_local_state(
+                &job.local_state,
+                &row.file_kind,
+                &effective_format_id,
+                &job.upload_id,
+            );
+            let next_format_id = if !effective_format_id.is_empty() {
+                effective_format_id.clone()
+            } else {
+                job.format_id.clone()
+            };
+            let next_tournament_id = if !effective_tournament_id.is_empty() {
+                effective_tournament_id.clone()
+            } else {
+                job.tournament_id.clone()
+            };
+            connection
+                .execute(
+                    "
+          UPDATE upload_jobs
+          SET filename = ?2,
+              path = ?3,
+              file_kind = ?4,
+              local_presence = 'present',
+              local_state = ?5,
+              format_id = ?6,
+              tournament_id = ?7,
+              updated_at = CASE WHEN ?8 = 1 THEN ?9 ELSE updated_at END
+          WHERE upload_job_id = ?1
+          ",
+                    params![
+                        job.id,
+                        row.filename,
+                        row.path,
+                        row.file_kind,
+                        next_local_state,
+                        next_format_id,
+                        next_tournament_id,
+                        if next_local_state != job.local_state {
+                            1
+                        } else {
+                            0
+                        },
+                        now
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
             continue;
         }
 
@@ -519,49 +649,51 @@ pub fn save_scan_results(
         connection
             .execute(
                 "
-        INSERT INTO upload_jobs (
-          upload_job_id,
-          profile_id,
-          filename,
-          path,
-          file_kind,
-          local_state,
-          lifecycle_phase,
-          checksum,
-          format_id,
-          tournament_id,
-          upload_id,
-          server_status,
-          remote_checksum,
-          last_request_id,
-          duplicate_reason,
-          next_retry_after,
-          queued_at,
-          processing_at,
-          parsed_at,
-          refreshing_at,
-          completed_at,
-          failed_at,
-          error,
-          retries,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          ?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8, '', '',
-          '', '', '', '', '', '', '', '', '', '', '',
-          '', 0, ?9, ?10
-        )
-        ",
+          INSERT INTO upload_jobs (
+            upload_job_id,
+            profile_id,
+            filename,
+            path,
+            file_kind,
+            local_presence,
+            local_state,
+            lifecycle_phase,
+            checksum,
+            format_id,
+            tournament_id,
+            upload_id,
+            server_status,
+            remote_checksum,
+            last_request_id,
+            duplicate_reason,
+            next_retry_after,
+            queued_at,
+            processing_at,
+            parsed_at,
+            refreshing_at,
+            completed_at,
+            failed_at,
+            error,
+            retries,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            ?1, ?2, ?3, ?4, ?5, 'present', ?6, NULL, ?7, ?8, ?9, '',
+            '', '', '', '', '', '', '', '', '', '', '',
+            '', 0, ?10, ?11
+          )
+          ",
                 params![
                     upload_job_id,
                     profile_id,
                     row.filename,
                     row.path,
                     row.file_kind,
-                    row.local_state,
+                    derive_new_upload_local_state(&row.file_kind, &effective_format_id),
                     row.checksum,
-                    row.format_id,
+                    effective_format_id,
+                    effective_tournament_id,
                     now,
                     now
                 ],
@@ -734,6 +866,50 @@ pub fn load_profile_base_url(db_path: &Path, profile_id: &str) -> Result<PathBuf
     Ok(PathBuf::from(base_url))
 }
 
+fn derive_new_upload_local_state(file_kind: &str, format_id: &str) -> String {
+    if file_kind == "stats_export" && format_id.is_empty() {
+        String::from("awaiting_format_assignment")
+    } else {
+        String::from("queued_local")
+    }
+}
+
+fn derive_existing_upload_local_state(
+    current_state: &str,
+    file_kind: &str,
+    format_id: &str,
+    upload_id: &str,
+) -> String {
+    if !upload_id.is_empty() {
+        return current_state.to_string();
+    }
+    match current_state {
+        "complete" | "duplicate_skipped_local" | "failed_terminal" => current_state.to_string(),
+        _ => derive_new_upload_local_state(file_kind, format_id),
+    }
+}
+
+fn derive_detected_file_state(
+    file_kind: &str,
+    format_id: &str,
+    existing_upload_job: Option<&LocalUploadJob>,
+) -> String {
+    if file_kind == "unknown" {
+        return String::from("ignored");
+    }
+    if let Some(job) = existing_upload_job {
+        if !job.upload_id.is_empty()
+            || matches!(
+                job.local_state.as_str(),
+                "complete" | "duplicate_skipped_local" | "failed_terminal"
+            )
+        {
+            return String::from("ignored");
+        }
+    }
+    derive_new_upload_local_state(file_kind, format_id)
+}
+
 pub fn list_pending_upload_jobs_for_profile(
     db_path: &Path,
     profile_id: &str,
@@ -745,6 +921,7 @@ pub fn list_pending_upload_jobs_for_profile(
         .into_iter()
         .filter(|job| {
             job.profile_id == profile_id
+                && job.local_presence == "present"
                 && matches!(
                     job.local_state.as_str(),
                     "queued_local" | "failed_retryable"
@@ -1050,11 +1227,44 @@ fn load_format_rules(connection: &Connection) -> Result<Vec<LocalFormatRule>, St
     Ok(rows)
 }
 
+fn load_detected_file_by_path_and_profile(
+    connection: &Connection,
+    profile_id: &str,
+    path: &str,
+) -> Result<Option<LocalDetectedFile>, String> {
+    let mut rows = load_detected_files(connection)?
+        .into_iter()
+        .filter(|row| row.profile_id == profile_id && row.path == path)
+        .collect::<Vec<LocalDetectedFile>>();
+    rows.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    Ok(rows.into_iter().next())
+}
+
+fn load_upload_job_by_content(
+    connection: &Connection,
+    profile_id: &str,
+    path: &str,
+    file_kind: &str,
+    checksum: &str,
+) -> Result<Option<LocalUploadJob>, String> {
+    let mut rows = load_upload_jobs(connection)?
+        .into_iter()
+        .filter(|row| {
+            row.profile_id == profile_id
+                && row.path == path
+                && row.file_kind == file_kind
+                && row.checksum == checksum
+        })
+        .collect::<Vec<LocalUploadJob>>();
+    rows.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    Ok(rows.into_iter().next())
+}
+
 fn load_detected_files(connection: &Connection) -> Result<Vec<LocalDetectedFile>, String> {
     let mut statement = connection
     .prepare(
       "
-      SELECT detected_file_id, profile_id, watch_root_id, path, filename, file_kind, checksum, local_state, format_id, tournament_id, created_at, updated_at
+      SELECT detected_file_id, profile_id, watch_root_id, path, filename, file_kind, checksum, local_state, local_presence, format_id, tournament_id, created_at, updated_at
       FROM detected_files
       ORDER BY updated_at DESC
       ",
@@ -1071,10 +1281,11 @@ fn load_detected_files(connection: &Connection) -> Result<Vec<LocalDetectedFile>
                 file_kind: row.get(5)?,
                 checksum: row.get(6)?,
                 local_state: row.get(7)?,
-                format_id: row.get(8)?,
-                tournament_id: row.get(9)?,
-                created_at: row.get(10)?,
-                updated_at: row.get(11)?,
+                local_presence: row.get(8)?,
+                format_id: row.get(9)?,
+                tournament_id: row.get(10)?,
+                created_at: row.get(11)?,
+                updated_at: row.get(12)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -1088,7 +1299,7 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
     let mut statement = connection
     .prepare(
       "
-      SELECT upload_job_id, profile_id, filename, path, file_kind, local_state, lifecycle_phase, checksum, format_id, tournament_id, upload_id,
+      SELECT upload_job_id, profile_id, filename, path, file_kind, local_presence, local_state, lifecycle_phase, checksum, format_id, tournament_id, upload_id,
              error, retries, created_at, updated_at, server_status, remote_checksum, last_request_id, duplicate_reason,
              next_retry_after, queued_at, processing_at, parsed_at, refreshing_at, completed_at, failed_at
       FROM upload_jobs
@@ -1104,27 +1315,28 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
                 filename: row.get(2)?,
                 path: row.get(3)?,
                 file_kind: row.get(4)?,
-                local_state: row.get(5)?,
-                lifecycle_phase: row.get(6)?,
-                checksum: row.get(7)?,
-                format_id: row.get(8)?,
-                tournament_id: row.get(9)?,
-                upload_id: row.get(10)?,
-                error: row.get(11)?,
-                retries: row.get(12)?,
-                created_at: row.get(13)?,
-                updated_at: row.get(14)?,
-                server_status: row.get(15)?,
-                remote_checksum: row.get(16)?,
-                last_request_id: row.get(17)?,
-                duplicate_reason: row.get(18)?,
-                next_retry_after: row.get(19)?,
-                queued_at: row.get(20)?,
-                processing_at: row.get(21)?,
-                parsed_at: row.get(22)?,
-                refreshing_at: row.get(23)?,
-                completed_at: row.get(24)?,
-                failed_at: row.get(25)?,
+                local_presence: row.get(5)?,
+                local_state: row.get(6)?,
+                lifecycle_phase: row.get(7)?,
+                checksum: row.get(8)?,
+                format_id: row.get(9)?,
+                tournament_id: row.get(10)?,
+                upload_id: row.get(11)?,
+                error: row.get(12)?,
+                retries: row.get(13)?,
+                created_at: row.get(14)?,
+                updated_at: row.get(15)?,
+                server_status: row.get(16)?,
+                remote_checksum: row.get(17)?,
+                last_request_id: row.get(18)?,
+                duplicate_reason: row.get(19)?,
+                next_retry_after: row.get(20)?,
+                queued_at: row.get(21)?,
+                processing_at: row.get(22)?,
+                parsed_at: row.get(23)?,
+                refreshing_at: row.get(24)?,
+                completed_at: row.get(25)?,
+                failed_at: row.get(26)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -1242,8 +1454,9 @@ fn load_cached_formats(connection: &Connection) -> Result<Vec<TournamentFormat>,
 fn repair_cached_format_payloads(connection: &Connection) -> SqlResult<()> {
     let mut statement = connection
         .prepare("SELECT format_id, payload_json FROM cached_formats ORDER BY format_id ASC")?;
-    let mapped = statement
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+    let mapped = statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
     let rows = mapped.collect::<SqlResult<Vec<(String, String)>>>()?;
 
     for (format_id, payload_json) in rows {

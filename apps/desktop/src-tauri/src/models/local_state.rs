@@ -73,6 +73,8 @@ pub struct LocalDetectedFile {
     pub checksum: String,
     #[serde(rename = "localState")]
     pub local_state: String,
+    #[serde(rename = "localPresence")]
+    pub local_presence: String,
     #[serde(rename = "formatId")]
     pub format_id: String,
     #[serde(rename = "tournamentId")]
@@ -103,6 +105,8 @@ pub struct LocalUploadJob {
     pub path: String,
     #[serde(rename = "fileKind")]
     pub file_kind: String,
+    #[serde(rename = "localPresence")]
+    pub local_presence: String,
     #[serde(rename = "localState")]
     pub local_state: String,
     #[serde(rename = "lifecyclePhase")]

@@ -123,7 +123,7 @@ export const DesktopTopbar = (): JSX.Element => {
           </Alert>
         ) : null}
         <Badge color="orange" variant="light">
-          Pending {snapshot.uploadJobs.filter((job) => job.localState !== 'complete').length}
+          Pending {snapshot.uploadJobs.filter((job) => !['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState) && (job.localPresence === 'present' || Boolean(job.uploadId))).length}
         </Badge>
         {selectedProfile ? (
           <>
@@ -450,6 +450,9 @@ const localStateColor = (value: LocalUploadJob['localState']): string => {
   }
 };
 
+const localPresenceColor = (value: LocalUploadJob['localPresence']): string =>
+  value === 'present' ? 'teal' : 'gray';
+
 export const formatFileKindLabel = (fileKind: LocalUploadJob['fileKind'] | 'unknown'): string => {
   if (fileKind === 'card_catalog') {
     return 'card_list';
@@ -476,6 +479,9 @@ export const formatLifecycleLabel = (
   }
   return phase ?? 'not_started';
 };
+
+export const formatLocalPresenceLabel = (presence: LocalUploadJob['localPresence']): string =>
+  presence === 'present' ? 'present_locally' : 'missing_locally';
 
 export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind'] }): JSX.Element => (
   <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
@@ -504,6 +510,12 @@ export const LifecycleBadge = ({
 }): JSX.Element => (
   <Badge color={lifecycleColor(phase)} variant="light">
     {formatLifecycleLabel(phase, fileKind)}
+  </Badge>
+);
+
+export const LocalPresenceBadge = ({ presence }: { presence: LocalUploadJob['localPresence'] }): JSX.Element => (
+  <Badge color={localPresenceColor(presence)} variant="light">
+    {formatLocalPresenceLabel(presence)}
   </Badge>
 );
 
@@ -545,6 +557,7 @@ export const QueueTable = ({
           <th>File</th>
           <th>Kind</th>
           <th>Format</th>
+          <th>Local file</th>
           <th>Checksum</th>
           <th>Local state</th>
           <th>Server state</th>
@@ -556,7 +569,7 @@ export const QueueTable = ({
       <tbody>
         {jobs.length === 0 ? (
           <tr>
-            <td colSpan={9}>No queued uploads yet.</td>
+            <td colSpan={10}>No queued uploads yet.</td>
           </tr>
         ) : (
           jobs.map((job) => (
@@ -570,6 +583,9 @@ export const QueueTable = ({
                 <FileKindBadge fileKind={job.fileKind} />
               </td>
               <td>{job.formatId || '-'}</td>
+              <td>
+                <LocalPresenceBadge presence={job.localPresence} />
+              </td>
               <td className="desktop-mono">
                 {job.duplicateReason ? 'duplicate' : job.remoteChecksum ? 'uploaded' : 'pending'}
               </td>
