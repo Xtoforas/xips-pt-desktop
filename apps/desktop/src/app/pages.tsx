@@ -351,6 +351,7 @@ export const UploadQueuePage = (): JSX.Element => {
                       <tr><th>File</th><td>{selectedJob.filename}</td></tr>
                       <tr><th>Local job ID</th><td><TechnicalValue value={selectedJob.id} /></td></tr>
                       <tr><th>Path</th><td className="desktop-mono">{selectedJob.path}</td></tr>
+                      <tr><th>Staged path</th><td className="desktop-mono">{selectedJob.stagedPath || '-'}</td></tr>
                       <tr><th>Kind</th><td>{formatFileKindLabel(selectedJob.fileKind)}</td></tr>
                       <tr><th>Local file</th><td>{formatLocalPresenceLabel(selectedJob.localPresence)}</td></tr>
                       <tr><th>Format</th><td>{selectedJobFormat ? `${selectedJobFormat.name} (${selectedJob.formatId})` : selectedJob.formatId || '-'}</td></tr>

@@ -620,7 +620,12 @@ pub(crate) async fn process_upload_queue_for_profile(
             "begin_upload_attempt",
         )?;
 
-        let file_bytes = fs::read(&job.path).map_err(|error| error.to_string())?;
+        let source_path = if !job.staged_path.is_empty() {
+            &job.staged_path
+        } else {
+            &job.path
+        };
+        let file_bytes = fs::read(source_path).map_err(|error| error.to_string())?;
         let raw_content = String::from_utf8_lossy(&file_bytes).to_string();
         if raw_content.len() > 15_000_000 {
             storage::update_upload_job_metadata(
@@ -893,13 +898,18 @@ pub fn desktop_open_upload_file_location(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let job = storage::load_upload_job_by_id(&state.db_path, &upload_job_id)?;
-    open_file_location(&job.path)?;
+    let reveal_path = if !job.staged_path.is_empty() {
+        job.staged_path.clone()
+    } else {
+        job.path.clone()
+    };
+    open_file_location(&reveal_path)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
         "queue",
         "Opened upload file location",
-        &format!("upload_job_id={},path={}", upload_job_id, job.path),
+        &format!("upload_job_id={},path={}", upload_job_id, reveal_path),
     )?;
     Ok(())
 }
@@ -1005,6 +1015,16 @@ pub fn create_app_state(app: &AppHandle) -> Result<AppState, String> {
             "queue",
             "Repaired stale upload jobs during startup",
             &format!("repaired_jobs={}", repaired_jobs),
+        )?;
+    }
+    let rescanned_files = storage::rescan_active_watch_roots(&db_path)?;
+    if rescanned_files > 0 {
+        storage::write_diagnostic_event(
+            &db_path,
+            "info",
+            "watcher",
+            "Rescanned active watch roots during startup",
+            &format!("detected_files={}", rescanned_files),
         )?;
     }
     Ok(AppState {

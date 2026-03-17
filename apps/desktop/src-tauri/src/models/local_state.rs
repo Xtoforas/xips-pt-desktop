@@ -67,6 +67,8 @@ pub struct LocalDetectedFile {
     #[serde(rename = "watchRootId")]
     pub watch_root_id: String,
     pub path: String,
+    #[serde(rename = "stagedPath")]
+    pub staged_path: String,
     pub filename: String,
     #[serde(rename = "fileKind")]
     pub file_kind: String,
@@ -103,6 +105,8 @@ pub struct LocalUploadJob {
     pub profile_id: String,
     pub filename: String,
     pub path: String,
+    #[serde(rename = "stagedPath")]
+    pub staged_path: String,
     #[serde(rename = "fileKind")]
     pub file_kind: String,
     #[serde(rename = "localPresence")]

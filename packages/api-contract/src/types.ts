@@ -210,6 +210,7 @@ export type LocalDetectedFile = {
   profileId: string;
   watchRootId: string;
   path: string;
+  stagedPath: string;
   filename: string;
   fileKind: 'stats_export' | 'card_catalog' | 'unknown';
   checksum: string;
@@ -235,6 +236,7 @@ export type LocalUploadJob = {
   profileId: string;
   filename: string;
   path: string;
+  stagedPath: string;
   fileKind: 'stats_export' | 'card_catalog';
   localPresence: 'present' | 'missing';
   localState:

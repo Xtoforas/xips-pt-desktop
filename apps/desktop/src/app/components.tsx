@@ -549,11 +549,14 @@ export const QueueTable = ({
   selectedJobId?: string;
   onSelect?: (job: LocalUploadJob) => void;
   actions?: (job: LocalUploadJob) => JSX.Element;
-}): JSX.Element => (
+}): JSX.Element => {
+  const orderedJobs = [...jobs].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+  return (
   <div className="desktop-table-wrap">
     <table className="desktop-table">
       <thead>
         <tr>
+          <th>Updated</th>
           <th>File</th>
           <th>Kind</th>
           <th>Format</th>
@@ -562,22 +565,22 @@ export const QueueTable = ({
           <th>Local state</th>
           <th>Server state</th>
           <th>Retries</th>
-          <th>Updated</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        {jobs.length === 0 ? (
+        {orderedJobs.length === 0 ? (
           <tr>
             <td colSpan={10}>No queued uploads yet.</td>
           </tr>
         ) : (
-          jobs.map((job) => (
+          orderedJobs.map((job) => (
             <tr
               key={job.id}
               className={selectedJobId === job.id ? 'desktop-row-selected' : ''}
               onClick={() => onSelect?.(job)}
             >
+              <td>{new Date(job.updatedAt).toLocaleString()}</td>
               <td>{job.filename}</td>
               <td>
                 <FileKindBadge fileKind={job.fileKind} />
@@ -596,7 +599,6 @@ export const QueueTable = ({
                 <LifecycleBadge phase={job.lifecyclePhase} fileKind={job.fileKind} />
               </td>
               <td>{job.retries}</td>
-              <td>{new Date(job.updatedAt).toLocaleString()}</td>
               <td>{actions ? actions(job) : '-'}</td>
             </tr>
           ))
@@ -604,7 +606,8 @@ export const QueueTable = ({
       </tbody>
     </table>
   </div>
-);
+  );
+};
 
 export const WatchRootTable = ({
   watchRoots,

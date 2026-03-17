@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, Result as SqlResult};
@@ -11,7 +12,7 @@ use crate::models::local_state::{
     LocalUploadAttempt, LocalUploadJob, LocalWatchRoot, SaveFormatRuleInput,
     SaveServerProfileInput, SessionUser, UpdatePreferencesInput,
 };
-use crate::services::scanner::{FormatRuleMatch, ScanResult};
+use crate::services::scanner::{self, FormatRuleMatch, ScanResult};
 
 fn now_iso() -> String {
     let now = std::time::SystemTime::now();
@@ -56,6 +57,18 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
         "upload_jobs",
         "local_presence",
         "TEXT NOT NULL DEFAULT 'present'",
+    )?;
+    ensure_table_column(
+        connection,
+        "detected_files",
+        "staged_path",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_table_column(
+        connection,
+        "upload_jobs",
+        "staged_path",
+        "TEXT NOT NULL DEFAULT ''",
     )?;
     ensure_upload_job_column(connection, "server_status", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "remote_checksum", "TEXT NOT NULL DEFAULT ''")?;
@@ -448,6 +461,27 @@ pub fn list_watch_roots_for_profile(
         .collect())
 }
 
+pub fn rescan_active_watch_roots(db_path: &Path) -> Result<usize, String> {
+    let connection = open_db(db_path)?;
+    let watch_roots = load_watch_roots(&connection)?;
+    let active_profile_ids = watch_roots
+        .iter()
+        .filter(|root| !root.paused)
+        .map(|root| root.profile_id.clone())
+        .collect::<std::collections::BTreeSet<String>>();
+    drop(connection);
+
+    let mut total_detected = 0usize;
+    for profile_id in active_profile_ids {
+        let watch_roots = list_watch_roots_for_profile(db_path, &profile_id)?;
+        let format_rules = list_format_rule_matches_for_profile(db_path, &profile_id)?;
+        let scanned = scanner::scan_watch_roots(&watch_roots, &format_rules)?;
+        total_detected += scanned.len();
+        save_scan_results(db_path, &profile_id, &scanned)?;
+    }
+    Ok(total_detected)
+}
+
 pub fn list_format_rule_matches_for_profile(
     db_path: &Path,
     profile_id: &str,
@@ -472,6 +506,7 @@ pub fn save_scan_results(
     rows: &[ScanResult],
 ) -> Result<DesktopSnapshot, String> {
     let connection = open_db(db_path)?;
+    let cached_formats = load_cached_formats(&connection)?;
     connection
         .execute(
             "UPDATE detected_files SET local_presence = 'missing' WHERE profile_id = ?1",
@@ -487,6 +522,7 @@ pub fn save_scan_results(
 
     for row in rows {
         let now = now_iso();
+        let staged_path = stage_scan_file(db_path, profile_id, row)?;
         let existing_detected =
             load_detected_file_by_path_and_profile(&connection, profile_id, &row.path)?;
         let existing_upload_job = load_upload_job_by_content(
@@ -497,8 +533,16 @@ pub fn save_scan_results(
             &row.checksum,
         )?;
 
+        let inferred_tournament_assignment = if row.file_kind == "stats_export" {
+            infer_tournament_assignment_from_filename(&cached_formats, &row.filename)
+                .filter(|(format_id, _)| row.format_id.is_empty() || row.format_id == *format_id)
+        } else {
+            None
+        };
         let effective_format_id = if !row.format_id.is_empty() {
             row.format_id.clone()
+        } else if let Some((format_id, _)) = &inferred_tournament_assignment {
+            format_id.clone()
         } else if let Some(job) = &existing_upload_job {
             job.format_id.clone()
         } else if let Some(detected) = &existing_detected {
@@ -506,13 +550,16 @@ pub fn save_scan_results(
         } else {
             String::new()
         };
-        let effective_tournament_id = if let Some(job) = &existing_upload_job {
-            job.tournament_id.clone()
-        } else if let Some(detected) = &existing_detected {
-            detected.tournament_id.clone()
-        } else {
-            String::new()
-        };
+        let effective_tournament_id =
+            if let Some((_, tournament_id)) = &inferred_tournament_assignment {
+                tournament_id.clone()
+            } else if let Some(job) = &existing_upload_job {
+                job.tournament_id.clone()
+            } else if let Some(detected) = &existing_detected {
+                detected.tournament_id.clone()
+            } else {
+                String::new()
+            };
         let detected_state = derive_detected_file_state(
             &row.file_kind,
             &effective_format_id,
@@ -526,20 +573,22 @@ pub fn save_scan_results(
           UPDATE detected_files
           SET watch_root_id = ?2,
               path = ?3,
-              filename = ?4,
-              file_kind = ?5,
-              checksum = ?6,
-              local_state = ?7,
+              staged_path = ?4,
+              filename = ?5,
+              file_kind = ?6,
+              checksum = ?7,
+              local_state = ?8,
               local_presence = 'present',
-              format_id = ?8,
-              tournament_id = ?9,
-              updated_at = ?10
+              format_id = ?9,
+              tournament_id = ?10,
+              updated_at = ?11
           WHERE detected_file_id = ?1
           ",
                     params![
                         detected.id,
                         row.watch_root_id,
                         row.path,
+                        staged_path,
                         row.filename,
                         row.file_kind,
                         row.checksum,
@@ -560,6 +609,7 @@ pub fn save_scan_results(
             profile_id,
             watch_root_id,
             path,
+            staged_path,
             filename,
             file_kind,
             checksum,
@@ -570,13 +620,14 @@ pub fn save_scan_results(
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'present', ?9, ?10, ?11, ?12)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'present', ?9, ?10, ?11, ?12, ?13)
           ",
                     params![
                         detected_file_id,
                         profile_id,
                         row.watch_root_id,
                         row.path,
+                        staged_path,
                         row.filename,
                         row.file_kind,
                         row.checksum,
@@ -617,23 +668,28 @@ pub fn save_scan_results(
           UPDATE upload_jobs
           SET filename = ?2,
               path = ?3,
-              file_kind = ?4,
+              staged_path = ?4,
+              file_kind = ?5,
               local_presence = 'present',
-              local_state = ?5,
-              format_id = ?6,
-              tournament_id = ?7,
-              updated_at = CASE WHEN ?8 = 1 THEN ?9 ELSE updated_at END
+              local_state = ?6,
+              format_id = ?7,
+              tournament_id = ?8,
+              updated_at = CASE WHEN ?9 = 1 THEN ?10 ELSE updated_at END
           WHERE upload_job_id = ?1
           ",
                     params![
                         job.id,
                         row.filename,
                         row.path,
+                        staged_path,
                         row.file_kind,
                         next_local_state,
                         next_format_id,
                         next_tournament_id,
-                        if next_local_state != job.local_state {
+                        if next_local_state != job.local_state
+                            || job.local_presence != "present"
+                            || job.staged_path != staged_path
+                        {
                             1
                         } else {
                             0
@@ -654,6 +710,7 @@ pub fn save_scan_results(
             profile_id,
             filename,
             path,
+            staged_path,
             file_kind,
             local_presence,
             local_state,
@@ -679,9 +736,9 @@ pub fn save_scan_results(
             updated_at
           )
           VALUES (
-            ?1, ?2, ?3, ?4, ?5, 'present', ?6, NULL, ?7, ?8, ?9, '',
+            ?1, ?2, ?3, ?4, ?5, ?6, 'present', ?7, NULL, ?8, ?9, ?10, '',
             '', '', '', '', '', '', '', '', '', '', '',
-            '', 0, ?10, ?11
+            '', 0, ?11, ?12
           )
           ",
                 params![
@@ -689,6 +746,7 @@ pub fn save_scan_results(
                     profile_id,
                     row.filename,
                     row.path,
+                    staged_path,
                     row.file_kind,
                     derive_new_upload_local_state(&row.file_kind, &effective_format_id),
                     row.checksum,
@@ -872,6 +930,74 @@ fn derive_new_upload_local_state(file_kind: &str, format_id: &str) -> String {
     } else {
         String::from("queued_local")
     }
+}
+
+fn stage_scan_file(db_path: &Path, profile_id: &str, row: &ScanResult) -> Result<String, String> {
+    let stage_root = db_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("staged_uploads")
+        .join(profile_id);
+    fs::create_dir_all(&stage_root).map_err(|error| error.to_string())?;
+    let staged_filename = format!("{}_{}", row.checksum, sanitize_filename(&row.filename));
+    let staged_path = stage_root.join(staged_filename);
+    let source_path = PathBuf::from(&row.path);
+    let should_copy = if staged_path.exists() {
+        let staged_metadata = staged_path.metadata().map_err(|error| error.to_string())?;
+        let source_metadata = source_path.metadata().map_err(|error| error.to_string())?;
+        staged_metadata.len() != source_metadata.len()
+    } else {
+        true
+    };
+    if should_copy {
+        fs::copy(&source_path, &staged_path).map_err(|error| error.to_string())?;
+    }
+    Ok(staged_path.to_string_lossy().into_owned())
+}
+
+fn sanitize_filename(filename: &str) -> String {
+    filename
+        .chars()
+        .map(|value| {
+            if value.is_ascii_alphanumeric() || matches!(value, '.' | '_' | '-') {
+                value
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn infer_tournament_assignment_from_filename(
+    formats: &[TournamentFormat],
+    filename: &str,
+) -> Option<(String, String)> {
+    let candidates = extract_bounded_digit_runs(filename)
+        .into_iter()
+        .filter(|value| (5..=7).contains(&value.len()))
+        .collect::<Vec<String>>();
+    for candidate in candidates {
+        if let Ok(format) = match_format_for_tournament_id(formats, &candidate) {
+            return Some((format.id, candidate));
+        }
+    }
+    None
+}
+
+fn extract_bounded_digit_runs(value: &str) -> Vec<String> {
+    let mut runs = Vec::new();
+    let mut current = String::new();
+    for ch in value.chars() {
+        if ch.is_ascii_digit() {
+            current.push(ch);
+        } else if !current.is_empty() {
+            runs.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        runs.push(current);
+    }
+    runs
 }
 
 fn derive_existing_upload_local_state(
@@ -1264,7 +1390,7 @@ fn load_detected_files(connection: &Connection) -> Result<Vec<LocalDetectedFile>
     let mut statement = connection
     .prepare(
       "
-      SELECT detected_file_id, profile_id, watch_root_id, path, filename, file_kind, checksum, local_state, local_presence, format_id, tournament_id, created_at, updated_at
+      SELECT detected_file_id, profile_id, watch_root_id, path, staged_path, filename, file_kind, checksum, local_state, local_presence, format_id, tournament_id, created_at, updated_at
       FROM detected_files
       ORDER BY updated_at DESC
       ",
@@ -1277,15 +1403,16 @@ fn load_detected_files(connection: &Connection) -> Result<Vec<LocalDetectedFile>
                 profile_id: row.get(1)?,
                 watch_root_id: row.get(2)?,
                 path: row.get(3)?,
-                filename: row.get(4)?,
-                file_kind: row.get(5)?,
-                checksum: row.get(6)?,
-                local_state: row.get(7)?,
-                local_presence: row.get(8)?,
-                format_id: row.get(9)?,
-                tournament_id: row.get(10)?,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
+                staged_path: row.get(4)?,
+                filename: row.get(5)?,
+                file_kind: row.get(6)?,
+                checksum: row.get(7)?,
+                local_state: row.get(8)?,
+                local_presence: row.get(9)?,
+                format_id: row.get(10)?,
+                tournament_id: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -1299,7 +1426,7 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
     let mut statement = connection
     .prepare(
       "
-      SELECT upload_job_id, profile_id, filename, path, file_kind, local_presence, local_state, lifecycle_phase, checksum, format_id, tournament_id, upload_id,
+      SELECT upload_job_id, profile_id, filename, path, staged_path, file_kind, local_presence, local_state, lifecycle_phase, checksum, format_id, tournament_id, upload_id,
              error, retries, created_at, updated_at, server_status, remote_checksum, last_request_id, duplicate_reason,
              next_retry_after, queued_at, processing_at, parsed_at, refreshing_at, completed_at, failed_at
       FROM upload_jobs
@@ -1314,29 +1441,30 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
                 profile_id: row.get(1)?,
                 filename: row.get(2)?,
                 path: row.get(3)?,
-                file_kind: row.get(4)?,
-                local_presence: row.get(5)?,
-                local_state: row.get(6)?,
-                lifecycle_phase: row.get(7)?,
-                checksum: row.get(8)?,
-                format_id: row.get(9)?,
-                tournament_id: row.get(10)?,
-                upload_id: row.get(11)?,
-                error: row.get(12)?,
-                retries: row.get(13)?,
-                created_at: row.get(14)?,
-                updated_at: row.get(15)?,
-                server_status: row.get(16)?,
-                remote_checksum: row.get(17)?,
-                last_request_id: row.get(18)?,
-                duplicate_reason: row.get(19)?,
-                next_retry_after: row.get(20)?,
-                queued_at: row.get(21)?,
-                processing_at: row.get(22)?,
-                parsed_at: row.get(23)?,
-                refreshing_at: row.get(24)?,
-                completed_at: row.get(25)?,
-                failed_at: row.get(26)?,
+                staged_path: row.get(4)?,
+                file_kind: row.get(5)?,
+                local_presence: row.get(6)?,
+                local_state: row.get(7)?,
+                lifecycle_phase: row.get(8)?,
+                checksum: row.get(9)?,
+                format_id: row.get(10)?,
+                tournament_id: row.get(11)?,
+                upload_id: row.get(12)?,
+                error: row.get(13)?,
+                retries: row.get(14)?,
+                created_at: row.get(15)?,
+                updated_at: row.get(16)?,
+                server_status: row.get(17)?,
+                remote_checksum: row.get(18)?,
+                last_request_id: row.get(19)?,
+                duplicate_reason: row.get(20)?,
+                next_retry_after: row.get(21)?,
+                queued_at: row.get(22)?,
+                processing_at: row.get(23)?,
+                parsed_at: row.get(24)?,
+                refreshing_at: row.get(25)?,
+                completed_at: row.get(26)?,
+                failed_at: row.get(27)?,
             })
         })
         .map_err(|error| error.to_string())?;
