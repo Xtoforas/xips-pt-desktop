@@ -4,6 +4,9 @@ import { useDesktop } from './DesktopContext';
 import {
   FormatRuleTable,
   FormatsTable,
+  formatFileKindLabel,
+  formatLifecycleLabel,
+  formatQueueStateLabel,
   PreferencesForm,
   QueueTable,
   ServerProfileForm,
@@ -124,7 +127,7 @@ export const OverviewPage = (): JSX.Element => {
                       <tr key={job.id}>
                         <td>{job.filename}</td>
                         <td>{job.formatId || 'Unassigned'}</td>
-                        <td>{job.lifecyclePhase ?? job.localState}</td>
+                        <td>{formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}</td>
                         <td>{new Date(job.updatedAt).toLocaleString()}</td>
                       </tr>
                     ))}
@@ -306,10 +309,10 @@ export const UploadQueuePage = (): JSX.Element => {
                       <tr><th>File</th><td>{selectedJob.filename}</td></tr>
                       <tr><th>Local job ID</th><td><TechnicalValue value={selectedJob.id} /></td></tr>
                       <tr><th>Path</th><td className="desktop-mono">{selectedJob.path}</td></tr>
-                      <tr><th>Kind</th><td>{selectedJob.fileKind}</td></tr>
+                      <tr><th>Kind</th><td>{formatFileKindLabel(selectedJob.fileKind)}</td></tr>
                       <tr><th>Format</th><td>{selectedJob.formatId || '-'}</td></tr>
-                      <tr><th>Local state</th><td>{selectedJob.localState}</td></tr>
-                      <tr><th>Server lifecycle</th><td>{selectedJob.lifecyclePhase ?? '-'}</td></tr>
+                      <tr><th>Local state</th><td>{formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind)}</td></tr>
+                      <tr><th>Server lifecycle</th><td>{formatLifecycleLabel(selectedJob.lifecyclePhase, selectedJob.fileKind)}</td></tr>
                       <tr><th>Server status</th><td>{selectedJob.serverStatus || '-'}</td></tr>
                       <tr><th>Checksum</th><td><TechnicalValue value={selectedJob.checksum} /></td></tr>
                       <tr><th>Remote checksum</th><td><TechnicalValue value={selectedJob.remoteChecksum} /></td></tr>
@@ -630,7 +633,7 @@ export const HistoryPage = (): JSX.Element => {
           data={[
             { value: 'all', label: 'All file kinds' },
             { value: 'stats_export', label: 'Stats exports' },
-            { value: 'card_catalog', label: 'Card catalogs' }
+            { value: 'card_catalog', label: 'Card lists' }
           ]}
           onChange={(value) => setFileKindFilter(value ?? 'all')}
         />
@@ -697,9 +700,9 @@ export const HistoryPage = (): JSX.Element => {
                 rows.map((job) => (
                   <tr key={job.id}>
                     <td>{job.filename}</td>
-                    <td>{job.fileKind}</td>
+                    <td>{formatFileKindLabel(job.fileKind)}</td>
                     <td>{job.formatId || '-'}</td>
-                    <td>{job.lifecyclePhase ?? '-'}</td>
+                    <td>{formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}</td>
                     <td>{job.retries}</td>
                     <td>{new Date(job.updatedAt).toLocaleString()}</td>
                   </tr>

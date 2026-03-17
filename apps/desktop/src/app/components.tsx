@@ -450,21 +450,60 @@ const localStateColor = (value: LocalUploadJob['localState']): string => {
   }
 };
 
+export const formatFileKindLabel = (fileKind: LocalUploadJob['fileKind'] | 'unknown'): string => {
+  if (fileKind === 'card_catalog') {
+    return 'card_list';
+  }
+  return fileKind;
+};
+
+export const formatQueueStateLabel = (
+  state: LocalUploadJob['localState'],
+  fileKind: LocalUploadJob['fileKind']
+): string => {
+  if (fileKind === 'card_catalog' && (state === 'complete' || state === 'server_refresh_pending')) {
+    return 'list_updated';
+  }
+  return state;
+};
+
+export const formatLifecycleLabel = (
+  phase: LocalUploadJob['lifecyclePhase'],
+  fileKind: LocalUploadJob['fileKind']
+): string => {
+  if (fileKind === 'card_catalog' && (phase === 'complete' || phase === 'refresh_pending')) {
+    return 'list_updated';
+  }
+  return phase ?? 'not_started';
+};
+
 export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind'] }): JSX.Element => (
   <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
-    {fileKind}
+    {formatFileKindLabel(fileKind)}
   </Badge>
 );
 
-export const QueueStateBadge = ({ state }: { state: LocalUploadJob['localState'] }): JSX.Element => (
+export const QueueStateBadge = ({
+  state,
+  fileKind
+}: {
+  state: LocalUploadJob['localState'];
+  fileKind: LocalUploadJob['fileKind'];
+}): JSX.Element => (
   <Badge color={localStateColor(state)} variant="light">
-    {state}
+    {formatQueueStateLabel(state, fileKind)}
   </Badge>
 );
 
-export const LifecycleBadge = ({ phase }: { phase: LocalUploadJob['lifecyclePhase'] }): JSX.Element => (
+export const LifecycleBadge = ({
+  phase,
+  fileKind
+}: {
+  phase: LocalUploadJob['lifecyclePhase'];
+  fileKind: LocalUploadJob['fileKind'];
+}): JSX.Element => (
   <Badge color={lifecycleColor(phase)} variant="light">
-    {phase ?? 'not_started'}
+    {formatLifecycleLabel(phase, fileKind)}
   </Badge>
 );
 
@@ -535,10 +574,10 @@ export const QueueTable = ({
                 {job.duplicateReason ? 'duplicate' : job.remoteChecksum ? 'uploaded' : 'pending'}
               </td>
               <td>
-                <QueueStateBadge state={job.localState} />
+                <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
               </td>
               <td>
-                <LifecycleBadge phase={job.lifecyclePhase} />
+                <LifecycleBadge phase={job.lifecyclePhase} fileKind={job.fileKind} />
               </td>
               <td>{job.retries}</td>
               <td>{new Date(job.updatedAt).toLocaleString()}</td>

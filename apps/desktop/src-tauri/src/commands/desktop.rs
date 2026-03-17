@@ -918,7 +918,13 @@ fn map_upload_record_to_local_state(row: &UploadRecord) -> (&'static str, Option
   match row.lifecycle_phase.as_deref() {
     Some("queued") => ("server_queued", Some("queued"), row.error.clone()),
     Some("processing") => ("server_processing", Some("processing"), row.error.clone()),
-    Some("refresh_pending") => ("server_refresh_pending", Some("refresh_pending"), row.error.clone()),
+    Some("refresh_pending") => {
+      if row.file_kind == "card_catalog" {
+        ("complete", Some("complete"), row.error.clone())
+      } else {
+        ("server_refresh_pending", Some("refresh_pending"), row.error.clone())
+      }
+    }
     Some("refreshing") => ("server_refreshing", Some("refreshing"), row.error.clone()),
     Some("complete") => ("complete", Some("complete"), row.error.clone()),
     Some("failed") => ("failed_terminal", Some("failed"), row.error.clone()),
