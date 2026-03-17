@@ -53,6 +53,7 @@ type DesktopClient = {
   refreshMe: (profileId: string) => Promise<DesktopSnapshot>;
   logout: (profileId: string) => Promise<DesktopSnapshot>;
   addWatchRoot: (input: AddWatchRootInput) => Promise<DesktopSnapshot>;
+  getDefaultWatchRoot: () => Promise<string>;
   saveFormatRule: (input: SaveFormatRuleInput) => Promise<DesktopSnapshot>;
   deleteFormatRule: (formatRuleId: string) => Promise<DesktopSnapshot>;
   scanWatchRoots: (profileId: string) => Promise<DesktopSnapshot>;
@@ -165,6 +166,9 @@ const browserClient: DesktopClient = {
   async addWatchRoot() {
     return mockSnapshot();
   },
+  async getDefaultWatchRoot() {
+    return '';
+  },
   async saveFormatRule() {
     return mockSnapshot();
   },
@@ -222,6 +226,7 @@ const tauriClient: DesktopClient = {
   refreshMe: (profileId) => invoke<DesktopSnapshot>('desktop_refresh_me', { profileId }),
   logout: (profileId) => invoke<DesktopSnapshot>('desktop_logout', { profileId }),
   addWatchRoot: (input) => invoke<DesktopSnapshot>('desktop_add_watch_root', { input }),
+  getDefaultWatchRoot: () => invoke<string>('desktop_get_default_watch_root'),
   saveFormatRule: (input) => invoke<DesktopSnapshot>('desktop_save_format_rule', { input }),
   deleteFormatRule: (formatRuleId) => invoke<DesktopSnapshot>('desktop_delete_format_rule', { formatRuleId }),
   scanWatchRoots: (profileId) => invoke<DesktopSnapshot>('desktop_scan_watch_roots', { profileId }),

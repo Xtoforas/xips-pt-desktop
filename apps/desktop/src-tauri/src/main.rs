@@ -8,7 +8,8 @@ use commands::desktop::{
   create_app_state, desktop_add_diagnostic_event, desktop_add_watch_root, desktop_assign_detected_file_format,
   desktop_check_server_health, desktop_complete_auth, desktop_delete_format_rule, desktop_delete_server_profile,
   desktop_delete_watch_root, desktop_fail_auth_exchange, desktop_fetch_cards, desktop_fetch_formats,
-  desktop_export_diagnostics_bundle, desktop_fetch_my_agg, desktop_finish_auth_exchange, desktop_get_snapshot,
+  desktop_export_diagnostics_bundle, desktop_fetch_my_agg, desktop_finish_auth_exchange, desktop_get_default_watch_root,
+  desktop_get_snapshot,
   desktop_dismiss_duplicate_upload_job, desktop_logout, desktop_open_auth_window,
   desktop_open_app_data_directory, desktop_open_upload_file_location, desktop_poll_active_uploads, desktop_process_upload_queue,
   desktop_refresh_me, desktop_retry_upload_job, desktop_save_format_rule, desktop_save_server_profile,
@@ -55,6 +56,7 @@ fn main() {
       desktop_open_upload_file_location,
       desktop_add_diagnostic_event,
       desktop_export_diagnostics_bundle,
+      desktop_get_default_watch_root,
       desktop_open_app_data_directory
     ])
     .run(tauri::generate_context!())

@@ -30,20 +30,7 @@ const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
 );
 
 export const OverviewPage = (): JSX.Element => {
-  const {
-    snapshot,
-    selectedProfile,
-    cards,
-    cardSource,
-    myAggCards,
-    myAggTeams,
-    refreshFormats,
-    refreshCards,
-    refreshMyAgg,
-    scanWatchRoots
-  } = useDesktop();
-  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
-  const selectedFormatId = snapshot.cachedFormats[0]?.id ?? '';
+  const { snapshot, selectedProfile, cards, cardSource } = useDesktop();
   const completedCount = useMemo(
     () => snapshot.uploadJobs.filter((job) => job.localState === 'complete').length,
     [snapshot.uploadJobs]
@@ -70,77 +57,11 @@ export const OverviewPage = (): JSX.Element => {
       .slice(0, 6);
   }, [snapshot.uploadJobs]);
 
-  useEffect(() => {
-    if (!selectedProfile || !isAuthenticated) {
-      return;
-    }
-    void refreshMyAgg(selectedProfile.id);
-    void refreshCards(selectedFormatId);
-  }, [isAuthenticated, refreshCards, refreshMyAgg, selectedFormatId, selectedProfile]);
-
   return (
     <Stack gap="md">
       <div>
         <h2 className="desktop-page-title">Overview</h2>
       </div>
-      <SimpleGrid cols={{ base: 1, xl: 2 }}>
-        <Card withBorder className="desktop-card">
-          <Stack gap="sm">
-            <Text fw={700}>Cards and personal aggregate</Text>
-            <Text size="sm" c="dimmed">
-              Desktop view of your current card source and private aggregate rows.
-            </Text>
-            <Group>
-              <Badge color={cardSource === 'user' ? 'teal' : 'blue'} variant="light">
-                {cardSource === 'user' ? 'Using your card list' : 'Using shared fallback'}
-              </Badge>
-              <Badge color="orange" variant="light">
-                Card rows {cards.length}
-              </Badge>
-              <Badge color="cyan" variant="light">
-                My agg cards {myAggCards.length}
-              </Badge>
-              <Badge color="grape" variant="light">
-                My agg teams {myAggTeams.length}
-              </Badge>
-            </Group>
-            <Group>
-              <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshFormats()}>
-                Refresh formats
-              </Button>
-              <Button size="xs" variant="light" disabled={!selectedProfile || !isAuthenticated} onClick={() => void refreshCards(selectedFormatId)}>
-                Refresh cards
-              </Button>
-              <Button
-                size="xs"
-                variant="light"
-                disabled={!selectedProfile || !isAuthenticated}
-                onClick={() => {
-                  if (!selectedProfile) {
-                    return;
-                  }
-                  void refreshMyAgg(selectedProfile.id);
-                }}
-              >
-                Refresh my agg
-              </Button>
-              <Button
-                size="xs"
-                variant="light"
-                disabled={!selectedProfile}
-                onClick={() => {
-                  if (!selectedProfile) {
-                    return;
-                  }
-                  void scanWatchRoots(selectedProfile.id);
-                }}
-              >
-                Scan watch roots
-              </Button>
-            </Group>
-          </Stack>
-        </Card>
-      </SimpleGrid>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
@@ -985,7 +906,24 @@ export const DiagnosticsPage = (): JSX.Element => {
 };
 
 export const SettingsPage = (): JSX.Element => {
-  const { snapshot, selectedProfile, health, deleteServerProfile, refreshHealth, refreshMe, selectServerProfile, updatePreferences } = useDesktop();
+  const {
+    snapshot,
+    selectedProfile,
+    health,
+    cards,
+    cardSource,
+    myAggCards,
+    myAggTeams,
+    deleteServerProfile,
+    refreshHealth,
+    refreshFormats,
+    refreshCards,
+    refreshMe,
+    refreshMyAgg,
+    scanWatchRoots,
+    selectServerProfile,
+    updatePreferences
+  } = useDesktop();
   const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
 
   return (
@@ -1013,6 +951,62 @@ export const SettingsPage = (): JSX.Element => {
           <Text size="sm">Signed in user: {isAuthenticated ? snapshot.authUser?.displayName : 'Not signed in'}</Text>
           <Text size="sm">Token expiry: {isAuthenticated ? snapshot.tokenExpiresAt : 'No token issued'}</Text>
           <Text size="sm">Detected files: {snapshot.detectedFiles.length}</Text>
+        </Stack>
+      </Card>
+      <Card withBorder className="desktop-card">
+        <Stack gap="sm">
+          <Text fw={700}>Cards and personal aggregate</Text>
+          <Text size="sm" c="dimmed">
+            Desktop view of your current card source and private aggregate rows.
+          </Text>
+          <Group>
+            <Badge color={cardSource === 'user' ? 'teal' : 'blue'} variant="light">
+              {cardSource === 'user' ? 'Using your card list' : 'Using shared fallback'}
+            </Badge>
+            <Badge color="orange" variant="light">
+              Card rows {cards.length}
+            </Badge>
+            <Badge color="cyan" variant="light">
+              My agg cards {myAggCards.length}
+            </Badge>
+            <Badge color="grape" variant="light">
+              My agg teams {myAggTeams.length}
+            </Badge>
+          </Group>
+          <Group>
+            <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshFormats()}>
+              Refresh formats
+            </Button>
+            <Button size="xs" variant="light" disabled={!selectedProfile || !isAuthenticated} onClick={() => void refreshCards('')}>
+              Refresh cards
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              disabled={!selectedProfile || !isAuthenticated}
+              onClick={() => {
+                if (!selectedProfile) {
+                  return;
+                }
+                void refreshMyAgg(selectedProfile.id);
+              }}
+            >
+              Refresh my agg
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              disabled={!selectedProfile}
+              onClick={() => {
+                if (!selectedProfile) {
+                  return;
+                }
+                void scanWatchRoots(selectedProfile.id);
+              }}
+            >
+              Scan watch roots
+            </Button>
+          </Group>
         </Stack>
       </Card>
       <Card withBorder className="desktop-card">

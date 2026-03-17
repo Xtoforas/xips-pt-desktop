@@ -223,6 +223,58 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   ]);
 
   useEffect(() => {
+    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
+    if (!selectedProfile) {
+      return;
+    }
+    let active = true;
+    void desktopClient.fetchFormats(selectedProfile.id).then((formats) => {
+      if (active) {
+        setSnapshot((current) => ({
+          ...current,
+          cachedFormats: formats
+        }));
+      }
+    }).catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [snapshot.selectedProfileId]);
+
+  useEffect(() => {
+    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
+    if (!selectedProfile || snapshot.authProfileId !== selectedProfile.id || !snapshot.authUser) {
+      return;
+    }
+    let active = true;
+    void desktopClient.fetchCards(selectedProfile.id, '').then((payload) => {
+      if (active) {
+        setCards(payload.rows);
+        setCardSource(payload.source);
+      }
+    }).catch(() => {
+      if (active) {
+        setCards([]);
+        setCardSource('admin');
+      }
+    });
+    void desktopClient.fetchMyAgg(selectedProfile.id).then((payload) => {
+      if (active) {
+        setMyAggCards(payload.cards);
+        setMyAggTeams(payload.teams);
+      }
+    }).catch(() => {
+      if (active) {
+        setMyAggCards([]);
+        setMyAggTeams([]);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [snapshot.authProfileId, snapshot.authUser, snapshot.selectedProfileId]);
+
+  useEffect(() => {
     if (!pendingAuthProfileId) {
       return;
     }

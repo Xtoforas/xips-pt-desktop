@@ -1,8 +1,9 @@
 import { Alert, Badge, Button, Card, Group, HoverCard, Select, Stack, Text, TextInput } from '@mantine/core';
 import { NavLink, useLocation } from 'react-router-dom';
 import type { DesktopPreferences, LocalFormatRule, LocalServerProfile, LocalWatchRoot, LocalUploadJob, TournamentFormat } from '@xips/api-contract';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDesktop } from './DesktopContext';
+import { desktopClient } from './desktop-client';
 
 const navItems = [
   { to: '/', label: 'Overview' },
@@ -692,16 +693,35 @@ export const WatchRootForm = (): JSX.Element => {
   const { selectedProfile, addWatchRoot } = useDesktop();
   const [path, setPath] = useState('');
 
+  useEffect(() => {
+    if (!selectedProfile) {
+      setPath('');
+      return;
+    }
+    let active = true;
+    void desktopClient.getDefaultWatchRoot().then((defaultPath) => {
+      if (active && defaultPath && !path.trim()) {
+        setPath(defaultPath);
+      }
+    }).catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [selectedProfile?.id]);
+
   return (
     <Card withBorder className="desktop-card">
       <Stack gap="sm">
         <Text fw={700}>Add watch folder</Text>
         <TextInput
           label="Folder path"
-          placeholder="/Users/example/Downloads/PT Exports"
+          placeholder="Default OOTP 27 online_data path"
           value={path}
           onChange={(event) => setPath(event.currentTarget.value)}
         />
+        <Text size="xs" c="dimmed">
+          Defaults to the current platform&apos;s OOTP Baseball 27 `online_data` directory.
+        </Text>
         <Group justify="flex-end">
           <Button
             disabled={!selectedProfile || !path.trim()}
@@ -714,7 +734,11 @@ export const WatchRootForm = (): JSX.Element => {
                 path: path.trim(),
                 recursive: false
               }).then(() => {
-                setPath('');
+                void desktopClient.getDefaultWatchRoot().then((defaultPath) => {
+                  setPath(defaultPath);
+                }).catch(() => {
+                  setPath('');
+                });
               });
             }}
           >

@@ -864,6 +864,28 @@ pub fn desktop_open_app_data_directory(
   Ok(())
 }
 
+#[tauri::command]
+pub fn desktop_get_default_watch_root(app: AppHandle) -> Result<String, String> {
+  let home_dir = app.path().home_dir().map_err(|error| error.to_string())?;
+  let path = if cfg!(target_os = "windows") {
+    home_dir
+      .join("Documents")
+      .join("Out of the Park Developments")
+      .join("OOTP Baseball 27")
+      .join("online_data")
+  } else if cfg!(target_os = "macos") {
+    home_dir
+      .join("Library")
+      .join("Application Support")
+      .join("Out of the Park Developments")
+      .join("OOTP Baseball 27")
+      .join("online_data")
+  } else {
+    PathBuf::new()
+  };
+  Ok(path.to_string_lossy().into_owned())
+}
+
 pub fn create_app_state(app: &AppHandle) -> Result<AppState, String> {
   let app_data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
   let db_path = app_data_dir.join("desktop-state.sqlite3");
