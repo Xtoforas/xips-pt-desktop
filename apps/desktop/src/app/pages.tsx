@@ -35,6 +35,11 @@ const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
 
 export const OverviewPage = (): JSX.Element => {
   const { snapshot, selectedProfile, cards, cardSource } = useDesktop();
+  const formatLabelById = useMemo(
+    () =>
+      Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
+    [snapshot.cachedFormats]
+  );
   const completedCount = useMemo(
     () => snapshot.uploadJobs.filter((job) => job.localState === 'complete').length,
     [snapshot.uploadJobs]
@@ -58,13 +63,13 @@ export const OverviewPage = (): JSX.Element => {
   const formatSummary = useMemo(() => {
     const counts = new Map<string, number>();
     snapshot.uploadJobs.forEach((job) => {
-      const key = job.formatId || 'Unassigned';
+      const key = job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned';
       counts.set(key, (counts.get(key) ?? 0) + 1);
     });
     return [...counts.entries()]
       .sort((left, right) => right[1] - left[1])
       .slice(0, 6);
-  }, [snapshot.uploadJobs]);
+  }, [formatLabelById, snapshot.uploadJobs]);
 
   return (
     <Stack gap="md">
@@ -75,7 +80,7 @@ export const OverviewPage = (): JSX.Element => {
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
             <Text fw={700}>Recent upload queue</Text>
-            <QueueTable jobs={snapshot.uploadJobs.slice(0, 5)} />
+            <QueueTable jobs={snapshot.uploadJobs.slice(0, 5)} formatLabels={formatLabelById} />
           </Stack>
         </Card>
         <Card withBorder className="desktop-card">
@@ -132,7 +137,7 @@ export const OverviewPage = (): JSX.Element => {
                     {recentActivity.slice(0, 4).map((job) => (
                       <tr key={job.id}>
                         <td>{job.filename}</td>
-                        <td>{job.formatId || 'Unassigned'}</td>
+                        <td>{job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'}</td>
                         <td>{formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}</td>
                         <td>{new Date(job.updatedAt).toLocaleString()}</td>
                       </tr>
@@ -197,6 +202,11 @@ export const UploadQueuePage = (): JSX.Element => {
   const [selectedJobId, setSelectedJobId] = useState('');
   const [selectedFormatId, setSelectedFormatId] = useState('');
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const formatLabelById = useMemo(
+    () =>
+      Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
+    [snapshot.cachedFormats]
+  );
 
   const filteredJobs = useMemo(() => {
     switch (filter) {
@@ -281,6 +291,7 @@ export const UploadQueuePage = (): JSX.Element => {
             <Text fw={700}>Queue</Text>
             <QueueTable
               jobs={filteredJobs}
+              formatLabels={formatLabelById}
               selectedJobId={selectedJobId}
               onSelect={(job) => {
                 setSelectedJobId(job.id);
@@ -354,7 +365,7 @@ export const UploadQueuePage = (): JSX.Element => {
                       <tr><th>Staged path</th><td className="desktop-mono">{selectedJob.stagedPath || '-'}</td></tr>
                       <tr><th>Kind</th><td>{formatFileKindLabel(selectedJob.fileKind)}</td></tr>
                       <tr><th>Local file</th><td>{formatLocalPresenceLabel(selectedJob.localPresence)}</td></tr>
-                      <tr><th>Format</th><td>{selectedJobFormat ? `${selectedJobFormat.name} (${selectedJob.formatId})` : selectedJob.formatId || '-'}</td></tr>
+                      <tr><th>Format</th><td>{selectedJobFormat?.name ?? (selectedJob.formatId ? 'Unknown format' : 'Unassigned')}</td></tr>
                       <tr><th>Tournament ID</th><td>{selectedJob.tournamentId || '-'}</td></tr>
                       <tr><th>Local state</th><td>{formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind)}</td></tr>
                       <tr><th>Server lifecycle</th><td>{formatLifecycleLabel(selectedJob.lifecyclePhase, selectedJob.fileKind)}</td></tr>
@@ -675,6 +686,11 @@ export const HistoryPage = (): JSX.Element => {
   const [formatFilter, setFormatFilter] = useState('all');
   const [dateRangeFilter, setDateRangeFilter] = useState<'all' | '1' | '7' | '30'>('all');
   const [sortKey, setSortKey] = useState<'updated' | 'filename' | 'retries'>('updated');
+  const formatLabelById = useMemo(
+    () =>
+      Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
+    [snapshot.cachedFormats]
+  );
 
   const rows = useMemo(() => {
     const cutoff = (() => {
@@ -791,7 +807,7 @@ export const HistoryPage = (): JSX.Element => {
                   <tr key={job.id}>
                     <td>{job.filename}</td>
                     <td>{formatFileKindLabel(job.fileKind)}</td>
-                    <td>{job.formatId || '-'}</td>
+                    <td>{job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'}</td>
                     <td>{formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}</td>
                     <td>{job.retries}</td>
                     <td>{new Date(job.updatedAt).toLocaleString()}</td>

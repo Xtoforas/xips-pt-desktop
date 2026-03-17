@@ -541,11 +541,13 @@ export const SummaryCard = ({
 
 export const QueueTable = ({
   jobs,
+  formatLabels,
   selectedJobId,
   onSelect,
   actions
 }: {
   jobs: LocalUploadJob[];
+  formatLabels?: Record<string, string>;
   selectedJobId?: string;
   onSelect?: (job: LocalUploadJob) => void;
   actions?: (job: LocalUploadJob) => JSX.Element;
@@ -585,7 +587,7 @@ export const QueueTable = ({
               <td>
                 <FileKindBadge fileKind={job.fileKind} />
               </td>
-              <td>{job.formatId || '-'}</td>
+              <td>{job.formatId ? (formatLabels?.[job.formatId] ?? 'Unknown format') : 'Unassigned'}</td>
               <td>
                 <LocalPresenceBadge presence={job.localPresence} />
               </td>
