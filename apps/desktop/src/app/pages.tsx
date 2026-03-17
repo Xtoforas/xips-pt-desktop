@@ -203,6 +203,8 @@ export const UploadQueuePage = (): JSX.Element => {
   const [selectedJobId, setSelectedJobId] = useState('');
   const [selectedFormatId, setSelectedFormatId] = useState('');
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [editingFilenameJobId, setEditingFilenameJobId] = useState('');
+  const [inlineTournamentId, setInlineTournamentId] = useState('');
   const formatLabelById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
@@ -212,7 +214,7 @@ export const UploadQueuePage = (): JSX.Element => {
   const filteredJobs = useMemo(() => {
     switch (filter) {
       case 'awaiting':
-        return snapshot.uploadJobs.filter((job) => job.localPresence === 'present' && job.localState === 'awaiting_format_assignment');
+        return snapshot.uploadJobs.filter((job) => job.localState === 'awaiting_format_assignment');
       case 'queued':
         return snapshot.uploadJobs.filter(
           (job) =>
@@ -260,11 +262,60 @@ export const UploadQueuePage = (): JSX.Element => {
         : tournamentFormatMatches.length > 1
           ? 'More than one cached format shares that tournament ID prefix. Refresh formats or assign by format instead.'
           : '';
+  const inlineTournamentFormatMatches = useMemo(() => {
+    const normalizedTournamentId = inlineTournamentId.trim();
+    if (normalizedTournamentId.length < 5 || normalizedTournamentId.length > 7) {
+      return [];
+    }
+    return snapshot.cachedFormats.filter(
+      (format) =>
+        format.tournamentIdPrefix.length > 0 &&
+        normalizedTournamentId.length === format.tournamentIdPrefix.length + 4 &&
+        normalizedTournamentId.startsWith(format.tournamentIdPrefix)
+    );
+  }, [inlineTournamentId, snapshot.cachedFormats]);
+  const inlineTournamentAssignmentError =
+    inlineTournamentId.trim().length === 0
+      ? ''
+      : inlineTournamentFormatMatches.length === 0
+        ? 'No cached format matches that tournament ID.'
+        : inlineTournamentFormatMatches.length > 1
+          ? 'More than one cached format shares that tournament ID prefix.'
+          : '';
+
+  const submitInlineTournamentAssignment = async (jobId: string): Promise<void> => {
+    const tournamentId = inlineTournamentId.trim();
+    if (tournamentId.length < 5 || tournamentId.length > 7) {
+      return;
+    }
+    const job = snapshot.uploadJobs.find((entry) => entry.id === jobId) ?? null;
+    if (!job) {
+      return;
+    }
+    const detectedFile = snapshot.detectedFiles.find(
+      (file) => file.path === job.path && file.checksum === job.checksum
+    ) ?? null;
+    if (!detectedFile) {
+      return;
+    }
+    await assignDetectedFileTournament({
+      detectedFileId: detectedFile.id,
+      tournamentId
+    });
+    setEditingFilenameJobId('');
+    setInlineTournamentId('');
+  };
 
   useEffect(() => {
     setSelectedTournamentId('');
     setSelectedFormatId('');
   }, [selectedJobId]);
+
+  useEffect(() => {
+    if (!editingFilenameJobId) {
+      setInlineTournamentId('');
+    }
+  }, [editingFilenameJobId]);
 
   return (
     <Stack gap="lg">
@@ -296,6 +347,61 @@ export const UploadQueuePage = (): JSX.Element => {
               selectedJobId={selectedJobId}
               onSelect={(job) => {
                 setSelectedJobId(job.id);
+              }}
+              renderFilename={(job) => {
+                const canInlineAssign = job.localState === 'awaiting_format_assignment' && job.fileKind === 'stats_export';
+                if (editingFilenameJobId === job.id) {
+                  return (
+                    <TextInput
+                      size="xs"
+                      autoFocus
+                      value={inlineTournamentId}
+                      placeholder="5 to 7 digits"
+                      error={inlineTournamentAssignmentError || undefined}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onChange={(event) => {
+                        setInlineTournamentId(event.currentTarget.value.replace(/[^0-9]/gu, '').slice(0, 7));
+                      }}
+                      onBlur={() => {
+                        setEditingFilenameJobId('');
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          void submitInlineTournamentAssignment(job.id);
+                        }
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          setEditingFilenameJobId('');
+                        }
+                      }}
+                    />
+                  );
+                }
+                return (
+                  <button
+                    type="button"
+                    className="desktop-link-button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedJobId(job.id);
+                    }}
+                    onDoubleClick={(event) => {
+                      if (!canInlineAssign) {
+                        return;
+                      }
+                      event.stopPropagation();
+                      setSelectedJobId(job.id);
+                      setEditingFilenameJobId(job.id);
+                      setInlineTournamentId('');
+                    }}
+                    title={canInlineAssign ? 'Double-click to enter a 5 to 7 digit tournament ID.' : job.filename}
+                  >
+                    {job.filename}
+                  </button>
+                );
               }}
               actions={(job) => (
                 <Group gap="xs">
@@ -345,7 +451,7 @@ export const UploadQueuePage = (): JSX.Element => {
                       Dismiss
                     </Button>
                   ) : null}
-                  {job.localPresence === 'present' && job.localState === 'awaiting_format_assignment' ? (
+                  {job.localState === 'awaiting_format_assignment' ? (
                     <Button
                       size="compact-xs"
                       variant="subtle"
@@ -402,7 +508,7 @@ export const UploadQueuePage = (): JSX.Element => {
                     </tbody>
                   </table>
                 </div>
-                {selectedJob.localPresence === 'present' && selectedJob.localState === 'awaiting_format_assignment' ? (
+                {selectedJob.localState === 'awaiting_format_assignment' ? (
                   <Group justify="flex-end">
                     <Button
                       size="xs"
@@ -447,7 +553,7 @@ export const UploadQueuePage = (): JSX.Element => {
                     )}
                   </Stack>
                 </Card>
-                {selectedJob.localPresence === 'present' && selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
+                {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
                   <Card withBorder className="desktop-subcard">
                     <Stack gap="sm">
                       <Text fw={600}>Assign tournament export</Text>

@@ -544,13 +544,15 @@ export const QueueTable = ({
   formatLabels,
   selectedJobId,
   onSelect,
-  actions
+  actions,
+  renderFilename
 }: {
   jobs: LocalUploadJob[];
   formatLabels?: Record<string, string>;
   selectedJobId?: string;
   onSelect?: (job: LocalUploadJob) => void;
   actions?: (job: LocalUploadJob) => JSX.Element;
+  renderFilename?: (job: LocalUploadJob) => JSX.Element;
 }): JSX.Element => {
   const orderedJobs = [...jobs].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
   return (
@@ -583,7 +585,7 @@ export const QueueTable = ({
               onClick={() => onSelect?.(job)}
             >
               <td>{new Date(job.updatedAt).toLocaleString()}</td>
-              <td>{job.filename}</td>
+              <td>{renderFilename ? renderFilename(job) : job.filename}</td>
               <td>
                 <FileKindBadge fileKind={job.fileKind} />
               </td>

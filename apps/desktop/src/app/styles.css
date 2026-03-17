@@ -271,6 +271,20 @@ a {
   background: #1a2534;
 }
 
+.desktop-link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.desktop-link-button:hover {
+  color: #fff2d8;
+}
+
 .desktop-checkbox-row {
   display: flex;
   align-items: center;
