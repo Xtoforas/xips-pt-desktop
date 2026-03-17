@@ -49,6 +49,7 @@ export const tournamentFormatSchema = z.object({
   name: z.string(),
   gameVersion: z.literal('ootp27'),
   formatType: z.string().default(''),
+  tournamentIdPrefix: z.string().default(''),
   runEnvironment: z.string().default(''),
   parkKey: z.string().default(''),
   mode: z.string().default(''),
@@ -214,6 +215,7 @@ export type LocalDetectedFile = {
   checksum: string;
   localState: 'detected' | 'queued_local' | 'awaiting_format_assignment' | 'ignored';
   formatId: string;
+  tournamentId: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -251,6 +253,7 @@ export type LocalUploadJob = {
   lifecyclePhase: UploadLifecyclePhase | null;
   checksum: string;
   formatId: string;
+  tournamentId: string;
   uploadId: string;
   serverStatus: string;
   remoteChecksum: string;

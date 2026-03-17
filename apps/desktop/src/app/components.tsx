@@ -646,6 +646,7 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
       <thead>
         <tr>
           <th>Name</th>
+          <th>Tournament ID</th>
           <th>Mode</th>
           <th>Run env</th>
           <th>Park</th>
@@ -656,12 +657,13 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
       <tbody>
         {formats.length === 0 ? (
           <tr>
-            <td colSpan={6}>No cached formats yet.</td>
+            <td colSpan={7}>No cached formats yet.</td>
           </tr>
         ) : (
           formats.map((format) => (
             <tr key={format.id}>
               <td>{format.name}</td>
+              <td>{format.tournamentIdPrefix ? `${format.tournamentIdPrefix}${'x'.repeat(4)}` : '-'}</td>
               <td>{format.mode || '-'}</td>
               <td>{format.runEnvironment || '-'}</td>
               <td>{format.parkKey || '-'}</td>

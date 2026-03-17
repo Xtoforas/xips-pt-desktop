@@ -45,6 +45,11 @@ type AssignDetectedFileFormatInput = {
   formatId: string;
 };
 
+type AssignDetectedFileTournamentInput = {
+  detectedFileId: string;
+  tournamentId: string;
+};
+
 type DesktopContextValue = {
   snapshot: DesktopSnapshot;
   loading: boolean;
@@ -73,6 +78,7 @@ type DesktopContextValue = {
   deleteFormatRule: (formatRuleId: string) => Promise<void>;
   scanWatchRoots: (profileId: string) => Promise<void>;
   assignDetectedFileFormat: (input: AssignDetectedFileFormatInput) => Promise<void>;
+  assignDetectedFileTournament: (input: AssignDetectedFileTournamentInput) => Promise<void>;
   deleteWatchRoot: (watchRootId: string) => Promise<void>;
   toggleWatchRoot: (watchRootId: string, paused: boolean) => Promise<void>;
   processUploadQueue: (profileId: string) => Promise<void>;
@@ -425,6 +431,11 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setSnapshot(next);
   }, []);
 
+  const assignDetectedFileTournament = useCallback(async (input: AssignDetectedFileTournamentInput): Promise<void> => {
+    const next = await desktopClient.assignDetectedFileTournament(input);
+    setSnapshot(next);
+  }, []);
+
   const deleteWatchRoot = useCallback(async (watchRootId: string): Promise<void> => {
     const next = await desktopClient.deleteWatchRoot(watchRootId);
     setSnapshot(next);
@@ -512,6 +523,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       deleteFormatRule,
       scanWatchRoots,
       assignDetectedFileFormat,
+      assignDetectedFileTournament,
       deleteWatchRoot,
       toggleWatchRoot,
       processUploadQueue,
@@ -552,6 +564,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       deleteFormatRule,
       scanWatchRoots,
       assignDetectedFileFormat,
+      assignDetectedFileTournament,
       deleteWatchRoot,
       toggleWatchRoot,
       processUploadQueue,

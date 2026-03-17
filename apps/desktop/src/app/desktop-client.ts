@@ -39,6 +39,11 @@ type AssignDetectedFileFormatInput = {
   formatId: string;
 };
 
+type AssignDetectedFileTournamentInput = {
+  detectedFileId: string;
+  tournamentId: string;
+};
+
 type DesktopClient = {
   getSnapshot: () => Promise<DesktopSnapshot>;
   saveServerProfile: (input: SaveServerProfileInput) => Promise<DesktopSnapshot>;
@@ -58,6 +63,7 @@ type DesktopClient = {
   deleteFormatRule: (formatRuleId: string) => Promise<DesktopSnapshot>;
   scanWatchRoots: (profileId: string) => Promise<DesktopSnapshot>;
   assignDetectedFileFormat: (input: AssignDetectedFileFormatInput) => Promise<DesktopSnapshot>;
+  assignDetectedFileTournament: (input: AssignDetectedFileTournamentInput) => Promise<DesktopSnapshot>;
   deleteWatchRoot: (watchRootId: string) => Promise<DesktopSnapshot>;
   toggleWatchRoot: (watchRootId: string, paused: boolean) => Promise<DesktopSnapshot>;
   processUploadQueue: (profileId: string) => Promise<DesktopSnapshot>;
@@ -181,6 +187,9 @@ const browserClient: DesktopClient = {
   async assignDetectedFileFormat() {
     return mockSnapshot();
   },
+  async assignDetectedFileTournament() {
+    return mockSnapshot();
+  },
   async deleteWatchRoot() {
     return mockSnapshot();
   },
@@ -231,6 +240,7 @@ const tauriClient: DesktopClient = {
   deleteFormatRule: (formatRuleId) => invoke<DesktopSnapshot>('desktop_delete_format_rule', { formatRuleId }),
   scanWatchRoots: (profileId) => invoke<DesktopSnapshot>('desktop_scan_watch_roots', { profileId }),
   assignDetectedFileFormat: (input) => invoke<DesktopSnapshot>('desktop_assign_detected_file_format', { input }),
+  assignDetectedFileTournament: (input) => invoke<DesktopSnapshot>('desktop_assign_detected_file_tournament', { input }),
   deleteWatchRoot: (watchRootId) => invoke<DesktopSnapshot>('desktop_delete_watch_root', { watchRootId }),
   toggleWatchRoot: (watchRootId, paused) =>
     invoke<DesktopSnapshot>('desktop_toggle_watch_root', { watchRootId, paused }),

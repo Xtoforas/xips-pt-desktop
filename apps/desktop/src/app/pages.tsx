@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
 import { useDesktop } from './DesktopContext';
 import {
@@ -181,6 +181,7 @@ export const UploadQueuePage = (): JSX.Element => {
     snapshot,
     selectedProfile,
     assignDetectedFileFormat,
+    assignDetectedFileTournament,
     retryUploadJob,
     dismissDuplicateUploadJob,
     openUploadFileLocation,
@@ -189,6 +190,7 @@ export const UploadQueuePage = (): JSX.Element => {
   const [filter, setFilter] = useState<'all' | 'awaiting' | 'queued' | 'complete'>('all');
   const [selectedJobId, setSelectedJobId] = useState('');
   const [selectedFormatId, setSelectedFormatId] = useState('');
+  const [selectedTournamentId, setSelectedTournamentId] = useState('');
 
   const filteredJobs = useMemo(() => {
     switch (filter) {
@@ -212,6 +214,36 @@ export const UploadQueuePage = (): JSX.Element => {
     () => snapshot.uploadAttempts.filter((attempt) => attempt.uploadJobId === selectedJobId),
     [selectedJobId, snapshot.uploadAttempts]
   );
+  const selectedJobFormat = useMemo(
+    () => snapshot.cachedFormats.find((format) => format.id === selectedJob?.formatId) ?? null,
+    [selectedJob?.formatId, snapshot.cachedFormats]
+  );
+  const tournamentFormatMatches = useMemo(() => {
+    const normalizedTournamentId = selectedTournamentId.trim();
+    if (normalizedTournamentId.length < 5 || normalizedTournamentId.length > 7) {
+      return [];
+    }
+    return snapshot.cachedFormats.filter(
+      (format) =>
+        format.tournamentIdPrefix.length > 0 &&
+        normalizedTournamentId.length === format.tournamentIdPrefix.length + 4 &&
+        normalizedTournamentId.startsWith(format.tournamentIdPrefix)
+    );
+  }, [selectedTournamentId, snapshot.cachedFormats]);
+  const matchedTournamentFormat = tournamentFormatMatches.length === 1 ? tournamentFormatMatches[0] : null;
+  const tournamentAssignmentError =
+    selectedTournamentId.trim().length === 0
+      ? ''
+      : tournamentFormatMatches.length === 0
+        ? 'No cached tournament format matches that 5 to 7 digit tournament ID.'
+        : tournamentFormatMatches.length > 1
+          ? 'More than one cached format shares that tournament ID prefix. Refresh formats or assign by format instead.'
+          : '';
+
+  useEffect(() => {
+    setSelectedTournamentId('');
+    setSelectedFormatId('');
+  }, [selectedJobId]);
 
   return (
     <Stack gap="lg">
@@ -310,7 +342,8 @@ export const UploadQueuePage = (): JSX.Element => {
                       <tr><th>Local job ID</th><td><TechnicalValue value={selectedJob.id} /></td></tr>
                       <tr><th>Path</th><td className="desktop-mono">{selectedJob.path}</td></tr>
                       <tr><th>Kind</th><td>{formatFileKindLabel(selectedJob.fileKind)}</td></tr>
-                      <tr><th>Format</th><td>{selectedJob.formatId || '-'}</td></tr>
+                      <tr><th>Format</th><td>{selectedJobFormat ? `${selectedJobFormat.name} (${selectedJob.formatId})` : selectedJob.formatId || '-'}</td></tr>
+                      <tr><th>Tournament ID</th><td>{selectedJob.tournamentId || '-'}</td></tr>
                       <tr><th>Local state</th><td>{formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind)}</td></tr>
                       <tr><th>Server lifecycle</th><td>{formatLifecycleLabel(selectedJob.lifecyclePhase, selectedJob.fileKind)}</td></tr>
                       <tr><th>Server status</th><td>{selectedJob.serverStatus || '-'}</td></tr>
@@ -366,12 +399,54 @@ export const UploadQueuePage = (): JSX.Element => {
                 {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
                   <Card withBorder className="desktop-subcard">
                     <Stack gap="sm">
-                      <Text fw={600}>Assign tournament format</Text>
+                      <Text fw={600}>Assign tournament export</Text>
+                      <TextInput
+                        label="Tournament ID"
+                        description="Enter the full 5 to 7 digit tournament ID. The desktop app will map it to the matching format prefix automatically."
+                        placeholder="12345"
+                        value={selectedTournamentId}
+                        onChange={(event) => {
+                          setSelectedTournamentId(event.currentTarget.value.replace(/[^0-9]/gu, '').slice(0, 7));
+                        }}
+                      />
+                      {matchedTournamentFormat ? (
+                        <Alert color="teal">
+                          Maps to {matchedTournamentFormat.name} using prefix {matchedTournamentFormat.tournamentIdPrefix}
+                          {' '}
+                          ({matchedTournamentFormat.tournamentIdPrefix.length + 4} digits total).
+                        </Alert>
+                      ) : tournamentAssignmentError ? (
+                        <Alert color="yellow">{tournamentAssignmentError}</Alert>
+                      ) : null}
+                      <Group justify="flex-end">
+                        <Button
+                          size="xs"
+                          disabled={!matchedTournamentFormat || selectedTournamentId.trim().length < 5}
+                          onClick={() => {
+                            const detectedFile = snapshot.detectedFiles.find((file) => file.path === selectedJob.path) ?? null;
+                            if (!detectedFile) {
+                              return;
+                            }
+                            void assignDetectedFileTournament({
+                              detectedFileId: detectedFile.id,
+                              tournamentId: selectedTournamentId.trim()
+                            }).then(() => {
+                              setSelectedTournamentId('');
+                              setSelectedFormatId('');
+                            });
+                          }}
+                        >
+                          Assign by tournament ID
+                        </Button>
+                      </Group>
+                      <Text size="sm" c="dimmed">
+                        Fallback: assign the format directly if the tournament ID is not in the filename yet or if multiple formats share a prefix.
+                      </Text>
                       <select value={selectedFormatId} onChange={(event) => setSelectedFormatId(event.currentTarget.value)}>
                         <option value="">Choose a format</option>
                         {snapshot.cachedFormats.map((format) => (
                           <option key={format.id} value={format.id}>
-                            {format.name}
+                            {format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}
                           </option>
                         ))}
                       </select>
@@ -437,7 +512,7 @@ export const WatchFoldersPage = (): JSX.Element => {
               <option value="">Choose a format</option>
               {snapshot.cachedFormats.map((format) => (
                 <option key={format.id} value={format.id}>
-                  {format.name}
+                  {format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}
                 </option>
               ))}
             </select>
@@ -538,7 +613,7 @@ export const FormatsPage = (): JSX.Element => {
             value={selectedFormatId || null}
             data={snapshot.cachedFormats.map((format) => ({
               value: format.id,
-              label: format.name
+              label: format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name
             }))}
             placeholder="Choose a format"
             onChange={(value) => {
@@ -552,6 +627,9 @@ export const FormatsPage = (): JSX.Element => {
               <Card withBorder className="desktop-subcard">
                 <Stack gap={4}>
                   <Text fw={600}>{selectedFormat.name}</Text>
+                  <Text size="sm" c="dimmed">
+                    Tournament ID pattern: {selectedFormat.tournamentIdPrefix ? `${selectedFormat.tournamentIdPrefix} + 4-digit suffix (${selectedFormat.tournamentIdPrefix.length + 4} digits total)` : '-'}
+                  </Text>
                   <Text size="sm" c="dimmed">Mode: {selectedFormat.mode || '-'}</Text>
                   <Text size="sm" c="dimmed">Run environment: {selectedFormat.runEnvironment || '-'}</Text>
                   <Text size="sm" c="dimmed">Park: {selectedFormat.parkKey || '-'}</Text>

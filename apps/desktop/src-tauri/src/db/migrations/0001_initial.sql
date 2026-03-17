@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS detected_files (
   checksum TEXT NOT NULL,
   local_state TEXT NOT NULL,
   format_id TEXT NOT NULL,
+  tournament_id TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -68,6 +69,7 @@ CREATE TABLE IF NOT EXISTS upload_jobs (
   lifecycle_phase TEXT,
   checksum TEXT NOT NULL,
   format_id TEXT NOT NULL,
+  tournament_id TEXT NOT NULL DEFAULT '',
   upload_id TEXT NOT NULL,
   server_status TEXT NOT NULL DEFAULT '',
   remote_checksum TEXT NOT NULL DEFAULT '',
