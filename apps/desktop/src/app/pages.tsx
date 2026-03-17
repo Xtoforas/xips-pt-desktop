@@ -265,7 +265,7 @@ export const UploadQueuePage = (): JSX.Element => {
           Complete
         </Button>
       </Group>
-      <SimpleGrid cols={{ base: 1, xl: 2 }}>
+      <Stack gap="lg">
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
             <Text fw={700}>Queue</Text>
@@ -477,7 +477,7 @@ export const UploadQueuePage = (): JSX.Element => {
             )}
           </Stack>
         </Card>
-      </SimpleGrid>
+      </Stack>
     </Stack>
   );
 };
