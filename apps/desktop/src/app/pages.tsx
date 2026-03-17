@@ -62,7 +62,7 @@ export const OverviewPage = (): JSX.Element => {
       <div>
         <h2 className="desktop-page-title">Overview</h2>
       </div>
-      <SimpleGrid cols={{ base: 1, xl: 2 }}>
+      <Stack gap="md">
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
             <Text fw={700}>Recent upload queue</Text>
@@ -103,8 +103,6 @@ export const OverviewPage = (): JSX.Element => {
             )}
           </Stack>
         </Card>
-      </SimpleGrid>
-      <SimpleGrid cols={{ base: 1, xl: 2 }}>
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
             <Text fw={700}>Recent activity</Text>
@@ -163,7 +161,7 @@ export const OverviewPage = (): JSX.Element => {
             )}
           </Stack>
         </Card>
-      </SimpleGrid>
+      </Stack>
       <SimpleGrid cols={{ base: 1, md: 2, xl: 5 }}>
         <SummaryCard label="Server" value={selectedProfile?.name ?? 'None'} detail={selectedProfile?.baseUrl ?? 'No server selected'} />
         <SummaryCard label="Watch folders" value={String(snapshot.watchRoots.length)} detail="Configured folder monitors" />
