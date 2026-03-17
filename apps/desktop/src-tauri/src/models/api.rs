@@ -31,13 +31,14 @@ pub struct ServiceHealth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TournamentFormat {
-    pub id: String,
-    pub name: String,
-    pub game_version: String,
-    pub format_type: String,
-    pub tournament_id_prefix: String,
-    pub run_environment: String,
-    pub park_key: String,
+  pub id: String,
+  pub name: String,
+  pub game_version: String,
+  pub format_type: String,
+  #[serde(default)]
+  pub tournament_id_prefix: String,
+  pub run_environment: String,
+  pub park_key: String,
     pub mode: String,
     #[serde(deserialize_with = "deserialize_stringish")]
     pub cap_value: String,
@@ -142,7 +143,7 @@ mod tests {
     use super::TournamentFormat;
 
     #[test]
-    fn parses_live_format_scalars() {
+  fn parses_live_format_scalars() {
         let parsed = serde_json::from_str::<TournamentFormat>(
             r#"{
         "id":"6145900f-ff18-45eb-b309-2515320eb7c5",
@@ -162,10 +163,33 @@ mod tests {
         )
         .expect("format should deserialize");
 
-        assert_eq!(parsed.cap_value, "");
-        assert_eq!(parsed.variant_limit_value, "10");
-        assert_eq!(parsed.tournament_id_prefix, "123");
-    }
+    assert_eq!(parsed.cap_value, "");
+    assert_eq!(parsed.variant_limit_value, "10");
+    assert_eq!(parsed.tournament_id_prefix, "123");
+  }
+
+  #[test]
+  fn defaults_missing_tournament_id_prefix_for_cached_rows() {
+    let parsed = serde_json::from_str::<TournamentFormat>(
+      r#"{
+        "id":"legacy-format",
+        "mode":"Best of 5",
+        "name":"Legacy Format",
+        "parkKey":"Heinsohn Ballpark 2026",
+        "capValue":null,
+        "formatType":"Quick",
+        "gameVersion":"ootp27",
+        "runEnvironment":"2026",
+        "eraRestrictions":[],
+        "ovrRestrictions":["40-49 (low iron)"],
+        "variantLimitValue":10,
+        "cardTypeRestrictions":[]
+      }"#,
+    )
+    .expect("legacy format should deserialize");
+
+    assert_eq!(parsed.tournament_id_prefix, "");
+  }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

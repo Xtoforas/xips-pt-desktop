@@ -56,6 +56,7 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
     ensure_upload_job_column(connection, "refreshing_at", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "completed_at", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "failed_at", "TEXT NOT NULL DEFAULT ''")?;
+    repair_cached_format_payloads(connection)?;
     Ok(())
 }
 
@@ -1236,6 +1237,38 @@ fn load_cached_formats(connection: &Connection) -> Result<Vec<TournamentFormat>,
         .collect::<SqlResult<Vec<TournamentFormat>>>()
         .map_err(|error| error.to_string())?;
     Ok(rows)
+}
+
+fn repair_cached_format_payloads(connection: &Connection) -> SqlResult<()> {
+    let mut statement = connection
+        .prepare("SELECT format_id, payload_json FROM cached_formats ORDER BY format_id ASC")?;
+    let mapped = statement
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+    let rows = mapped.collect::<SqlResult<Vec<(String, String)>>>()?;
+
+    for (format_id, payload_json) in rows {
+        let Ok(mut parsed) = serde_json::from_str::<serde_json::Value>(&payload_json) else {
+            continue;
+        };
+        let Some(object) = parsed.as_object_mut() else {
+            continue;
+        };
+        if object.contains_key("tournamentIdPrefix") {
+            continue;
+        }
+        object.insert(
+            String::from("tournamentIdPrefix"),
+            serde_json::Value::String(String::new()),
+        );
+        let next_payload = serde_json::to_string(&parsed)
+            .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+        connection.execute(
+            "UPDATE cached_formats SET payload_json = ?2 WHERE format_id = ?1",
+            params![format_id, next_payload],
+        )?;
+    }
+
+    Ok(())
 }
 
 fn load_setting(connection: &Connection, key: &str) -> Result<String, String> {
