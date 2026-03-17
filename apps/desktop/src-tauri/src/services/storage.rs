@@ -1124,6 +1124,60 @@ pub fn dismiss_duplicate_upload_job(
     load_snapshot(db_path)
 }
 
+pub fn remove_awaiting_upload_job(
+    db_path: &Path,
+    upload_job_id: &str,
+) -> Result<DesktopSnapshot, String> {
+    let connection = open_db(db_path)?;
+    let job = load_upload_job_by_id(db_path, upload_job_id)?;
+    if job.local_state != "awaiting_format_assignment" || !job.upload_id.is_empty() {
+        return Err(String::from("awaiting_upload_job_required"));
+    }
+
+    let detected_file = load_detected_files(&connection)?
+        .into_iter()
+        .find(|file| file.profile_id == job.profile_id && file.path == job.path && file.checksum == job.checksum);
+    let detected_file_id = detected_file.as_ref().map(|file| file.id.clone());
+    let staged_path = if !job.staged_path.is_empty() {
+        Some(job.staged_path.clone())
+    } else {
+        detected_file
+            .as_ref()
+            .and_then(|file| (!file.staged_path.is_empty()).then(|| file.staged_path.clone()))
+    };
+
+    connection
+        .execute(
+            "DELETE FROM upload_attempts WHERE upload_job_id = ?1",
+            params![upload_job_id],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM upload_jobs WHERE upload_job_id = ?1",
+            params![upload_job_id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if let Some(detected_file_id) = detected_file_id {
+        connection
+            .execute(
+                "DELETE FROM detected_files WHERE detected_file_id = ?1",
+                params![detected_file_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    if let Some(path) = staged_path {
+        let staged = PathBuf::from(path);
+        if staged.exists() {
+            fs::remove_file(&staged).map_err(|error| error.to_string())?;
+        }
+    }
+
+    load_snapshot(db_path)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn update_upload_job_metadata(
     db_path: &Path,

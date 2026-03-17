@@ -195,6 +195,7 @@ export const UploadQueuePage = (): JSX.Element => {
     assignDetectedFileTournament,
     retryUploadJob,
     dismissDuplicateUploadJob,
+    removeAwaitingUploadJob,
     openUploadFileLocation,
     openAuthWindow
   } = useDesktop();
@@ -344,6 +345,19 @@ export const UploadQueuePage = (): JSX.Element => {
                       Dismiss
                     </Button>
                   ) : null}
+                  {job.localPresence === 'present' && job.localState === 'awaiting_format_assignment' ? (
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      color="red"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void removeAwaitingUploadJob(job.id);
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  ) : null}
                 </Group>
               )}
             />
@@ -388,6 +402,20 @@ export const UploadQueuePage = (): JSX.Element => {
                     </tbody>
                   </table>
                 </div>
+                {selectedJob.localPresence === 'present' && selectedJob.localState === 'awaiting_format_assignment' ? (
+                  <Group justify="flex-end">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="red"
+                      onClick={() => {
+                        void removeAwaitingUploadJob(selectedJob.id);
+                      }}
+                    >
+                      Remove from queue
+                    </Button>
+                  </Group>
+                ) : null}
                 <Card withBorder className="desktop-subcard">
                   <Stack gap="xs">
                     <Text fw={600}>Attempt history</Text>

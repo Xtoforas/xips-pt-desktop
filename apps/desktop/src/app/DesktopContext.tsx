@@ -85,6 +85,7 @@ type DesktopContextValue = {
   pollActiveUploads: (profileId: string) => Promise<void>;
   retryUploadJob: (uploadJobId: string) => Promise<void>;
   dismissDuplicateUploadJob: (uploadJobId: string) => Promise<void>;
+  removeAwaitingUploadJob: (uploadJobId: string) => Promise<void>;
   openUploadFileLocation: (uploadJobId: string) => Promise<void>;
   updatePreferences: (preferences: DesktopPreferences) => Promise<void>;
   addDiagnosticEvent: (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>) => Promise<void>;
@@ -466,6 +467,11 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setSnapshot(next);
   }, []);
 
+  const removeAwaitingUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
+    const next = await desktopClient.removeAwaitingUploadJob(uploadJobId);
+    setSnapshot(next);
+  }, []);
+
   const openUploadFileLocation = useCallback(async (uploadJobId: string): Promise<void> => {
     await desktopClient.openUploadFileLocation(uploadJobId);
   }, []);
@@ -530,6 +536,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       pollActiveUploads,
       retryUploadJob,
       dismissDuplicateUploadJob,
+      removeAwaitingUploadJob,
       openUploadFileLocation,
       updatePreferences,
       addDiagnosticEvent,
@@ -571,6 +578,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       pollActiveUploads,
       retryUploadJob,
       dismissDuplicateUploadJob,
+      removeAwaitingUploadJob,
       openUploadFileLocation,
       updatePreferences,
       addDiagnosticEvent,
