@@ -539,6 +539,13 @@ export const SummaryCard = ({
   </Card>
 );
 
+export const formatOvrRangeLabel = (format: TournamentFormat): string => {
+  if (format.ovrMin === null || format.ovrMax === null) {
+    return '-';
+  }
+  return `${Math.min(format.ovrMin, format.ovrMax)}-${Math.max(format.ovrMin, format.ovrMax)}`;
+};
+
 export const QueueTable = ({
   jobs,
   formatLabels,
@@ -674,7 +681,7 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
           <th>Run env</th>
           <th>Park</th>
           <th>Cap</th>
-          <th>OVR restrictions</th>
+          <th>OVR range</th>
         </tr>
       </thead>
       <tbody>
@@ -691,7 +698,7 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
               <td>{format.runEnvironment || '-'}</td>
               <td>{format.parkKey || '-'}</td>
               <td>{format.capValue || '-'}</td>
-              <td>{format.ovrRestrictions.join(', ') || '-'}</td>
+              <td>{formatOvrRangeLabel(format)}</td>
             </tr>
           ))
         )}

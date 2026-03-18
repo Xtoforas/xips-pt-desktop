@@ -44,6 +44,17 @@ const formatScalarSchema = z.preprocess((value) => {
   return value;
 }, z.string());
 
+const nullableNumberSchema = z.preprocess((value) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+  return value;
+}, z.number().nullable());
+
 export const tournamentFormatSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -55,7 +66,8 @@ export const tournamentFormatSchema = z.object({
   mode: z.string().default(''),
   capValue: formatScalarSchema,
   variantLimitValue: formatScalarSchema,
-  ovrRestrictions: z.array(z.string()).default([]),
+  ovrMin: nullableNumberSchema.default(null),
+  ovrMax: nullableNumberSchema.default(null),
   eraRestrictions: z.array(z.string()).default([]),
   cardTypeRestrictions: z.array(z.string()).default([])
 });

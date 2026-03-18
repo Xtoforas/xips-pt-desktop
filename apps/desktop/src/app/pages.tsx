@@ -7,6 +7,7 @@ import {
   formatFileKindLabel,
   formatLifecycleLabel,
   formatLocalPresenceLabel,
+  formatOvrRangeLabel,
   formatQueueStateLabel,
   PreferencesForm,
   QueueTable,
@@ -795,7 +796,7 @@ export const FormatsPage = (): JSX.Element => {
               </Card>
               <Card withBorder className="desktop-subcard">
                 <Stack gap={4}>
-                  <Text size="sm">OVR restrictions: {selectedFormat.ovrRestrictions.join(', ') || '-'}</Text>
+                  <Text size="sm">OVR range: {formatOvrRangeLabel(selectedFormat)}</Text>
                   <Text size="sm">Era restrictions: {selectedFormat.eraRestrictions.join(', ') || '-'}</Text>
                   <Text size="sm">Card type restrictions: {selectedFormat.cardTypeRestrictions.join(', ') || '-'}</Text>
                   <Text size="sm">Variant limit: {selectedFormat.variantLimitValue || '-'}</Text>

@@ -1774,7 +1774,8 @@ mod tests {
             mode: String::from("Best of 5"),
             cap_value: String::new(),
             variant_limit_value: String::new(),
-            ovr_restrictions: Vec::new(),
+            ovr_min: None,
+            ovr_max: None,
             era_restrictions: Vec::new(),
             card_type_restrictions: Vec::new(),
         }

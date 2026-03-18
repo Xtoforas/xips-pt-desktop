@@ -18,6 +18,33 @@ where
     }
 }
 
+fn deserialize_optional_u32ish<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match Option::<Value>::deserialize(deserializer)? {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(value)) => value
+            .as_u64()
+            .and_then(|parsed| u32::try_from(parsed).ok())
+            .map(Some)
+            .ok_or_else(|| de::Error::custom(format!("unsupported numeric value: {value}"))),
+        Some(Value::String(value)) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            trimmed
+                .parse::<u32>()
+                .map(Some)
+                .map_err(|error| de::Error::custom(format!("invalid numeric string: {error}")))
+        }
+        Some(value) => Err(de::Error::custom(format!(
+            "unsupported optional numeric value: {value}"
+        ))),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceHealth {
@@ -31,20 +58,23 @@ pub struct ServiceHealth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TournamentFormat {
-  pub id: String,
-  pub name: String,
-  pub game_version: String,
-  pub format_type: String,
-  #[serde(default)]
-  pub tournament_id_prefix: String,
-  pub run_environment: String,
-  pub park_key: String,
+    pub id: String,
+    pub name: String,
+    pub game_version: String,
+    pub format_type: String,
+    #[serde(default)]
+    pub tournament_id_prefix: String,
+    pub run_environment: String,
+    pub park_key: String,
     pub mode: String,
     #[serde(deserialize_with = "deserialize_stringish")]
     pub cap_value: String,
     #[serde(deserialize_with = "deserialize_stringish")]
     pub variant_limit_value: String,
-    pub ovr_restrictions: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_u32ish")]
+    pub ovr_min: Option<u32>,
+    #[serde(default, deserialize_with = "deserialize_optional_u32ish")]
+    pub ovr_max: Option<u32>,
     pub era_restrictions: Vec<String>,
     pub card_type_restrictions: Vec<String>,
 }
@@ -143,7 +173,7 @@ mod tests {
     use super::TournamentFormat;
 
     #[test]
-  fn parses_live_format_scalars() {
+    fn parses_live_format_scalars() {
         let parsed = serde_json::from_str::<TournamentFormat>(
             r#"{
         "id":"6145900f-ff18-45eb-b309-2515320eb7c5",
@@ -156,22 +186,25 @@ mod tests {
         "gameVersion":"ootp27",
         "runEnvironment":"2026",
         "eraRestrictions":[],
-        "ovrRestrictions":["40-49 (low iron)"],
+        "ovrMin":40,
+        "ovrMax":"69",
         "variantLimitValue":10,
         "cardTypeRestrictions":[]
       }"#,
         )
         .expect("format should deserialize");
 
-    assert_eq!(parsed.cap_value, "");
-    assert_eq!(parsed.variant_limit_value, "10");
-    assert_eq!(parsed.tournament_id_prefix, "123");
-  }
+        assert_eq!(parsed.cap_value, "");
+        assert_eq!(parsed.variant_limit_value, "10");
+        assert_eq!(parsed.tournament_id_prefix, "123");
+        assert_eq!(parsed.ovr_min, Some(40));
+        assert_eq!(parsed.ovr_max, Some(69));
+    }
 
-  #[test]
-  fn defaults_missing_tournament_id_prefix_for_cached_rows() {
-    let parsed = serde_json::from_str::<TournamentFormat>(
-      r#"{
+    #[test]
+    fn defaults_missing_tournament_id_prefix_for_cached_rows() {
+        let parsed = serde_json::from_str::<TournamentFormat>(
+            r#"{
         "id":"legacy-format",
         "mode":"Best of 5",
         "name":"Legacy Format",
@@ -181,15 +214,16 @@ mod tests {
         "gameVersion":"ootp27",
         "runEnvironment":"2026",
         "eraRestrictions":[],
-        "ovrRestrictions":["40-49 (low iron)"],
         "variantLimitValue":10,
         "cardTypeRestrictions":[]
       }"#,
-    )
-    .expect("legacy format should deserialize");
+        )
+        .expect("legacy format should deserialize");
 
-    assert_eq!(parsed.tournament_id_prefix, "");
-  }
+        assert_eq!(parsed.tournament_id_prefix, "");
+        assert_eq!(parsed.ovr_min, None);
+        assert_eq!(parsed.ovr_max, None);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
