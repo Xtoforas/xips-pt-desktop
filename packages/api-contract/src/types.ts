@@ -55,6 +55,14 @@ const nullableNumberSchema = z.preprocess((value) => {
   return value;
 }, z.number().nullable());
 
+const slotCountsSchema = z.object({
+  P: z.number().default(0),
+  D: z.number().default(0),
+  G: z.number().default(0),
+  S: z.number().default(0),
+  B: z.number().default(0)
+});
+
 export const tournamentFormatSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -68,6 +76,8 @@ export const tournamentFormatSchema = z.object({
   variantLimitValue: formatScalarSchema,
   ovrMin: nullableNumberSchema.default(null),
   ovrMax: nullableNumberSchema.default(null),
+  isSlotsTournament: z.boolean().default(false),
+  slotCounts: slotCountsSchema.default({ P: 0, D: 0, G: 0, S: 0, B: 0 }),
   eraRestrictions: z.array(z.string()).default([]),
   cardTypeRestrictions: z.array(z.string()).default([])
 });

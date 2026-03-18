@@ -546,6 +546,13 @@ export const formatOvrRangeLabel = (format: TournamentFormat): string => {
   return `${Math.min(format.ovrMin, format.ovrMax)}-${Math.max(format.ovrMin, format.ovrMax)}`;
 };
 
+export const formatSlotCountsLabel = (format: TournamentFormat): string => {
+  if (!format.isSlotsTournament) {
+    return '-';
+  }
+  return `P ${format.slotCounts.P} / D ${format.slotCounts.D} / G ${format.slotCounts.G} / S ${format.slotCounts.S} / B ${format.slotCounts.B}`;
+};
+
 export const QueueTable = ({
   jobs,
   formatLabels,
@@ -682,12 +689,13 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
           <th>Park</th>
           <th>Cap</th>
           <th>OVR range</th>
+          <th>Slots</th>
         </tr>
       </thead>
       <tbody>
         {formats.length === 0 ? (
           <tr>
-            <td colSpan={7}>No cached formats yet.</td>
+            <td colSpan={8}>No cached formats yet.</td>
           </tr>
         ) : (
           formats.map((format) => (
@@ -699,6 +707,7 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
               <td>{format.parkKey || '-'}</td>
               <td>{format.capValue || '-'}</td>
               <td>{formatOvrRangeLabel(format)}</td>
+              <td>{formatSlotCountsLabel(format)}</td>
             </tr>
           ))
         )}

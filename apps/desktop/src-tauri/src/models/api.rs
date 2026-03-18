@@ -75,8 +75,26 @@ pub struct TournamentFormat {
     pub ovr_min: Option<u32>,
     #[serde(default, deserialize_with = "deserialize_optional_u32ish")]
     pub ovr_max: Option<u32>,
+    #[serde(default)]
+    pub is_slots_tournament: bool,
+    #[serde(default)]
+    pub slot_counts: SlotCounts,
     pub era_restrictions: Vec<String>,
     pub card_type_restrictions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SlotCounts {
+    #[serde(rename = "P")]
+    pub p: u32,
+    #[serde(rename = "D")]
+    pub d: u32,
+    #[serde(rename = "G")]
+    pub g: u32,
+    #[serde(rename = "S")]
+    pub s: u32,
+    #[serde(rename = "B")]
+    pub b: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,6 +206,8 @@ mod tests {
         "eraRestrictions":[],
         "ovrMin":40,
         "ovrMax":"69",
+        "isSlotsTournament":true,
+        "slotCounts":{"P":2,"D":3,"G":4,"S":5,"B":6},
         "variantLimitValue":10,
         "cardTypeRestrictions":[]
       }"#,
@@ -199,6 +219,9 @@ mod tests {
         assert_eq!(parsed.tournament_id_prefix, "123");
         assert_eq!(parsed.ovr_min, Some(40));
         assert_eq!(parsed.ovr_max, Some(69));
+        assert!(parsed.is_slots_tournament);
+        assert_eq!(parsed.slot_counts.p, 2);
+        assert_eq!(parsed.slot_counts.b, 6);
     }
 
     #[test]
@@ -223,6 +246,8 @@ mod tests {
         assert_eq!(parsed.tournament_id_prefix, "");
         assert_eq!(parsed.ovr_min, None);
         assert_eq!(parsed.ovr_max, None);
+        assert!(!parsed.is_slots_tournament);
+        assert_eq!(parsed.slot_counts.p, 0);
     }
 }
 

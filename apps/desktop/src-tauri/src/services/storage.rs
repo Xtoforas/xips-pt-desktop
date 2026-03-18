@@ -1776,6 +1776,8 @@ mod tests {
             variant_limit_value: String::new(),
             ovr_min: None,
             ovr_max: None,
+            is_slots_tournament: false,
+            slot_counts: crate::models::api::SlotCounts::default(),
             era_restrictions: Vec::new(),
             card_type_restrictions: Vec::new(),
         }
