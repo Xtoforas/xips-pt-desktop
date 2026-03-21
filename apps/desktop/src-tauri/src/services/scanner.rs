@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -13,6 +14,7 @@ pub struct ScanResult {
     pub filename: String,
     pub file_kind: String,
     pub checksum: String,
+    pub team_count: u32,
     pub source_modified_at: String,
     pub format_id: String,
     pub validation_error: String,
@@ -63,6 +65,11 @@ pub fn scan_watch_roots(
                 String::new()
             };
             let checksum = checksum_hex(&bytes);
+            let team_count = if file_kind == "stats_export" {
+                read_team_count(&bytes, &header)
+            } else {
+                0
+            };
             let source_modified_at = read_source_modified_at(path);
             let format_id = resolve_format_id(path, watch_root, format_rules);
             results.push(ScanResult {
@@ -75,6 +82,7 @@ pub fn scan_watch_roots(
                     .to_string(),
                 file_kind,
                 checksum,
+                team_count,
                 source_modified_at,
                 format_id,
                 validation_error,
@@ -172,6 +180,33 @@ fn read_source_modified_at(path: &Path) -> String {
         .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
         .map(|duration| duration.as_millis().to_string())
         .unwrap_or_default()
+}
+
+fn read_team_count(bytes: &[u8], header: &[String]) -> u32 {
+    let team_index = header
+        .iter()
+        .map(|value| value.trim().to_lowercase())
+        .position(|value| value == "tm");
+    let Some(team_index) = team_index else {
+        return 0;
+    };
+
+    let mut teams = HashSet::<String>::new();
+    for line in String::from_utf8_lossy(bytes).lines().skip(1) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let row = parse_csv_line(line);
+        let Some(team) = row.get(team_index) else {
+            continue;
+        };
+        let normalized = team.trim();
+        if normalized.is_empty() {
+            continue;
+        }
+        teams.insert(normalized.to_string());
+    }
+    teams.len() as u32
 }
 
 fn parse_csv_line(line: &str) -> Vec<String> {

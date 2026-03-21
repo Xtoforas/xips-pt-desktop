@@ -45,6 +45,13 @@ where
     }
 }
 
+fn deserialize_u32ish<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(deserialize_optional_u32ish(deserializer)?.unwrap_or(0))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceHealth {
@@ -75,6 +82,8 @@ pub struct TournamentFormat {
     pub ovr_min: Option<u32>,
     #[serde(default, deserialize_with = "deserialize_optional_u32ish")]
     pub ovr_max: Option<u32>,
+    #[serde(default, deserialize_with = "deserialize_u32ish")]
+    pub teams_per_tournament: u32,
     #[serde(default)]
     pub is_slots_tournament: bool,
     #[serde(default)]
@@ -206,6 +215,7 @@ mod tests {
         "eraRestrictions":[],
         "ovrMin":40,
         "ovrMax":"69",
+        "teamsPerTournament":"16",
         "isSlotsTournament":true,
         "slotCounts":{"P":2,"D":3,"G":4,"S":5,"B":6},
         "variantLimitValue":10,
@@ -219,6 +229,7 @@ mod tests {
         assert_eq!(parsed.tournament_id_prefix, "123");
         assert_eq!(parsed.ovr_min, Some(40));
         assert_eq!(parsed.ovr_max, Some(69));
+        assert_eq!(parsed.teams_per_tournament, 16);
         assert!(parsed.is_slots_tournament);
         assert_eq!(parsed.slot_counts.p, 2);
         assert_eq!(parsed.slot_counts.b, 6);
@@ -246,6 +257,7 @@ mod tests {
         assert_eq!(parsed.tournament_id_prefix, "");
         assert_eq!(parsed.ovr_min, None);
         assert_eq!(parsed.ovr_max, None);
+        assert_eq!(parsed.teams_per_tournament, 0);
         assert!(!parsed.is_slots_tournament);
         assert_eq!(parsed.slot_counts.p, 0);
     }

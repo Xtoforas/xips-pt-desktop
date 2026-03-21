@@ -553,6 +553,9 @@ export const formatSlotCountsLabel = (format: TournamentFormat): string => {
   return `P ${format.slotCounts.P} / D ${format.slotCounts.D} / G ${format.slotCounts.G} / S ${format.slotCounts.S} / B ${format.slotCounts.B}`;
 };
 
+export const formatTeamsPerTournamentLabel = (format: TournamentFormat): string =>
+  format.teamsPerTournament > 0 ? String(format.teamsPerTournament) : '-';
+
 export const QueueTable = ({
   jobs,
   formatLabels,
@@ -684,6 +687,7 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
         <tr>
           <th>Name</th>
           <th>Tournament ID</th>
+          <th>Teams</th>
           <th>Mode</th>
           <th>Run env</th>
           <th>Park</th>
@@ -695,13 +699,14 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
       <tbody>
         {formats.length === 0 ? (
           <tr>
-            <td colSpan={8}>No cached formats yet.</td>
+            <td colSpan={9}>No cached formats yet.</td>
           </tr>
         ) : (
           formats.map((format) => (
             <tr key={format.id}>
               <td>{format.name}</td>
               <td>{format.tournamentIdPrefix ? `${format.tournamentIdPrefix}${'x'.repeat(4)}` : '-'}</td>
+              <td>{formatTeamsPerTournamentLabel(format)}</td>
               <td>{format.mode || '-'}</td>
               <td>{format.runEnvironment || '-'}</td>
               <td>{format.parkKey || '-'}</td>

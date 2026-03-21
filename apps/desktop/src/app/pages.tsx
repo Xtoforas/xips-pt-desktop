@@ -10,6 +10,7 @@ import {
   formatOvrRangeLabel,
   formatQueueStateLabel,
   formatSlotCountsLabel,
+  formatTeamsPerTournamentLabel,
   PreferencesForm,
   QueueTable,
   ServerProfileForm,
@@ -34,6 +35,9 @@ const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
     ) : null}
   </Group>
 );
+
+const formatMatchesTeamCount = (teamsPerTournament: number, teamCount: number): boolean =>
+  teamCount === 0 || teamsPerTournament === 0 || teamsPerTournament === teamCount;
 
 export const OverviewPage = (): JSX.Element => {
   const { snapshot, selectedProfile, cards, cardSource } = useDesktop();
@@ -239,10 +243,16 @@ export const UploadQueuePage = (): JSX.Element => {
     () => snapshot.uploadAttempts.filter((attempt) => attempt.uploadJobId === selectedJobId),
     [selectedJobId, snapshot.uploadAttempts]
   );
+  const inlineEditingJob = useMemo(
+    () => snapshot.uploadJobs.find((job) => job.id === editingFilenameJobId) ?? null,
+    [editingFilenameJobId, snapshot.uploadJobs]
+  );
   const selectedJobFormat = useMemo(
     () => snapshot.cachedFormats.find((format) => format.id === selectedJob?.formatId) ?? null,
     [selectedJob?.formatId, snapshot.cachedFormats]
   );
+  const selectedJobTeamCount = selectedJob?.teamCount ?? 0;
+  const inlineEditingJobTeamCount = inlineEditingJob?.teamCount ?? 0;
   const tournamentFormatMatches = useMemo(() => {
     const normalizedTournamentId = selectedTournamentId.trim();
     if (normalizedTournamentId.length < 5 || normalizedTournamentId.length > 7) {
@@ -252,15 +262,18 @@ export const UploadQueuePage = (): JSX.Element => {
       (format) =>
         format.tournamentIdPrefix.length > 0 &&
         normalizedTournamentId.length === format.tournamentIdPrefix.length + 4 &&
-        normalizedTournamentId.startsWith(format.tournamentIdPrefix)
+        normalizedTournamentId.startsWith(format.tournamentIdPrefix) &&
+        formatMatchesTeamCount(format.teamsPerTournament, selectedJobTeamCount)
     );
-  }, [selectedTournamentId, snapshot.cachedFormats]);
+  }, [selectedJobTeamCount, selectedTournamentId, snapshot.cachedFormats]);
   const matchedTournamentFormat = tournamentFormatMatches.length === 1 ? tournamentFormatMatches[0] : null;
   const tournamentAssignmentError =
     selectedTournamentId.trim().length === 0
       ? ''
       : tournamentFormatMatches.length === 0
-        ? 'No cached tournament format matches that 5 to 7 digit tournament ID.'
+        ? selectedJobTeamCount > 0
+          ? `No cached tournament format matches that 5 to 7 digit tournament ID for a ${selectedJobTeamCount}-team export.`
+          : 'No cached tournament format matches that 5 to 7 digit tournament ID.'
         : tournamentFormatMatches.length > 1
           ? 'More than one cached format shares that tournament ID prefix. Refresh formats or assign by format instead.'
           : '';
@@ -273,17 +286,24 @@ export const UploadQueuePage = (): JSX.Element => {
       (format) =>
         format.tournamentIdPrefix.length > 0 &&
         normalizedTournamentId.length === format.tournamentIdPrefix.length + 4 &&
-        normalizedTournamentId.startsWith(format.tournamentIdPrefix)
+        normalizedTournamentId.startsWith(format.tournamentIdPrefix) &&
+        formatMatchesTeamCount(format.teamsPerTournament, inlineEditingJobTeamCount)
     );
-  }, [inlineTournamentId, snapshot.cachedFormats]);
+  }, [inlineEditingJobTeamCount, inlineTournamentId, snapshot.cachedFormats]);
   const inlineTournamentAssignmentError =
     inlineTournamentId.trim().length === 0
       ? ''
       : inlineTournamentFormatMatches.length === 0
-        ? 'No cached format matches that tournament ID.'
+        ? inlineEditingJobTeamCount > 0
+          ? `No cached format matches that tournament ID for a ${inlineEditingJobTeamCount}-team export.`
+          : 'No cached format matches that tournament ID.'
         : inlineTournamentFormatMatches.length > 1
           ? 'More than one cached format shares that tournament ID prefix.'
           : '';
+  const compatibleDirectFormats = useMemo(
+    () => snapshot.cachedFormats.filter((format) => formatMatchesTeamCount(format.teamsPerTournament, selectedJobTeamCount)),
+    [selectedJobTeamCount, snapshot.cachedFormats]
+  );
 
   const submitInlineTournamentAssignment = async (jobId: string): Promise<void> => {
     const tournamentId = inlineTournamentId.trim();
@@ -486,6 +506,7 @@ export const UploadQueuePage = (): JSX.Element => {
                       <tr><th>Path</th><td className="desktop-mono">{selectedJob.path}</td></tr>
                       <tr><th>Staged path</th><td className="desktop-mono">{selectedJob.stagedPath || '-'}</td></tr>
                       <tr><th>Kind</th><td>{formatFileKindLabel(selectedJob.fileKind)}</td></tr>
+                      <tr><th>Teams</th><td>{selectedJob.teamCount > 0 ? selectedJob.teamCount : '-'}</td></tr>
                       <tr><th>Local file</th><td>{formatLocalPresenceLabel(selectedJob.localPresence)}</td></tr>
                       <tr><th>Format</th><td>{selectedJobFormat?.name ?? (selectedJob.formatId ? 'Unknown format' : 'Unassigned')}</td></tr>
                       <tr><th>Tournament ID</th><td>{selectedJob.tournamentId || '-'}</td></tr>
@@ -573,6 +594,7 @@ export const UploadQueuePage = (): JSX.Element => {
                           Maps to {matchedTournamentFormat.name} using prefix {matchedTournamentFormat.tournamentIdPrefix}
                           {' '}
                           ({matchedTournamentFormat.tournamentIdPrefix.length + 4} digits total).
+                          {matchedTournamentFormat.teamsPerTournament > 0 ? ` ${matchedTournamentFormat.teamsPerTournament} teams.` : ''}
                         </Alert>
                       ) : tournamentAssignmentError ? (
                         <Alert color="yellow">{tournamentAssignmentError}</Alert>
@@ -582,7 +604,9 @@ export const UploadQueuePage = (): JSX.Element => {
                           size="xs"
                           disabled={!matchedTournamentFormat || selectedTournamentId.trim().length < 5}
                           onClick={() => {
-                            const detectedFile = snapshot.detectedFiles.find((file) => file.path === selectedJob.path) ?? null;
+                            const detectedFile = snapshot.detectedFiles.find(
+                              (file) => file.path === selectedJob.path && file.checksum === selectedJob.checksum
+                            ) ?? null;
                             if (!detectedFile) {
                               return;
                             }
@@ -603,9 +627,10 @@ export const UploadQueuePage = (): JSX.Element => {
                       </Text>
                       <select value={selectedFormatId} onChange={(event) => setSelectedFormatId(event.currentTarget.value)}>
                         <option value="">Choose a format</option>
-                        {snapshot.cachedFormats.map((format) => (
+                        {compatibleDirectFormats.map((format) => (
                           <option key={format.id} value={format.id}>
                             {format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}
+                            {format.teamsPerTournament > 0 ? ` - ${format.teamsPerTournament} teams` : ''}
                           </option>
                         ))}
                       </select>
@@ -614,7 +639,9 @@ export const UploadQueuePage = (): JSX.Element => {
                           size="xs"
                           disabled={!selectedFormatId}
                           onClick={() => {
-                            const detectedFile = snapshot.detectedFiles.find((file) => file.path === selectedJob.path) ?? null;
+                            const detectedFile = snapshot.detectedFiles.find(
+                              (file) => file.path === selectedJob.path && file.checksum === selectedJob.checksum
+                            ) ?? null;
                             if (!detectedFile) {
                               return;
                             }
@@ -789,6 +816,7 @@ export const FormatsPage = (): JSX.Element => {
                   <Text size="sm" c="dimmed">
                     Tournament ID pattern: {selectedFormat.tournamentIdPrefix ? `${selectedFormat.tournamentIdPrefix} + 4-digit suffix (${selectedFormat.tournamentIdPrefix.length + 4} digits total)` : '-'}
                   </Text>
+                  <Text size="sm" c="dimmed">Teams per tournament: {formatTeamsPerTournamentLabel(selectedFormat)}</Text>
                   <Text size="sm" c="dimmed">Mode: {selectedFormat.mode || '-'}</Text>
                   <Text size="sm" c="dimmed">Run environment: {selectedFormat.runEnvironment || '-'}</Text>
                   <Text size="sm" c="dimmed">Park: {selectedFormat.parkKey || '-'}</Text>

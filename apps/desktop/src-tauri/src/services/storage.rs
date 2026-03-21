@@ -67,6 +67,12 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
     ensure_table_column(
         connection,
         "detected_files",
+        "team_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_table_column(
+        connection,
+        "detected_files",
         "source_modified_at",
         "TEXT NOT NULL DEFAULT ''",
     )?;
@@ -75,6 +81,12 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
         "upload_jobs",
         "staged_path",
         "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_table_column(
+        connection,
+        "upload_jobs",
+        "team_count",
+        "INTEGER NOT NULL DEFAULT 0",
     )?;
     ensure_table_column(
         connection,
@@ -327,6 +339,15 @@ pub fn assign_detected_file_format(
     format_id: &str,
 ) -> Result<DesktopSnapshot, String> {
     let connection = open_db(db_path)?;
+    let cached_formats = load_cached_formats(&connection)?;
+    let detected_team_count = connection
+        .query_row(
+            "SELECT team_count FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
+            params![detected_file_id],
+            |result| result.get::<_, u32>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    ensure_format_matches_team_count(&cached_formats, format_id, detected_team_count)?;
     connection
         .execute(
             "
@@ -343,13 +364,14 @@ pub fn assign_detected_file_format(
 
     let row = connection
         .query_row(
-            "SELECT profile_id, path, source_modified_at FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
+            "SELECT profile_id, path, team_count, source_modified_at FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
             params![detected_file_id],
             |result| {
                 Ok((
                     result.get::<_, String>(0)?,
                     result.get::<_, String>(1)?,
-                    result.get::<_, String>(2)?,
+                    result.get::<_, u32>(2)?,
+                    result.get::<_, String>(3)?,
                 ))
             },
         )
@@ -362,12 +384,13 @@ pub fn assign_detected_file_format(
       SET format_id = ?3,
           tournament_id = '',
           local_state = 'queued_local',
-          updated_at = ?5
+          updated_at = ?6
       WHERE profile_id = ?1
         AND path = ?2
-        AND source_modified_at = ?4
+        AND team_count = ?4
+        AND source_modified_at = ?5
       ",
-            params![row.0, row.1, format_id, row.2, now_iso()],
+            params![row.0, row.1, format_id, row.2, row.3, now_iso()],
         )
         .map_err(|error| error.to_string())?;
 
@@ -392,7 +415,18 @@ pub fn assign_detected_file_tournament(
 
     let connection = open_db(db_path)?;
     let cached_formats = load_cached_formats(&connection)?;
-    let matched_format = match_format_for_tournament_id(&cached_formats, normalized_tournament_id)?;
+    let detected_team_count = connection
+        .query_row(
+            "SELECT team_count FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
+            params![detected_file_id],
+            |result| result.get::<_, u32>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    let matched_format = match_format_for_tournament_id(
+        &cached_formats,
+        normalized_tournament_id,
+        detected_team_count,
+    )?;
 
     connection
         .execute(
@@ -415,13 +449,14 @@ pub fn assign_detected_file_tournament(
 
     let row = connection
         .query_row(
-            "SELECT profile_id, path, source_modified_at FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
+            "SELECT profile_id, path, team_count, source_modified_at FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
             params![detected_file_id],
             |result| {
                 Ok((
                     result.get::<_, String>(0)?,
                     result.get::<_, String>(1)?,
-                    result.get::<_, String>(2)?,
+                    result.get::<_, u32>(2)?,
+                    result.get::<_, String>(3)?,
                 ))
             },
         )
@@ -434,10 +469,11 @@ pub fn assign_detected_file_tournament(
       SET format_id = ?3,
           tournament_id = ?4,
           local_state = 'queued_local',
-          updated_at = ?6
+          updated_at = ?7
       WHERE profile_id = ?1
         AND path = ?2
-        AND source_modified_at = ?5
+        AND team_count = ?5
+        AND source_modified_at = ?6
       ",
             params![
                 row.0,
@@ -445,6 +481,7 @@ pub fn assign_detected_file_tournament(
                 matched_format.id,
                 normalized_tournament_id,
                 row.2,
+                row.3,
                 now_iso()
             ],
         )
@@ -456,6 +493,7 @@ pub fn assign_detected_file_tournament(
 fn match_format_for_tournament_id(
     formats: &[TournamentFormat],
     tournament_id: &str,
+    team_count: u32,
 ) -> Result<TournamentFormat, String> {
     let matched_formats = formats
         .iter()
@@ -463,6 +501,7 @@ fn match_format_for_tournament_id(
             !format.tournament_id_prefix.is_empty()
                 && tournament_id.len() == format.tournament_id_prefix.len() + 4
                 && tournament_id.starts_with(&format.tournament_id_prefix)
+                && format_matches_team_count(format, team_count)
         })
         .cloned()
         .collect::<Vec<TournamentFormat>>();
@@ -474,6 +513,43 @@ fn match_format_for_tournament_id(
         return Err(String::from("tournament_id_prefix_ambiguous"));
     }
     Ok(matched_formats[0].clone())
+}
+
+fn format_matches_team_count(format: &TournamentFormat, team_count: u32) -> bool {
+    team_count == 0 || format.teams_per_tournament == 0 || format.teams_per_tournament == team_count
+}
+
+fn find_format_by_id<'a>(
+    formats: &'a [TournamentFormat],
+    format_id: &str,
+) -> Option<&'a TournamentFormat> {
+    formats.iter().find(|format| format.id == format_id)
+}
+
+fn format_assignment_matches_team_count(
+    formats: &[TournamentFormat],
+    format_id: &str,
+    team_count: u32,
+) -> bool {
+    format_id.is_empty()
+        || team_count == 0
+        || find_format_by_id(formats, format_id)
+            .map(|format| format_matches_team_count(format, team_count))
+            .unwrap_or(false)
+}
+
+fn ensure_format_matches_team_count(
+    formats: &[TournamentFormat],
+    format_id: &str,
+    team_count: u32,
+) -> Result<(), String> {
+    let Some(format) = find_format_by_id(formats, format_id) else {
+        return Err(String::from("format_not_found"));
+    };
+    if format_matches_team_count(format, team_count) {
+        return Ok(());
+    }
+    Err(String::from("format_team_count_mismatch"))
 }
 
 pub fn list_watch_roots_for_profile(
@@ -562,34 +638,70 @@ pub fn save_scan_results(
         )?;
 
         let inferred_tournament_assignment = if row.file_kind == "stats_export" {
-            infer_tournament_assignment_from_filename(&cached_formats, &row.filename)
-                .filter(|(format_id, _)| row.format_id.is_empty() || row.format_id == *format_id)
+            infer_tournament_assignment_from_filename(
+                &cached_formats,
+                &row.filename,
+                row.team_count,
+            )
+            .filter(|(format_id, _)| row.format_id.is_empty() || row.format_id == *format_id)
         } else {
             None
+        };
+        let row_format_id = if format_assignment_matches_team_count(
+            &cached_formats,
+            &row.format_id,
+            row.team_count,
+        ) {
+            row.format_id.clone()
+        } else {
+            String::new()
         };
         let existing_detected_matches_source = existing_detected.as_ref().is_some_and(|detected| {
             same_source_file(&row.source_modified_at, &detected.source_modified_at)
         });
-        let effective_format_id = if !row.format_id.is_empty() {
-            row.format_id.clone()
+        let existing_upload_format_id = existing_upload_job
+            .as_ref()
+            .filter(|job| {
+                format_assignment_matches_team_count(
+                    &cached_formats,
+                    &job.format_id,
+                    row.team_count,
+                )
+            })
+            .map(|job| job.format_id.clone())
+            .unwrap_or_default();
+        let existing_detected_format_id = existing_detected
+            .as_ref()
+            .filter(|detected| {
+                existing_detected_matches_source
+                    && format_assignment_matches_team_count(
+                        &cached_formats,
+                        &detected.format_id,
+                        row.team_count,
+                    )
+            })
+            .map(|detected| detected.format_id.clone())
+            .unwrap_or_default();
+        let effective_format_id = if !row_format_id.is_empty() {
+            row_format_id
         } else if let Some((format_id, _)) = &inferred_tournament_assignment {
             format_id.clone()
-        } else if let Some(job) = &existing_upload_job {
-            job.format_id.clone()
-        } else if existing_detected_matches_source {
-            existing_detected
-                .as_ref()
-                .map(|detected| detected.format_id.clone())
-                .unwrap_or_default()
+        } else if !existing_upload_format_id.is_empty() {
+            existing_upload_format_id.clone()
+        } else if !existing_detected_format_id.is_empty() {
+            existing_detected_format_id.clone()
         } else {
             String::new()
         };
         let effective_tournament_id =
             if let Some((_, tournament_id)) = &inferred_tournament_assignment {
                 tournament_id.clone()
-            } else if let Some(job) = &existing_upload_job {
-                job.tournament_id.clone()
-            } else if existing_detected_matches_source {
+            } else if !existing_upload_format_id.is_empty() {
+                existing_upload_job
+                    .as_ref()
+                    .map(|job| job.tournament_id.clone())
+                    .unwrap_or_default()
+            } else if !existing_detected_format_id.is_empty() {
                 existing_detected
                     .as_ref()
                     .map(|detected| detected.tournament_id.clone())
@@ -615,12 +727,13 @@ pub fn save_scan_results(
               filename = ?5,
               file_kind = ?6,
               checksum = ?7,
-              source_modified_at = ?8,
-              local_state = ?9,
+              team_count = ?8,
+              source_modified_at = ?9,
+              local_state = ?10,
               local_presence = 'present',
-              format_id = ?10,
-              tournament_id = ?11,
-              updated_at = ?12
+              format_id = ?11,
+              tournament_id = ?12,
+              updated_at = ?13
           WHERE detected_file_id = ?1
           ",
                     params![
@@ -631,6 +744,7 @@ pub fn save_scan_results(
                         row.filename,
                         row.file_kind,
                         row.checksum,
+                        row.team_count,
                         row.source_modified_at,
                         detected_state,
                         effective_format_id,
@@ -653,6 +767,7 @@ pub fn save_scan_results(
             filename,
             file_kind,
             checksum,
+            team_count,
             source_modified_at,
             local_state,
             local_presence,
@@ -661,7 +776,7 @@ pub fn save_scan_results(
             created_at,
             updated_at
           )
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'present', ?10, ?11, ?12, ?13, ?14)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'present', ?11, ?12, ?13, ?14, ?15)
           ",
                     params![
                         detected_file_id,
@@ -672,6 +787,7 @@ pub fn save_scan_results(
                         row.filename,
                         row.file_kind,
                         row.checksum,
+                        row.team_count,
                         row.source_modified_at,
                         detected_state,
                         effective_format_id,
@@ -715,11 +831,12 @@ pub fn save_scan_results(
               file_kind = ?5,
               local_presence = 'present',
               local_state = ?6,
-              source_modified_at = ?7,
-              format_id = ?8,
-              tournament_id = ?9,
-              error = ?10,
-              updated_at = CASE WHEN ?11 = 1 THEN ?12 ELSE updated_at END
+              team_count = ?7,
+              source_modified_at = ?8,
+              format_id = ?9,
+              tournament_id = ?10,
+              error = ?11,
+              updated_at = CASE WHEN ?12 = 1 THEN ?13 ELSE updated_at END
           WHERE upload_job_id = ?1
           ",
                     params![
@@ -729,6 +846,7 @@ pub fn save_scan_results(
                         staged_path,
                         row.file_kind,
                         next_local_state,
+                        row.team_count,
                         row.source_modified_at,
                         next_format_id,
                         next_tournament_id,
@@ -740,6 +858,7 @@ pub fn save_scan_results(
                         if next_local_state != job.local_state
                             || job.local_presence != "present"
                             || job.staged_path != staged_path
+                            || job.team_count != row.team_count
                             || job.source_modified_at != row.source_modified_at
                             || (!row.validation_error.is_empty()
                                 && row.validation_error != job.error)
@@ -770,6 +889,7 @@ pub fn save_scan_results(
             local_state,
             lifecycle_phase,
             checksum,
+            team_count,
             source_modified_at,
             format_id,
             tournament_id,
@@ -791,9 +911,9 @@ pub fn save_scan_results(
             updated_at
           )
           VALUES (
-            ?1, ?2, ?3, ?4, ?5, ?6, 'present', ?7, NULL, ?8, ?9, ?10, ?11, '',
+            ?1, ?2, ?3, ?4, ?5, ?6, 'present', ?7, NULL, ?8, ?9, ?10, ?11, ?12, '',
             '', '', '', '', '', '', '', '', '', '', '',
-            ?12, 0, ?13, ?14
+            ?13, 0, ?14, ?15
           )
           ",
                 params![
@@ -805,6 +925,7 @@ pub fn save_scan_results(
                     row.file_kind,
                     derive_scan_validation_local_state(row, &effective_format_id),
                     row.checksum,
+                    row.team_count,
                     row.source_modified_at,
                     effective_format_id,
                     effective_tournament_id,
@@ -1036,13 +1157,14 @@ fn sanitize_filename(filename: &str) -> String {
 fn infer_tournament_assignment_from_filename(
     formats: &[TournamentFormat],
     filename: &str,
+    team_count: u32,
 ) -> Option<(String, String)> {
     let candidates = extract_bounded_digit_runs(filename)
         .into_iter()
         .filter(|value| (5..=7).contains(&value.len()))
         .collect::<Vec<String>>();
     for candidate in candidates {
-        if let Ok(format) = match_format_for_tournament_id(formats, &candidate) {
+        if let Ok(format) = match_format_for_tournament_id(formats, &candidate, team_count) {
             return Some((format.id, candidate));
         }
     }
@@ -1526,7 +1648,7 @@ fn load_detected_files(connection: &Connection) -> Result<Vec<LocalDetectedFile>
     let mut statement = connection
     .prepare(
       "
-      SELECT detected_file_id, profile_id, watch_root_id, path, staged_path, filename, file_kind, checksum, source_modified_at, local_state, local_presence, format_id, tournament_id, created_at, updated_at
+      SELECT detected_file_id, profile_id, watch_root_id, path, staged_path, filename, file_kind, checksum, team_count, source_modified_at, local_state, local_presence, format_id, tournament_id, created_at, updated_at
       FROM detected_files
       ORDER BY updated_at DESC
       ",
@@ -1543,13 +1665,14 @@ fn load_detected_files(connection: &Connection) -> Result<Vec<LocalDetectedFile>
                 filename: row.get(5)?,
                 file_kind: row.get(6)?,
                 checksum: row.get(7)?,
-                source_modified_at: row.get(8)?,
-                local_state: row.get(9)?,
-                local_presence: row.get(10)?,
-                format_id: row.get(11)?,
-                tournament_id: row.get(12)?,
-                created_at: row.get(13)?,
-                updated_at: row.get(14)?,
+                team_count: row.get(8)?,
+                source_modified_at: row.get(9)?,
+                local_state: row.get(10)?,
+                local_presence: row.get(11)?,
+                format_id: row.get(12)?,
+                tournament_id: row.get(13)?,
+                created_at: row.get(14)?,
+                updated_at: row.get(15)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -1563,7 +1686,7 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
     let mut statement = connection
     .prepare(
       "
-      SELECT upload_job_id, profile_id, filename, path, staged_path, file_kind, local_presence, local_state, lifecycle_phase, checksum, source_modified_at, format_id, tournament_id, upload_id,
+      SELECT upload_job_id, profile_id, filename, path, staged_path, file_kind, local_presence, local_state, lifecycle_phase, checksum, team_count, source_modified_at, format_id, tournament_id, upload_id,
              error, retries, created_at, updated_at, server_status, remote_checksum, last_request_id, duplicate_reason,
              next_retry_after, queued_at, processing_at, parsed_at, refreshing_at, completed_at, failed_at
       FROM upload_jobs
@@ -1584,25 +1707,26 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
                 local_state: row.get(7)?,
                 lifecycle_phase: row.get(8)?,
                 checksum: row.get(9)?,
-                source_modified_at: row.get(10)?,
-                format_id: row.get(11)?,
-                tournament_id: row.get(12)?,
-                upload_id: row.get(13)?,
-                error: row.get(14)?,
-                retries: row.get(15)?,
-                created_at: row.get(16)?,
-                updated_at: row.get(17)?,
-                server_status: row.get(18)?,
-                remote_checksum: row.get(19)?,
-                last_request_id: row.get(20)?,
-                duplicate_reason: row.get(21)?,
-                next_retry_after: row.get(22)?,
-                queued_at: row.get(23)?,
-                processing_at: row.get(24)?,
-                parsed_at: row.get(25)?,
-                refreshing_at: row.get(26)?,
-                completed_at: row.get(27)?,
-                failed_at: row.get(28)?,
+                team_count: row.get(10)?,
+                source_modified_at: row.get(11)?,
+                format_id: row.get(12)?,
+                tournament_id: row.get(13)?,
+                upload_id: row.get(14)?,
+                error: row.get(15)?,
+                retries: row.get(16)?,
+                created_at: row.get(17)?,
+                updated_at: row.get(18)?,
+                server_status: row.get(19)?,
+                remote_checksum: row.get(20)?,
+                last_request_id: row.get(21)?,
+                duplicate_reason: row.get(22)?,
+                next_retry_after: row.get(23)?,
+                queued_at: row.get(24)?,
+                processing_at: row.get(25)?,
+                parsed_at: row.get(26)?,
+                refreshing_at: row.get(27)?,
+                completed_at: row.get(28)?,
+                failed_at: row.get(29)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -1844,8 +1968,8 @@ fn ensure_upload_job_column(
 #[cfg(test)]
 mod tests {
     use super::{
-        assign_detected_file_format, ensure_db, load_snapshot, match_format_for_tournament_id,
-        save_scan_results,
+        assign_detected_file_format, cache_formats, ensure_db, load_snapshot,
+        match_format_for_tournament_id, save_scan_results,
     };
     use crate::models::api::TournamentFormat;
     use crate::services::scanner::ScanResult;
@@ -1867,6 +1991,7 @@ mod tests {
             variant_limit_value: String::new(),
             ovr_min: None,
             ovr_max: None,
+            teams_per_tournament: 0,
             is_slots_tournament: false,
             slot_counts: crate::models::api::SlotCounts::default(),
             era_restrictions: Vec::new(),
@@ -1898,6 +2023,7 @@ mod tests {
                 .to_string(),
             file_kind: String::from("stats_export"),
             checksum: String::from("checksum-1"),
+            team_count: 16,
             source_modified_at: source_modified_at.to_string(),
             format_id: String::new(),
             validation_error: String::new(),
@@ -1908,7 +2034,7 @@ mod tests {
     fn matches_format_using_prefix_and_fixed_suffix_length() {
         let formats = vec![format("fmt-1", "12"), format("fmt-2", "345")];
         let matched =
-            match_format_for_tournament_id(&formats, "3456789").expect("format should match");
+            match_format_for_tournament_id(&formats, "3456789", 0).expect("format should match");
         assert_eq!(matched.id, "fmt-2");
     }
 
@@ -1916,16 +2042,25 @@ mod tests {
     fn rejects_when_no_prefix_matches_tournament_id() {
         let formats = vec![format("fmt-1", "12")];
         let error =
-            match_format_for_tournament_id(&formats, "99999").expect_err("match should fail");
+            match_format_for_tournament_id(&formats, "99999", 0).expect_err("match should fail");
         assert_eq!(error, "tournament_id_format_not_found");
     }
 
     #[test]
     fn rejects_when_multiple_formats_share_same_prefix() {
         let formats = vec![format("fmt-1", "12"), format("fmt-2", "12")];
-        let error = match_format_for_tournament_id(&formats, "120001")
+        let error = match_format_for_tournament_id(&formats, "120001", 0)
             .expect_err("match should be ambiguous");
         assert_eq!(error, "tournament_id_prefix_ambiguous");
+    }
+
+    #[test]
+    fn rejects_prefix_match_when_team_count_does_not_match() {
+        let mut format = format("fmt-1", "12");
+        format.teams_per_tournament = 16;
+        let error =
+            match_format_for_tournament_id(&[format], "120001", 8).expect_err("match should fail");
+        assert_eq!(error, "tournament_id_format_not_found");
     }
 
     #[test]
@@ -1942,6 +2077,9 @@ mod tests {
         );
 
         ensure_db(&db_path).expect("db should initialize");
+        let mut cached_format = format("fmt-old", "12");
+        cached_format.teams_per_tournament = 16;
+        cache_formats(&db_path, &[cached_format]).expect("formats should cache");
         let first_snapshot =
             save_scan_results(&db_path, "profile-1", &[scan_result(&csv_path, "1000")])
                 .expect("first scan should succeed");

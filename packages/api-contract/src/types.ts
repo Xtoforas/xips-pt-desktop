@@ -55,6 +55,17 @@ const nullableNumberSchema = z.preprocess((value) => {
   return value;
 }, z.number().nullable());
 
+const numberSchema = z.preprocess((value) => {
+  if (value === null || value === undefined || value === '') {
+    return 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+  return value;
+}, z.number());
+
 const slotCountsSchema = z.object({
   P: z.number().default(0),
   D: z.number().default(0),
@@ -76,6 +87,7 @@ export const tournamentFormatSchema = z.object({
   variantLimitValue: formatScalarSchema,
   ovrMin: nullableNumberSchema.default(null),
   ovrMax: nullableNumberSchema.default(null),
+  teamsPerTournament: numberSchema.default(0),
   isSlotsTournament: z.boolean().default(false),
   slotCounts: slotCountsSchema.default({ P: 0, D: 0, G: 0, S: 0, B: 0 }),
   eraRestrictions: z.array(z.string()).default([]),
@@ -236,6 +248,7 @@ export type LocalDetectedFile = {
   filename: string;
   fileKind: 'stats_export' | 'card_catalog' | 'unknown';
   checksum: string;
+  teamCount: number;
   localState: 'detected' | 'queued_local' | 'awaiting_format_assignment' | 'ignored';
   localPresence: 'present' | 'missing';
   formatId: string;
@@ -278,6 +291,7 @@ export type LocalUploadJob = {
     | 'auth_blocked';
   lifecyclePhase: UploadLifecyclePhase | null;
   checksum: string;
+  teamCount: number;
   formatId: string;
   tournamentId: string;
   uploadId: string;
