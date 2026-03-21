@@ -71,7 +71,7 @@ pub fn scan_watch_roots(
                 0
             };
             let source_modified_at = read_source_modified_at(path);
-            let format_id = resolve_format_id(path, watch_root, format_rules);
+            let format_id = resolve_format_id(path, &file_kind, watch_root, format_rules);
             results.push(ScanResult {
                 watch_root_id: watch_root.id.clone(),
                 path: path.to_string_lossy().to_string(),
@@ -322,6 +322,7 @@ fn parse_numeric_value(value: &str) -> f64 {
 
 fn resolve_format_id(
     path: &Path,
+    file_kind: &str,
     watch_root: &LocalWatchRoot,
     format_rules: &[FormatRuleMatch],
 ) -> String {
@@ -330,12 +331,17 @@ fn resolve_format_id(
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_lowercase();
+    let generic_stats_export_name =
+        file_kind == "stats_export" && is_generic_stats_export_filename(&filename);
     for rule in format_rules
         .iter()
         .filter(|rule| rule.watch_root_id == watch_root.id)
     {
         if rule.match_type == "folder" {
             return rule.format_id.clone();
+        }
+        if generic_stats_export_name {
+            continue;
         }
         if !rule.pattern.is_empty() && filename.contains(&rule.pattern.to_lowercase()) {
             return rule.format_id.clone();
@@ -344,10 +350,16 @@ fn resolve_format_id(
     String::new()
 }
 
+fn is_generic_stats_export_filename(filename: &str) -> bool {
+    filename.contains("statistics_player_statistics")
+        && filename.contains("sortable_stats_statsexport.csv")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_kind, resolve_format_id, should_ignore_path, split_header, validate_stats_export,
+        detect_kind, is_generic_stats_export_filename, resolve_format_id, should_ignore_path,
+        split_header, validate_stats_export,
     };
     use crate::models::local_state::LocalWatchRoot;
     use crate::services::scanner::FormatRuleMatch;
@@ -418,6 +430,7 @@ mod tests {
         ];
         let format_id = resolve_format_id(
             Path::new("/tmp/pt27_statistics_player_statistics_-_sortable_stats_statsexport.csv"),
+            "stats_export",
             &root,
             &rules,
         );
@@ -425,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_filename_rule_when_no_folder_rule_exists() {
+    fn ignores_filename_rule_for_generic_stats_export_name() {
         let root = watch_root();
         let rules = vec![FormatRuleMatch {
             watch_root_id: root.id.clone(),
@@ -435,10 +448,42 @@ mod tests {
         }];
         let format_id = resolve_format_id(
             Path::new("/tmp/pt27_statistics_player_statistics_-_sortable_stats_statsexport.csv"),
+            "stats_export",
+            &root,
+            &rules,
+        );
+        assert_eq!(format_id, "");
+    }
+
+    #[test]
+    fn resolves_filename_rule_for_custom_stats_export_name() {
+        let root = watch_root();
+        let rules = vec![FormatRuleMatch {
+            watch_root_id: root.id.clone(),
+            match_type: String::from("filename"),
+            pattern: String::from("bronze_quick"),
+            format_id: String::from("filename-format"),
+        }];
+        let format_id = resolve_format_id(
+            Path::new("/tmp/120001_bronze_quick_stats_export.csv"),
+            "stats_export",
             &root,
             &rules,
         );
         assert_eq!(format_id, "filename-format");
+    }
+
+    #[test]
+    fn detects_generic_stats_export_name() {
+        assert!(is_generic_stats_export_filename(
+            "pt27_statistics_player_statistics_-_sortable_stats_statsexport.csv"
+        ));
+        assert!(is_generic_stats_export_filename(
+            "statistics_player_statistics_-_sortable_stats_statsexport.csv"
+        ));
+        assert!(!is_generic_stats_export_filename(
+            "120001_bronze_quick_stats_export.csv"
+        ));
     }
 
     #[test]
