@@ -364,7 +364,7 @@ pub fn assign_detected_file_format(
 
     let row = connection
         .query_row(
-            "SELECT profile_id, path, team_count, source_modified_at FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
+            "SELECT profile_id, path, team_count, checksum, source_modified_at FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
             params![detected_file_id],
             |result| {
                 Ok((
@@ -372,6 +372,7 @@ pub fn assign_detected_file_format(
                     result.get::<_, String>(1)?,
                     result.get::<_, u32>(2)?,
                     result.get::<_, String>(3)?,
+                    result.get::<_, String>(4)?,
                 ))
             },
         )
@@ -384,13 +385,14 @@ pub fn assign_detected_file_format(
       SET format_id = ?3,
           tournament_id = '',
           local_state = 'queued_local',
-          updated_at = ?6
+          updated_at = ?7
       WHERE profile_id = ?1
         AND path = ?2
         AND team_count = ?4
-        AND source_modified_at = ?5
+        AND checksum = ?5
+        AND source_modified_at = ?6
       ",
-            params![row.0, row.1, format_id, row.2, row.3, now_iso()],
+            params![row.0, row.1, format_id, row.2, row.3, row.4, now_iso()],
         )
         .map_err(|error| error.to_string())?;
 
@@ -449,7 +451,7 @@ pub fn assign_detected_file_tournament(
 
     let row = connection
         .query_row(
-            "SELECT profile_id, path, team_count, source_modified_at FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
+            "SELECT profile_id, path, team_count, checksum, source_modified_at FROM detected_files WHERE detected_file_id = ?1 LIMIT 1",
             params![detected_file_id],
             |result| {
                 Ok((
@@ -457,6 +459,7 @@ pub fn assign_detected_file_tournament(
                     result.get::<_, String>(1)?,
                     result.get::<_, u32>(2)?,
                     result.get::<_, String>(3)?,
+                    result.get::<_, String>(4)?,
                 ))
             },
         )
@@ -469,11 +472,12 @@ pub fn assign_detected_file_tournament(
       SET format_id = ?3,
           tournament_id = ?4,
           local_state = 'queued_local',
-          updated_at = ?7
+          updated_at = ?8
       WHERE profile_id = ?1
         AND path = ?2
         AND team_count = ?5
-        AND source_modified_at = ?6
+        AND checksum = ?6
+        AND source_modified_at = ?7
       ",
             params![
                 row.0,
@@ -482,6 +486,7 @@ pub fn assign_detected_file_tournament(
                 normalized_tournament_id,
                 row.2,
                 row.3,
+                row.4,
                 now_iso()
             ],
         )
@@ -657,7 +662,12 @@ pub fn save_scan_results(
             String::new()
         };
         let existing_detected_matches_source = existing_detected.as_ref().is_some_and(|detected| {
-            same_source_file(&row.source_modified_at, &detected.source_modified_at)
+            same_file_instance(
+                &row.checksum,
+                &detected.checksum,
+                &row.source_modified_at,
+                &detected.source_modified_at,
+            )
         });
         let existing_upload_format_id = existing_upload_job
             .as_ref()
@@ -1191,6 +1201,16 @@ fn same_source_file(left: &str, right: &str) -> bool {
     !left.is_empty() && left == right
 }
 
+fn same_file_instance(
+    left_checksum: &str,
+    right_checksum: &str,
+    left_source_modified_at: &str,
+    right_source_modified_at: &str,
+) -> bool {
+    left_checksum == right_checksum
+        && same_source_file(left_source_modified_at, right_source_modified_at)
+}
+
 fn derive_existing_upload_local_state(
     current_state: &str,
     file_kind: &str,
@@ -1336,8 +1356,12 @@ pub fn remove_awaiting_upload_job(
     let detected_file = load_detected_files(&connection)?.into_iter().find(|file| {
         file.profile_id == job.profile_id
             && file.path == job.path
-            && file.checksum == job.checksum
-            && same_source_file(&file.source_modified_at, &job.source_modified_at)
+            && same_file_instance(
+                &file.checksum,
+                &job.checksum,
+                &file.source_modified_at,
+                &job.source_modified_at,
+            )
     });
     let detected_file_id = detected_file.as_ref().map(|file| file.id.clone());
     let staged_path = if !job.staged_path.is_empty() {
@@ -2013,6 +2037,14 @@ mod tests {
     }
 
     fn scan_result(path: &Path, source_modified_at: &str) -> ScanResult {
+        scan_result_with_checksum(path, source_modified_at, "checksum-1")
+    }
+
+    fn scan_result_with_checksum(
+        path: &Path,
+        source_modified_at: &str,
+        checksum: &str,
+    ) -> ScanResult {
         ScanResult {
             watch_root_id: String::from("root-1"),
             path: path.to_string_lossy().into_owned(),
@@ -2022,7 +2054,7 @@ mod tests {
                 .unwrap_or_default()
                 .to_string(),
             file_kind: String::from("stats_export"),
-            checksum: String::from("checksum-1"),
+            checksum: checksum.to_string(),
             team_count: 16,
             source_modified_at: source_modified_at.to_string(),
             format_id: String::new(),
@@ -2112,6 +2144,72 @@ mod tests {
         assert_eq!(original_job.format_id, "fmt-old");
         assert_eq!(snapshot.detected_files.len(), 1);
         assert_eq!(snapshot.detected_files[0].source_modified_at, "2000");
+        assert_eq!(snapshot.detected_files[0].format_id, "");
+
+        if let Some(parent) = db_path.parent() {
+            if parent.exists() {
+                fs::remove_dir_all(parent).expect("temporary directory should be removed");
+            }
+        }
+    }
+
+    #[test]
+    fn changed_checksum_with_same_timestamp_does_not_reuse_previous_assignment() {
+        let db_path = temp_db_path("changed-checksum-same-timestamp");
+        let fixture_root = db_path
+            .parent()
+            .expect("db path should have parent")
+            .join("watch");
+        let csv_path = write_fixture_file(
+            &fixture_root,
+            "sortable_stats.csv",
+            "POS,CID,VLvl,PA,IP,ERA+,FRM,ARM\nCF,1,1,10,2,100,0,0\n",
+        );
+
+        ensure_db(&db_path).expect("db should initialize");
+        let mut cached_format = format("fmt-old", "12");
+        cached_format.teams_per_tournament = 16;
+        cache_formats(&db_path, &[cached_format]).expect("formats should cache");
+        let first_snapshot = save_scan_results(
+            &db_path,
+            "profile-1",
+            &[scan_result_with_checksum(&csv_path, "1000", "checksum-1")],
+        )
+        .expect("first scan should succeed");
+        let detected_file_id = first_snapshot
+            .detected_files
+            .first()
+            .expect("detected file should exist")
+            .id
+            .clone();
+
+        assign_detected_file_format(&db_path, &detected_file_id, "fmt-old")
+            .expect("manual assignment should succeed");
+        save_scan_results(
+            &db_path,
+            "profile-1",
+            &[scan_result_with_checksum(&csv_path, "1000", "checksum-2")],
+        )
+        .expect("second scan should succeed");
+
+        let snapshot = load_snapshot(&db_path).expect("snapshot should load");
+        let refreshed_job = snapshot
+            .upload_jobs
+            .iter()
+            .find(|job| job.checksum == "checksum-2")
+            .expect("new upload job should exist");
+        let original_job = snapshot
+            .upload_jobs
+            .iter()
+            .find(|job| job.checksum == "checksum-1")
+            .expect("original upload job should remain");
+
+        assert_eq!(refreshed_job.format_id, "");
+        assert_eq!(refreshed_job.tournament_id, "");
+        assert_eq!(refreshed_job.local_state, "awaiting_format_assignment");
+        assert_eq!(original_job.format_id, "fmt-old");
+        assert_eq!(snapshot.detected_files.len(), 1);
+        assert_eq!(snapshot.detected_files[0].checksum, "checksum-2");
         assert_eq!(snapshot.detected_files[0].format_id, "");
 
         if let Some(parent) = db_path.parent() {
