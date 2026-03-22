@@ -1,7 +1,7 @@
 import { Alert, Badge, Button, Card, Group, HoverCard, Select, Stack, Text, TextInput } from '@mantine/core';
 import { NavLink, useLocation } from 'react-router-dom';
 import type { DesktopPreferences, LocalFormatRule, LocalServerProfile, LocalWatchRoot, LocalUploadJob, TournamentFormat } from '@xips/api-contract';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
 
@@ -560,23 +560,56 @@ export const QueueTable = ({
   jobs,
   formatLabels,
   selectedJobId,
+  selectedJobIds,
   onSelect,
+  onToggleJobSelection,
+  onToggleAllSelection,
   actions,
   renderFilename
 }: {
   jobs: LocalUploadJob[];
   formatLabels?: Record<string, string>;
   selectedJobId?: string;
+  selectedJobIds?: string[];
   onSelect?: (job: LocalUploadJob) => void;
+  onToggleJobSelection?: (job: LocalUploadJob, checked: boolean) => void;
+  onToggleAllSelection?: (checked: boolean) => void;
   actions?: (job: LocalUploadJob) => JSX.Element;
   renderFilename?: (job: LocalUploadJob) => JSX.Element;
 }): JSX.Element => {
   const orderedJobs = [...jobs].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+  const selectionEnabled = Boolean(selectedJobIds && onToggleJobSelection && onToggleAllSelection);
+  const selectedIds = new Set(selectedJobIds ?? []);
+  const selectedVisibleCount = orderedJobs.filter((job) => selectedIds.has(job.id)).length;
+  const allVisibleSelected = orderedJobs.length > 0 && selectedVisibleCount === orderedJobs.length;
+  const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!selectAllRef.current) {
+      return;
+    }
+    selectAllRef.current.indeterminate = selectionEnabled && someVisibleSelected;
+  }, [selectionEnabled, someVisibleSelected]);
+
   return (
   <div className="desktop-table-wrap">
     <table className="desktop-table">
       <thead>
         <tr>
+          {selectionEnabled ? (
+            <th>
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                aria-label="Select all queue entries"
+                checked={allVisibleSelected}
+                onChange={(event) => {
+                  onToggleAllSelection?.(event.currentTarget.checked);
+                }}
+              />
+            </th>
+          ) : null}
           <th>Updated</th>
           <th>File</th>
           <th>Kind</th>
@@ -592,7 +625,7 @@ export const QueueTable = ({
       <tbody>
         {orderedJobs.length === 0 ? (
           <tr>
-            <td colSpan={10}>No queued uploads yet.</td>
+            <td colSpan={selectionEnabled ? 11 : 10}>No queued uploads yet.</td>
           </tr>
         ) : (
           orderedJobs.map((job) => (
@@ -601,6 +634,22 @@ export const QueueTable = ({
               className={selectedJobId === job.id ? 'desktop-row-selected' : ''}
               onClick={() => onSelect?.(job)}
             >
+              {selectionEnabled ? (
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${job.filename}`}
+                    checked={selectedIds.has(job.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                    onChange={(event) => {
+                      event.stopPropagation();
+                      onToggleJobSelection?.(job, event.currentTarget.checked);
+                    }}
+                  />
+                </td>
+              ) : null}
               <td>{new Date(job.updatedAt).toLocaleString()}</td>
               <td>{renderFilename ? renderFilename(job) : job.filename}</td>
               <td>

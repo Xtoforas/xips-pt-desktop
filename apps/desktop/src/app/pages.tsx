@@ -207,10 +207,12 @@ export const UploadQueuePage = (): JSX.Element => {
   } = useDesktop();
   const [filter, setFilter] = useState<'all' | 'queued' | 'uploaded'>('all');
   const [selectedJobId, setSelectedJobId] = useState('');
+  const [selectedQueueJobIds, setSelectedQueueJobIds] = useState<string[]>([]);
   const [selectedFormatId, setSelectedFormatId] = useState('');
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
   const [editingFilenameJobId, setEditingFilenameJobId] = useState('');
   const [inlineTournamentId, setInlineTournamentId] = useState('');
+  const [bulkDismissInFlight, setBulkDismissInFlight] = useState(false);
   const formatLabelById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
@@ -231,6 +233,19 @@ export const UploadQueuePage = (): JSX.Element => {
         return snapshot.uploadJobs;
     }
   }, [filter, snapshot.uploadJobs]);
+  const selectedQueueJobs = useMemo(
+    () => filteredJobs.filter((job) => selectedQueueJobIds.includes(job.id)),
+    [filteredJobs, selectedQueueJobIds]
+  );
+  const dismissibleSelectedJobs = useMemo(
+    () =>
+      selectedQueueJobs.filter(
+        (job) =>
+          job.localState === 'duplicate_skipped_local' ||
+          job.localState === 'awaiting_format_assignment'
+      ),
+    [selectedQueueJobs]
+  );
 
   const selectedJob = useMemo(
     () => filteredJobs.find((job) => job.id === selectedJobId) ?? snapshot.uploadJobs.find((job) => job.id === selectedJobId) ?? null,
@@ -337,6 +352,35 @@ export const UploadQueuePage = (): JSX.Element => {
     }
   }, [editingFilenameJobId]);
 
+  useEffect(() => {
+    const visibleJobIds = new Set(filteredJobs.map((job) => job.id));
+    setSelectedQueueJobIds((current) => current.filter((jobId) => visibleJobIds.has(jobId)));
+  }, [filteredJobs]);
+
+  const dismissSelectedJobs = async (): Promise<void> => {
+    if (dismissibleSelectedJobs.length === 0 || bulkDismissInFlight) {
+      return;
+    }
+
+    setBulkDismissInFlight(true);
+    const removedIds = dismissibleSelectedJobs.map((job) => job.id);
+    try {
+      for (const job of dismissibleSelectedJobs) {
+        if (job.localState === 'duplicate_skipped_local') {
+          await dismissDuplicateUploadJob(job.id);
+        } else if (job.localState === 'awaiting_format_assignment') {
+          await removeAwaitingUploadJob(job.id);
+        }
+      }
+      setSelectedQueueJobIds((current) => current.filter((jobId) => !removedIds.includes(jobId)));
+      if (removedIds.includes(selectedJobId)) {
+        setSelectedJobId('');
+      }
+    } finally {
+      setBulkDismissInFlight(false);
+    }
+  };
+
   return (
     <Stack gap="lg">
       <div>
@@ -357,13 +401,46 @@ export const UploadQueuePage = (): JSX.Element => {
       <Stack gap="lg">
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
-            <Text fw={700}>Queue</Text>
+            <Group justify="space-between" align="center">
+              <Text fw={700}>Queue</Text>
+              <Group gap="xs" align="center">
+                {selectedQueueJobIds.length > 0 ? (
+                  <Text size="sm" c="dimmed">
+                    {dismissibleSelectedJobs.length} of {selectedQueueJobIds.length} selected can be dismissed.
+                  </Text>
+                ) : null}
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="red"
+                  disabled={dismissibleSelectedJobs.length === 0 || bulkDismissInFlight}
+                  loading={bulkDismissInFlight}
+                  onClick={() => {
+                    void dismissSelectedJobs();
+                  }}
+                >
+                  Dismiss selected
+                </Button>
+              </Group>
+            </Group>
             <QueueTable
               jobs={filteredJobs}
               formatLabels={formatLabelById}
               selectedJobId={selectedJobId}
+              selectedJobIds={selectedQueueJobIds}
               onSelect={(job) => {
                 setSelectedJobId(job.id);
+              }}
+              onToggleJobSelection={(job, checked) => {
+                setSelectedQueueJobIds((current) => {
+                  if (checked) {
+                    return current.includes(job.id) ? current : [...current, job.id];
+                  }
+                  return current.filter((jobId) => jobId !== job.id);
+                });
+              }}
+              onToggleAllSelection={(checked) => {
+                setSelectedQueueJobIds(checked ? filteredJobs.map((job) => job.id) : []);
               }}
               renderFilename={(job) => {
                 const canInlineAssign = job.localState === 'awaiting_format_assignment' && job.fileKind === 'stats_export';
