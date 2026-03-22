@@ -205,7 +205,7 @@ export const UploadQueuePage = (): JSX.Element => {
     openUploadFileLocation,
     openAuthWindow
   } = useDesktop();
-  const [filter, setFilter] = useState<'all' | 'awaiting' | 'queued' | 'complete'>('all');
+  const [filter, setFilter] = useState<'all' | 'queued' | 'uploaded'>('all');
   const [selectedJobId, setSelectedJobId] = useState('');
   const [selectedFormatId, setSelectedFormatId] = useState('');
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
@@ -219,15 +219,13 @@ export const UploadQueuePage = (): JSX.Element => {
 
   const filteredJobs = useMemo(() => {
     switch (filter) {
-      case 'awaiting':
-        return snapshot.uploadJobs.filter((job) => job.localState === 'awaiting_format_assignment');
       case 'queued':
         return snapshot.uploadJobs.filter(
           (job) =>
             !['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState) &&
             (job.localPresence === 'present' || Boolean(job.uploadId))
         );
-      case 'complete':
+      case 'uploaded':
         return snapshot.uploadJobs.filter((job) => ['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState));
       default:
         return snapshot.uploadJobs;
@@ -349,14 +347,11 @@ export const UploadQueuePage = (): JSX.Element => {
         <Button size="xs" variant={filter === 'all' ? 'filled' : 'light'} onClick={() => setFilter('all')}>
           All
         </Button>
-        <Button size="xs" variant={filter === 'awaiting' ? 'filled' : 'light'} onClick={() => setFilter('awaiting')}>
-          Awaiting format
-        </Button>
         <Button size="xs" variant={filter === 'queued' ? 'filled' : 'light'} onClick={() => setFilter('queued')}>
-          Active
+          Queued
         </Button>
-        <Button size="xs" variant={filter === 'complete' ? 'filled' : 'light'} onClick={() => setFilter('complete')}>
-          Complete
+        <Button size="xs" variant={filter === 'uploaded' ? 'filled' : 'light'} onClick={() => setFilter('uploaded')}>
+          Uploaded
         </Button>
       </Group>
       <Stack gap="lg">
