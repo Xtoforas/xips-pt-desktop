@@ -7,6 +7,9 @@ import {
   formatFileKindLabel,
   formatLifecycleLabel,
   formatLocalPresenceLabel,
+  formatSourceModifiedAt,
+  formatUploadJobModifiedAt,
+  getUploadJobModifiedAt,
   formatOvrRangeLabel,
   formatQueueStateLabel,
   formatSlotCountsLabel,
@@ -62,7 +65,7 @@ export const OverviewPage = (): JSX.Element => {
   const recentActivity = useMemo(
     () =>
       [...snapshot.uploadJobs]
-        .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+        .sort((left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0))
         .slice(0, 8),
     [snapshot.uploadJobs]
   );
@@ -136,7 +139,7 @@ export const OverviewPage = (): JSX.Element => {
                       <th>File</th>
                       <th>Format</th>
                       <th>State</th>
-                      <th>Updated</th>
+                      <th>Modified</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -145,7 +148,7 @@ export const OverviewPage = (): JSX.Element => {
                         <td>{job.filename}</td>
                         <td>{job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'}</td>
                         <td>{formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}</td>
-                        <td>{new Date(job.updatedAt).toLocaleString()}</td>
+                        <td>{formatUploadJobModifiedAt(job)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -599,7 +602,8 @@ export const UploadQueuePage = (): JSX.Element => {
                       <tr><th>Failed</th><td>{selectedJob.failedAt || '-'}</td></tr>
                       <tr><th>Retries</th><td>{selectedJob.retries}</td></tr>
                       <tr><th>Error</th><td>{selectedJob.error || '-'}</td></tr>
-                      <tr><th>Updated</th><td>{new Date(selectedJob.updatedAt).toLocaleString()}</td></tr>
+                      <tr><th>Source modified</th><td>{formatSourceModifiedAt(selectedJob.sourceModifiedAt)}</td></tr>
+                      <tr><th>Queue updated</th><td>{new Date(selectedJob.updatedAt).toLocaleString()}</td></tr>
                     </tbody>
                   </table>
                 </div>

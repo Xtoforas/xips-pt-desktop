@@ -249,6 +249,7 @@ export type LocalDetectedFile = {
   fileKind: 'stats_export' | 'card_catalog' | 'unknown';
   checksum: string;
   teamCount: number;
+  sourceModifiedAt: string;
   localState: 'detected' | 'queued_local' | 'awaiting_format_assignment' | 'ignored';
   localPresence: 'present' | 'missing';
   formatId: string;
@@ -292,6 +293,7 @@ export type LocalUploadJob = {
   lifecyclePhase: UploadLifecyclePhase | null;
   checksum: string;
   teamCount: number;
+  sourceModifiedAt: string;
   formatId: string;
   tournamentId: string;
   uploadId: string;

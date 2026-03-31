@@ -866,7 +866,6 @@ pub fn save_scan_results(
                             job.error.clone()
                         },
                         if next_local_state != job.local_state
-                            || job.local_presence != "present"
                             || job.staged_path != staged_path
                             || job.team_count != row.team_count
                             || job.source_modified_at != row.source_modified_at
@@ -1999,6 +1998,7 @@ mod tests {
     use crate::services::scanner::ScanResult;
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::time::Duration;
     use uuid::Uuid;
 
     fn format(id: &str, prefix: &str) -> TournamentFormat {
@@ -2211,6 +2211,52 @@ mod tests {
         assert_eq!(snapshot.detected_files.len(), 1);
         assert_eq!(snapshot.detected_files[0].checksum, "checksum-2");
         assert_eq!(snapshot.detected_files[0].format_id, "");
+
+        if let Some(parent) = db_path.parent() {
+            if parent.exists() {
+                fs::remove_dir_all(parent).expect("temporary directory should be removed");
+            }
+        }
+    }
+
+    #[test]
+    fn unchanged_rescan_preserves_upload_job_updated_at() {
+        let db_path = temp_db_path("unchanged-rescan-updated-at");
+        let fixture_root = db_path
+            .parent()
+            .expect("db path should have parent")
+            .join("watch");
+        let csv_path = write_fixture_file(
+            &fixture_root,
+            "sortable_stats.csv",
+            "POS,CID,VLvl,PA,IP,ERA+,FRM,ARM\nCF,1,1,10,2,100,0,0\n",
+        );
+
+        ensure_db(&db_path).expect("db should initialize");
+        let first_snapshot =
+            save_scan_results(&db_path, "profile-1", &[scan_result(&csv_path, "1000")])
+                .expect("first scan should succeed");
+        let first_updated_at = first_snapshot
+            .upload_jobs
+            .first()
+            .expect("upload job should exist")
+            .updated_at
+            .clone();
+
+        std::thread::sleep(Duration::from_millis(5));
+
+        save_scan_results(&db_path, "profile-1", &[scan_result(&csv_path, "1000")])
+            .expect("second scan should succeed");
+
+        let snapshot = load_snapshot(&db_path).expect("snapshot should load");
+        let unchanged_job = snapshot
+            .upload_jobs
+            .first()
+            .expect("upload job should still exist");
+
+        assert_eq!(unchanged_job.updated_at, first_updated_at);
+        assert_eq!(unchanged_job.source_modified_at, "1000");
+        assert_eq!(unchanged_job.local_presence, "present");
 
         if let Some(parent) = db_path.parent() {
             if parent.exists() {

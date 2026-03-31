@@ -483,6 +483,26 @@ export const formatLifecycleLabel = (
 export const formatLocalPresenceLabel = (presence: LocalUploadJob['localPresence']): string =>
   presence === 'present' ? 'present_locally' : 'missing_locally';
 
+export const getUploadJobModifiedAt = (job: LocalUploadJob): number | null => {
+  const sourceModifiedAt = Number(job.sourceModifiedAt);
+  if (Number.isFinite(sourceModifiedAt) && sourceModifiedAt > 0) {
+    return sourceModifiedAt;
+  }
+
+  const queueUpdatedAt = Date.parse(job.updatedAt);
+  return Number.isFinite(queueUpdatedAt) ? queueUpdatedAt : null;
+};
+
+export const formatUploadJobModifiedAt = (job: LocalUploadJob): string => {
+  const modifiedAt = getUploadJobModifiedAt(job);
+  return modifiedAt === null ? '-' : new Date(modifiedAt).toLocaleString();
+};
+
+export const formatSourceModifiedAt = (sourceModifiedAt: string): string => {
+  const parsed = Number(sourceModifiedAt);
+  return Number.isFinite(parsed) && parsed > 0 ? new Date(parsed).toLocaleString() : '-';
+};
+
 export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind'] }): JSX.Element => (
   <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
     {formatFileKindLabel(fileKind)}
@@ -577,7 +597,9 @@ export const QueueTable = ({
   actions?: (job: LocalUploadJob) => JSX.Element;
   renderFilename?: (job: LocalUploadJob) => JSX.Element;
 }): JSX.Element => {
-  const orderedJobs = [...jobs].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+  const orderedJobs = [...jobs].sort(
+    (left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)
+  );
   const selectionEnabled = Boolean(selectedJobIds && onToggleJobSelection && onToggleAllSelection);
   const selectedIds = new Set(selectedJobIds ?? []);
   const selectedVisibleCount = orderedJobs.filter((job) => selectedIds.has(job.id)).length;
@@ -610,7 +632,7 @@ export const QueueTable = ({
               />
             </th>
           ) : null}
-          <th>Updated</th>
+          <th>Modified</th>
           <th>File</th>
           <th>Kind</th>
           <th>Format</th>
@@ -650,7 +672,7 @@ export const QueueTable = ({
                   />
                 </td>
               ) : null}
-              <td>{new Date(job.updatedAt).toLocaleString()}</td>
+              <td>{formatUploadJobModifiedAt(job)}</td>
               <td>{renderFilename ? renderFilename(job) : job.filename}</td>
               <td>
                 <FileKindBadge fileKind={job.fileKind} />
