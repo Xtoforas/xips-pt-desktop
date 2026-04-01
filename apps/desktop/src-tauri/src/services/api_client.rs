@@ -47,13 +47,14 @@ pub async fn check_health(base_url: &str) -> Result<ServiceHealth, String> {
     let url = format!("{}/health", base_url.trim_end_matches('/'));
     let response = client
         .get(url)
+        .header(
+            header::ACCEPT,
+            "application/json, text/plain;q=0.9, */*;q=0.8",
+        )
         .send()
         .await
-        .map_err(|error| error.to_string())?;
-    response
-        .json::<ServiceHealth>()
-        .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| format!("request_failed: {error}"))?;
+    parse_health_response(response).await
 }
 
 pub async fn fetch_formats(base_url: &str) -> Result<Vec<TournamentFormat>, String> {
@@ -293,6 +294,153 @@ async fn parse_response<T: DeserializeOwned>(
     })
 }
 
+async fn parse_health_response(response: Response) -> Result<ServiceHealth, String> {
+    let status = response.status().as_u16();
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let text = response
+        .text()
+        .await
+        .map_err(|error| format!("response_read_failed: {error}"))?;
+
+    if !(200..300).contains(&status) {
+        let body = compact_error_detail(&text);
+        return if body.is_empty() {
+            Err(format!("status={status}"))
+        } else {
+            Err(format!("status={status},body={body}"))
+        };
+    }
+
+    parse_health_payload(&text).map_err(|error| {
+        let body = compact_error_detail(&text);
+        let mut detail = format!("status={status},reason={error}");
+        if !content_type.is_empty() {
+            detail.push_str(&format!(",content_type={content_type}"));
+        }
+        if !body.is_empty() {
+            detail.push_str(&format!(",body={body}"));
+        }
+        detail
+    })
+}
+
+fn parse_health_payload(text: &str) -> Result<ServiceHealth, String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(default_health(true));
+    }
+
+    if let Ok(payload) = serde_json::from_str::<ServiceHealth>(trimmed) {
+        return Ok(payload);
+    }
+
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        if let Some(payload) = coerce_health_value(&value) {
+            return Ok(payload);
+        }
+    }
+
+    if let Some(ok) = parse_status_text(trimmed) {
+        return Ok(default_health(ok));
+    }
+
+    Err(String::from("unsupported_health_payload"))
+}
+
+fn coerce_health_value(value: &Value) -> Option<ServiceHealth> {
+    match value {
+        Value::Bool(ok) => Some(default_health(*ok)),
+        Value::String(text) => parse_status_text(text).map(default_health),
+        Value::Object(map) => {
+            let ok = map
+                .get("ok")
+                .and_then(Value::as_bool)
+                .or_else(|| map.get("healthy").and_then(Value::as_bool))
+                .or_else(|| map.get("status").and_then(parse_status_value))
+                .or_else(|| map.get("message").and_then(parse_status_value))?;
+            Some(ServiceHealth {
+                ok,
+                service: map
+                    .get("service")
+                    .and_then(value_to_string)
+                    .or_else(|| map.get("name").and_then(value_to_string)),
+                queue_depth: map
+                    .get("queueDepth")
+                    .and_then(value_to_u32)
+                    .or_else(|| map.get("queue_depth").and_then(value_to_u32)),
+                failed_jobs: map
+                    .get("failedJobs")
+                    .and_then(value_to_u32)
+                    .or_else(|| map.get("failed_jobs").and_then(value_to_u32)),
+                timestamp: map.get("timestamp").and_then(value_to_string),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn default_health(ok: bool) -> ServiceHealth {
+    ServiceHealth {
+        ok,
+        service: None,
+        queue_depth: None,
+        failed_jobs: None,
+        timestamp: None,
+    }
+}
+
+fn parse_status_value(value: &Value) -> Option<bool> {
+    match value {
+        Value::Bool(flag) => Some(*flag),
+        Value::String(text) => parse_status_text(text),
+        _ => None,
+    }
+}
+
+fn parse_status_text(text: &str) -> Option<bool> {
+    match text.trim().to_ascii_lowercase().as_str() {
+        "ok" | "healthy" | "up" | "ready" | "true" => Some(true),
+        "error" | "failed" | "down" | "unhealthy" | "false" => Some(false),
+        _ => None,
+    }
+}
+
+fn value_to_string(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
+fn value_to_u32(value: &Value) -> Option<u32> {
+    match value {
+        Value::Number(number) => number
+            .as_u64()
+            .and_then(|parsed| u32::try_from(parsed).ok()),
+        Value::String(text) => text.trim().parse::<u32>().ok(),
+        _ => None,
+    }
+}
+
+fn compact_error_detail(text: &str) -> String {
+    let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = compact.chars();
+    let truncated = chars.by_ref().take(160).collect::<String>();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
+}
+
 pub fn into_session_user(
     payload: &crate::models::api::ApiSessionUser,
 ) -> crate::models::local_state::SessionUser {
@@ -301,5 +449,39 @@ pub fn into_session_user(
         discord_id: payload.discord_id.clone(),
         display_name: payload.display_name.clone(),
         role: payload.role.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_health_payload;
+
+    #[test]
+    fn parse_health_payload_accepts_stringified_counts() {
+        let payload = parse_health_payload(
+            r#"{"ok":true,"service":"api","queueDepth":"7","failedJobs":"2"}"#,
+        )
+        .expect("health payload should parse");
+
+        assert!(payload.ok);
+        assert_eq!(payload.queue_depth, Some(7));
+        assert_eq!(payload.failed_jobs, Some(2));
+    }
+
+    #[test]
+    fn parse_health_payload_accepts_plaintext_ok() {
+        let payload = parse_health_payload("ok").expect("plain text health should parse");
+
+        assert!(payload.ok);
+        assert_eq!(payload.queue_depth, None);
+        assert_eq!(payload.failed_jobs, None);
+    }
+
+    #[test]
+    fn parse_health_payload_treats_empty_body_as_success() {
+        let payload = parse_health_payload("   ").expect("empty body should parse");
+
+        assert!(payload.ok);
+        assert_eq!(payload.service, None);
     }
 }

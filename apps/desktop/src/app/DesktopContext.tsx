@@ -127,6 +127,12 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   const [cardSource, setCardSource] = useState<CardsResponse['source']>('admin');
   const [myAggCards, setMyAggCards] = useState<MyAggResponse['cards']>([]);
   const [myAggTeams, setMyAggTeams] = useState<MyAggResponse['teams']>([]);
+  const selectedProfile = useMemo(
+    () => snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null,
+    [snapshot.profiles, snapshot.selectedProfileId]
+  );
+  const selectedProfileId = selectedProfile?.id ?? '';
+  const selectedProfileBaseUrl = selectedProfile?.baseUrl ?? '';
 
   const refreshSnapshot = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -175,15 +181,14 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, [snapshot.authProfileId, snapshot.authUser, snapshot.selectedProfileId]);
 
   useEffect(() => {
-    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
-    if (!selectedProfile) {
+    if (!selectedProfileId) {
       setHealth(null);
       return;
     }
     let active = true;
     const run = (): void => {
       void desktopClient
-        .checkServerHealth(selectedProfile.id)
+        .checkServerHealth(selectedProfileId)
         .then((result) => {
           if (active) {
             setHealth(result);
@@ -201,7 +206,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [snapshot.preferences.pollingIntervalSeconds, snapshot.profiles, snapshot.selectedProfileId]);
+  }, [selectedProfileBaseUrl, selectedProfileId, snapshot.preferences.pollingIntervalSeconds]);
 
   useEffect(() => {
     const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
@@ -494,11 +499,6 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   const openAppDataDirectory = useCallback(async (): Promise<void> => {
     await desktopClient.openAppDataDirectory();
   }, []);
-
-  const selectedProfile = useMemo(
-    () => snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null,
-    [snapshot.profiles, snapshot.selectedProfileId]
-  );
 
   const value = useMemo<DesktopContextValue>(
     () => ({

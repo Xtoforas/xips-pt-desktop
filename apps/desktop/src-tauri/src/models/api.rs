@@ -57,7 +57,9 @@ where
 pub struct ServiceHealth {
     pub ok: bool,
     pub service: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_u32ish")]
     pub queue_depth: Option<u32>,
+    #[serde(default, deserialize_with = "deserialize_optional_u32ish")]
     pub failed_jobs: Option<u32>,
     pub timestamp: Option<String>,
 }

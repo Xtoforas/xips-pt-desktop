@@ -4,6 +4,7 @@ This plan is based on the current `~/git/xips-pt` backend as it exists today.
 
 ## Current maintenance
 
+- [x] Make desktop health probes resilient to plain-text or stringly typed `/health` responses and stop diagnostics spam from snapshot-driven reprobes.
 - [x] Stop regenerated watch-folder CSVs from reusing a previous format or tournament assignment when the source file timestamp changes.
 - [x] Validate tournament-format mapping against the server-provided teams-per-tournament count before auto-assigning or accepting a format on the desktop client.
 - [x] Treat a regenerated watch-folder CSV with a new checksum as a new file instance even if the source timestamp granularity makes the modified time look unchanged.
