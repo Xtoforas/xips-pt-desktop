@@ -12,7 +12,15 @@ export const lifecyclePhaseSchema = z.enum([
 
 export type UploadLifecyclePhase = z.infer<typeof lifecyclePhaseSchema>;
 
-export const roleSchema = z.enum(['regular', 'premium', 'admin']);
+export const roleSchema = z.enum([
+  'viewer',
+  'contributor',
+  'supporter',
+  'vip',
+  'admin',
+  'regular',
+  'premium'
+]);
 export type UserRole = z.infer<typeof roleSchema>;
 
 export const sessionUserSchema = z.object({
@@ -74,7 +82,16 @@ const slotCountsSchema = z.object({
   B: z.number().default(0)
 });
 
-export const tournamentFormatSchema = z.object({
+export const tournamentFormatSchema = z.preprocess((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value;
+  }
+  const next = { ...(value as Record<string, unknown>) };
+  if (next.teamsPerTournament === undefined && next.teamCount !== undefined) {
+    next.teamsPerTournament = next.teamCount;
+  }
+  return next;
+}, z.object({
   id: z.string(),
   name: z.string(),
   gameVersion: z.literal('ootp27'),
@@ -92,7 +109,7 @@ export const tournamentFormatSchema = z.object({
   slotCounts: slotCountsSchema.default({ P: 0, D: 0, G: 0, S: 0, B: 0 }),
   eraRestrictions: z.array(z.string()).default([]),
   cardTypeRestrictions: z.array(z.string()).default([])
-});
+}));
 
 export type TournamentFormat = z.infer<typeof tournamentFormatSchema>;
 

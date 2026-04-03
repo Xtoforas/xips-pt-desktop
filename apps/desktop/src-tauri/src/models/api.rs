@@ -84,7 +84,11 @@ pub struct TournamentFormat {
     pub ovr_min: Option<u32>,
     #[serde(default, deserialize_with = "deserialize_optional_u32ish")]
     pub ovr_max: Option<u32>,
-    #[serde(default, deserialize_with = "deserialize_u32ish")]
+    #[serde(
+        default,
+        alias = "teamCount",
+        deserialize_with = "deserialize_u32ish"
+    )]
     pub teams_per_tournament: u32,
     #[serde(default)]
     pub is_slots_tournament: bool,
@@ -217,7 +221,7 @@ mod tests {
         "eraRestrictions":[],
         "ovrMin":40,
         "ovrMax":"69",
-        "teamsPerTournament":"16",
+        "teamCount":"16",
         "isSlotsTournament":true,
         "slotCounts":{"P":2,"D":3,"G":4,"S":5,"B":6},
         "variantLimitValue":10,
@@ -250,6 +254,7 @@ mod tests {
         "gameVersion":"ootp27",
         "runEnvironment":"2026",
         "eraRestrictions":[],
+        "teamsPerTournament":"16",
         "variantLimitValue":10,
         "cardTypeRestrictions":[]
       }"#,
@@ -259,7 +264,7 @@ mod tests {
         assert_eq!(parsed.tournament_id_prefix, "");
         assert_eq!(parsed.ovr_min, None);
         assert_eq!(parsed.ovr_max, None);
-        assert_eq!(parsed.teams_per_tournament, 0);
+        assert_eq!(parsed.teams_per_tournament, 16);
         assert!(!parsed.is_slots_tournament);
         assert_eq!(parsed.slot_counts.p, 0);
     }
