@@ -9,6 +9,7 @@ This plan is based on the current `~/git/xips-pt` backend as it exists today.
 - [x] Clarify overview and top-bar queue status so "needs action" is separated from uploads already progressing automatically.
 - [x] Show the queue-level reason when a stats-export filename could not be auto-mapped to a cached tournament format.
 - [x] Move the filename auto-assignment explanation to the top of selected job details so it is visible without scrolling.
+- [x] Make `npx tauri build` and `npx tauri dev` rebuild or serve the current desktop frontend automatically so release binaries do not package stale `dist` assets.
 - [x] Make desktop health probes resilient to plain-text or stringly typed `/health` responses and stop diagnostics spam from snapshot-driven reprobes.
 - [x] Stop regenerated watch-folder CSVs from reusing a previous format or tournament assignment when the source file timestamp changes.
 - [x] Validate tournament-format mapping against the server-provided teams-per-tournament count before auto-assigning or accepting a format on the desktop client.

@@ -54,6 +54,8 @@ cd apps/desktop
 npx tauri dev
 ```
 
+`npx tauri dev` starts the Vite dev server automatically through the Tauri config.
+
 Run native Rust tests:
 
 ```bash
@@ -69,5 +71,7 @@ For production desktop bundles:
 cd apps/desktop
 npx tauri build
 ```
+
+`npx tauri build` rebuilds the React frontend before packaging the desktop app, so you do not need to run a separate Vite build first.
 
 Windows builds should be done with the Windows toolchain, not Linux Tauri tooling inside WSL.
