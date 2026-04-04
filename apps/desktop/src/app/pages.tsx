@@ -46,6 +46,51 @@ const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
 const formatMatchesTeamCount = (teamsPerTournament: number, teamCount: number): boolean =>
   teamCount === 0 || teamsPerTournament === 0 || teamsPerTournament === teamCount;
 
+const extractTournamentIdCandidates = (value: string): string[] => {
+  const matches = value.match(/\d+/gu) ?? [];
+  return matches.filter((candidate) => candidate.length >= 5 && candidate.length <= 7);
+};
+
+const explainFilenameAutoAssignment = (
+  filename: string,
+  teamCount: number,
+  formats: Array<{ id: string; name: string; tournamentIdPrefix: string; teamsPerTournament: number }>
+): string => {
+  const candidates = extractTournamentIdCandidates(filename);
+  if (candidates.length === 0) {
+    return 'The filename does not contain a 5 to 7 digit tournament ID, so the app cannot map it automatically.';
+  }
+
+  for (const candidate of candidates) {
+    const prefixMatches = formats.filter(
+      (format) =>
+        format.tournamentIdPrefix.length > 0 &&
+        candidate.length === format.tournamentIdPrefix.length + 4 &&
+        candidate.startsWith(format.tournamentIdPrefix)
+    );
+
+    if (prefixMatches.length === 0) {
+      continue;
+    }
+
+    const compatibleMatches = prefixMatches.filter((format) =>
+      formatMatchesTeamCount(format.teamsPerTournament, teamCount)
+    );
+
+    if (compatibleMatches.length === 0) {
+      return teamCount > 0
+        ? `The filename looks like tournament ID ${candidate}, but none of the cached formats with that prefix match this file's ${teamCount}-team export.`
+        : `The filename looks like tournament ID ${candidate}, but none of the cached formats with that prefix are eligible for automatic assignment.`;
+    }
+
+    if (compatibleMatches.length > 1) {
+      return `The filename looks like tournament ID ${candidate}, but more than one cached format shares that tournament ID prefix, so the app will not guess.`;
+    }
+  }
+
+  return `The filename contains ${candidates.join(', ')}, but none of those IDs match a cached tournament prefix on this desktop.`;
+};
+
 export const OverviewPage = (): JSX.Element => {
   const { snapshot, selectedProfile, cards, cardSource } = useDesktop();
   const formatLabelById = useMemo(
@@ -355,6 +400,12 @@ export const UploadQueuePage = (): JSX.Element => {
     () => snapshot.cachedFormats.filter((format) => formatMatchesTeamCount(format.teamsPerTournament, selectedJobTeamCount)),
     [selectedJobTeamCount, snapshot.cachedFormats]
   );
+  const selectedJobAutoAssignmentReason = useMemo(() => {
+    if (!selectedJob || selectedJob.localState !== 'awaiting_format_assignment' || selectedJob.fileKind !== 'stats_export') {
+      return '';
+    }
+    return explainFilenameAutoAssignment(selectedJob.filename, selectedJob.teamCount, snapshot.cachedFormats);
+  }, [selectedJob, snapshot.cachedFormats]);
 
   const submitInlineTournamentAssignment = async (jobId: string): Promise<void> => {
     const tournamentId = inlineTournamentId.trim();
@@ -698,6 +749,11 @@ export const UploadQueuePage = (): JSX.Element => {
                   <Card withBorder className="desktop-subcard">
                     <Stack gap="sm">
                       <Text fw={600}>Assign tournament export</Text>
+                      {selectedJobAutoAssignmentReason ? (
+                        <Alert color="blue" title="Why this was not auto-assigned">
+                          {selectedJobAutoAssignmentReason}
+                        </Alert>
+                      ) : null}
                       <TextInput
                         label="Tournament ID"
                         description="Enter the full 5 to 7 digit tournament ID. The desktop app will map it to the matching format prefix automatically."
