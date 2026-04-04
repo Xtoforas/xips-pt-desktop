@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.xips.desktop",
   "build": {
-    "beforeDevCommand": "npm --prefix .. run dev -- --host 0.0.0.0 --port 1420",
-    "beforeBuildCommand": "npm --prefix .. run build",
+    "beforeDevCommand": "npm run dev -- --host 0.0.0.0 --port 1420",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
