@@ -666,6 +666,11 @@ export const UploadQueuePage = (): JSX.Element => {
               <Alert color="gray">Select a queue row to inspect its file path, checksum, and lifecycle details.</Alert>
             ) : (
               <>
+                {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' && selectedJobAutoAssignmentReason ? (
+                  <Alert color="blue" title="Why this was not auto-assigned">
+                    {selectedJobAutoAssignmentReason}
+                  </Alert>
+                ) : null}
                 <div className="desktop-table-wrap">
                   <table className="desktop-table">
                     <tbody>
@@ -749,11 +754,6 @@ export const UploadQueuePage = (): JSX.Element => {
                   <Card withBorder className="desktop-subcard">
                     <Stack gap="sm">
                       <Text fw={600}>Assign tournament export</Text>
-                      {selectedJobAutoAssignmentReason ? (
-                        <Alert color="blue" title="Why this was not auto-assigned">
-                          {selectedJobAutoAssignmentReason}
-                        </Alert>
-                      ) : null}
                       <TextInput
                         label="Tournament ID"
                         description="Enter the full 5 to 7 digit tournament ID. The desktop app will map it to the matching format prefix automatically."
