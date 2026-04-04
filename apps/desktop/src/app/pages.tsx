@@ -19,6 +19,9 @@ import {
   QueueTable,
   ServerProfileForm,
   SummaryCard,
+  uploadJobNeedsAttention,
+  uploadJobWaitingOnServer,
+  uploadJobWorkingAutomatically,
   WatchRootForm,
   WatchRootTable
 } from './components';
@@ -54,13 +57,20 @@ export const OverviewPage = (): JSX.Element => {
     () => snapshot.uploadJobs.filter((job) => job.localState === 'complete').length,
     [snapshot.uploadJobs]
   );
-  const pendingCount = useMemo(
-    () =>
-      snapshot.uploadJobs.filter(
-        (job) =>
-          !['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState) &&
-          (job.localPresence === 'present' || Boolean(job.uploadId))
-      ).length,
+  const needsAttentionCount = useMemo(
+    () => snapshot.uploadJobs.filter(uploadJobNeedsAttention).length,
+    [snapshot.uploadJobs]
+  );
+  const automaticQueueCount = useMemo(
+    () => snapshot.uploadJobs.filter(uploadJobWorkingAutomatically).length,
+    [snapshot.uploadJobs]
+  );
+  const waitingOnServerCount = useMemo(
+    () => snapshot.uploadJobs.filter(uploadJobWaitingOnServer).length,
+    [snapshot.uploadJobs]
+  );
+  const localUploadCount = useMemo(
+    () => snapshot.uploadJobs.filter((job) => ['detected', 'queued_local', 'uploading'].includes(job.localState)).length,
     [snapshot.uploadJobs]
   );
   const recentActivity = useMemo(
@@ -87,6 +97,28 @@ export const OverviewPage = (): JSX.Element => {
         <h2 className="desktop-page-title">Overview</h2>
       </div>
       <Stack gap="md">
+        {needsAttentionCount > 0 ? (
+          <Alert color="yellow" title="Action needed">
+            {needsAttentionCount} file(s) still need something from you. The items in
+            {' '}
+            <strong>Awaiting format assignment</strong>
+            {' '}
+            will not upload until you assign them in
+            {' '}
+            <strong>Upload Queue</strong>
+            .
+          </Alert>
+        ) : null}
+        {automaticQueueCount > 0 ? (
+          <Alert color="teal" title="Uploads are progressing automatically">
+            {waitingOnServerCount > 0
+              ? `${waitingOnServerCount} file(s) have already reached the server and are waiting on server processing or refresh.`
+              : 'The desktop app is still working through queued files automatically.'}
+            {localUploadCount > 0 ? ` ${localUploadCount} more file(s) are still being prepared or uploaded from this machine.` : ''}
+            {' '}
+            You do not need to do anything right now unless this stops changing or an error appears.
+          </Alert>
+        ) : null}
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
             <Text fw={700}>Recent upload queue</Text>
@@ -186,10 +218,12 @@ export const OverviewPage = (): JSX.Element => {
           </Stack>
         </Card>
       </Stack>
-      <SimpleGrid cols={{ base: 1, md: 2, xl: 5 }}>
+      <SimpleGrid cols={{ base: 1, md: 2, xl: 6 }}>
         <SummaryCard label="Server" value={selectedProfile?.name ?? 'None'} detail={selectedProfile?.baseUrl ?? 'No server selected'} />
         <SummaryCard label="Watch folders" value={String(snapshot.watchRoots.length)} detail="Configured folder monitors" />
-        <SummaryCard label="Pending uploads" value={String(pendingCount)} detail="Local queue work not yet complete" />
+        <SummaryCard label="Needs action" value={String(needsAttentionCount)} detail="Files waiting on your input or retry" />
+        <SummaryCard label="Working" value={String(automaticQueueCount)} detail="Files moving through the queue automatically" />
+        <SummaryCard label="On server" value={String(waitingOnServerCount)} detail="Uploads already sent and waiting on server work" />
         <SummaryCard label="Completed" value={String(completedCount)} detail="Finished uploads in local history" />
         <SummaryCard label="Cards" value={String(cards.length)} detail={`Source: ${cardSource ?? 'Unknown'}`} />
       </SimpleGrid>
@@ -391,6 +425,13 @@ export const UploadQueuePage = (): JSX.Element => {
         <h2 className="desktop-page-title">Upload Queue</h2>
         <p className="desktop-page-subtitle">Dense operational queue with local and server lifecycle state.</p>
       </div>
+      <Alert color="blue" title="How to read this page">
+        <strong>Needs action</strong>
+        {' '}
+        means the app is blocked on format assignment, sign-in, or a retryable error.
+        {' '}
+        Queued and server states usually mean the app is still working on its own.
+      </Alert>
       <Group gap="xs">
         <Button size="xs" variant={filter === 'all' ? 'filled' : 'light'} onClick={() => setFilter('all')}>
           All

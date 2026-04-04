@@ -88,6 +88,8 @@ export const DesktopTopbar = (): JSX.Element => {
     processUploadQueue
   } = useDesktop();
   const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
+  const needsAttentionCount = snapshot.uploadJobs.filter(uploadJobNeedsAttention).length;
+  const automaticQueueCount = snapshot.uploadJobs.filter(uploadJobWorkingAutomatically).length;
 
   return (
     <header className="desktop-topbar">
@@ -130,9 +132,20 @@ export const DesktopTopbar = (): JSX.Element => {
             Add a server profile below to start sign-in.
           </Alert>
         ) : null}
-        <Badge color="orange" variant="light">
-          Pending {snapshot.uploadJobs.filter((job) => !['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState) && (job.localPresence === 'present' || Boolean(job.uploadId))).length}
-        </Badge>
+        {needsAttentionCount > 0 ? (
+          <Badge color="orange" variant="light">
+            Needs action {needsAttentionCount}
+          </Badge>
+        ) : null}
+        {automaticQueueCount > 0 ? (
+          <Badge color="blue" variant="light">
+            Working {automaticQueueCount}
+          </Badge>
+        ) : (
+          <Badge color="gray" variant="light">
+            Queue idle
+          </Badge>
+        )}
         {selectedProfile ? (
           <>
             {!isAuthenticated ? (
@@ -146,7 +159,7 @@ export const DesktopTopbar = (): JSX.Element => {
               </Button>
             ) : null}
             <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void processUploadQueue(selectedProfile.id)}>
-              Upload queue
+              Run queue now
             </Button>
             {snapshot.authUser && isAuthenticated ? (
               <HoverCard shadow="md" position="bottom-end" withArrow>
@@ -461,6 +474,40 @@ const localStateColor = (value: LocalUploadJob['localState']): string => {
 const localPresenceColor = (value: LocalUploadJob['localPresence']): string =>
   value === 'present' ? 'teal' : 'gray';
 
+const actionRequiredStates = new Set<LocalUploadJob['localState']>([
+  'awaiting_format_assignment',
+  'failed_retryable',
+  'auth_blocked'
+]);
+
+const automaticQueueStates = new Set<LocalUploadJob['localState']>([
+  'detected',
+  'queued_local',
+  'uploading',
+  'uploaded_waiting_server',
+  'server_queued',
+  'server_processing',
+  'server_refresh_pending',
+  'server_refreshing'
+]);
+
+const serverActiveStates = new Set<LocalUploadJob['localState']>([
+  'uploaded_waiting_server',
+  'server_queued',
+  'server_processing',
+  'server_refresh_pending',
+  'server_refreshing'
+]);
+
+export const uploadJobNeedsAttention = (job: LocalUploadJob): boolean =>
+  actionRequiredStates.has(job.localState);
+
+export const uploadJobWorkingAutomatically = (job: LocalUploadJob): boolean =>
+  automaticQueueStates.has(job.localState);
+
+export const uploadJobWaitingOnServer = (job: LocalUploadJob): boolean =>
+  serverActiveStates.has(job.localState);
+
 export const formatFileKindLabel = (fileKind: LocalUploadJob['fileKind'] | 'unknown'): string => {
   switch (fileKind) {
     case 'stats_export':
@@ -689,7 +736,7 @@ export const QueueTable = ({
           <th>Checksum</th>
           <th>Local state</th>
           <th>Server state</th>
-          <th>Retries</th>
+          <th>Retry attempts</th>
           <th>Actions</th>
         </tr>
       </thead>
