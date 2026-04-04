@@ -5,6 +5,7 @@ This plan is based on the current `~/git/xips-pt` backend as it exists today.
 ## Current maintenance
 
 - [x] Accept backend `teamCount` format payloads in the desktop contract/cache layer and align shared auth-role types to the current `xips-pt` API.
+- [x] Review desktop user-facing copy and replace raw internal labels or awkward wording with readable UI text.
 - [x] Make desktop health probes resilient to plain-text or stringly typed `/health` responses and stop diagnostics spam from snapshot-driven reprobes.
 - [x] Stop regenerated watch-folder CSVs from reusing a previous format or tournament assignment when the source file timestamp changes.
 - [x] Validate tournament-format mapping against the server-provided teams-per-tournament count before auto-assigning or accepting a format on the desktop client.

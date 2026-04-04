@@ -1,6 +1,14 @@
 import { Alert, Badge, Button, Card, Group, HoverCard, Select, Stack, Text, TextInput } from '@mantine/core';
 import { NavLink, useLocation } from 'react-router-dom';
-import type { DesktopPreferences, LocalFormatRule, LocalServerProfile, LocalWatchRoot, LocalUploadJob, TournamentFormat } from '@xips/api-contract';
+import type {
+  DesktopPreferences,
+  LocalDetectedFile,
+  LocalFormatRule,
+  LocalServerProfile,
+  LocalWatchRoot,
+  LocalUploadJob,
+  TournamentFormat
+} from '@xips/api-contract';
 import { useEffect, useRef, useState } from 'react';
 import { useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
@@ -30,7 +38,7 @@ export const DesktopSidebar = (): JSX.Element => {
       <div className="desktop-brand">
         <div className="desktop-brand-mark">XP</div>
         <div>
-          <h1>xips-pt desktop</h1>
+          <h1>xips-pt Desktop</h1>
           <p>Perfect Team upload control room</p>
         </div>
       </div>
@@ -49,9 +57,9 @@ export const DesktopSidebar = (): JSX.Element => {
         <Stack gap={6}>
           <Text className="desktop-micro-label">Server status</Text>
           <Group justify="space-between">
-            <Text size="sm">{health?.service ?? 'not checked'}</Text>
+            <Text size="sm">{health?.service ?? 'Not checked'}</Text>
             <Badge color={health?.ok ? 'teal' : 'gray'} variant="light">
-              {health?.ok ? 'healthy' : 'idle'}
+              {health?.ok ? 'Healthy' : 'Idle'}
             </Badge>
           </Group>
           <Text size="xs" c="dimmed">
@@ -454,34 +462,75 @@ const localPresenceColor = (value: LocalUploadJob['localPresence']): string =>
   value === 'present' ? 'teal' : 'gray';
 
 export const formatFileKindLabel = (fileKind: LocalUploadJob['fileKind'] | 'unknown'): string => {
-  if (fileKind === 'card_catalog') {
-    return 'card_list';
+  switch (fileKind) {
+    case 'stats_export':
+      return 'Stats Export';
+    case 'card_catalog':
+      return 'Card Catalog';
+    default:
+      return 'Unknown';
   }
-  return fileKind;
 };
 
 export const formatQueueStateLabel = (
   state: LocalUploadJob['localState'],
   fileKind: LocalUploadJob['fileKind']
 ): string => {
+  const labels: Record<LocalUploadJob['localState'], string> = {
+    detected: 'Detected',
+    awaiting_format_assignment: 'Awaiting Format Assignment',
+    queued_local: 'Queued Locally',
+    duplicate_skipped_local: 'Skipped as Duplicate',
+    uploading: 'Uploading',
+    uploaded_waiting_server: 'Uploaded, Waiting on Server',
+    server_queued: 'Queued on Server',
+    server_processing: 'Server Processing',
+    server_refresh_pending: 'Refresh Pending',
+    server_refreshing: 'Refreshing',
+    complete: 'Complete',
+    failed_retryable: 'Retry Needed',
+    failed_terminal: 'Failed',
+    auth_blocked: 'Sign-In Required'
+  };
+
   if (fileKind === 'card_catalog' && (state === 'complete' || state === 'server_refresh_pending')) {
-    return 'list_updated';
+    return 'Catalog Updated';
   }
-  return state;
+  return labels[state];
 };
 
 export const formatLifecycleLabel = (
   phase: LocalUploadJob['lifecyclePhase'],
   fileKind: LocalUploadJob['fileKind']
 ): string => {
+  const labels: Record<NonNullable<LocalUploadJob['lifecyclePhase']>, string> = {
+    queued: 'Queued',
+    processing: 'Processing',
+    refresh_pending: 'Refresh Pending',
+    refreshing: 'Refreshing',
+    complete: 'Complete',
+    failed: 'Failed',
+    skipped_duplicate: 'Skipped as Duplicate'
+  };
+
   if (fileKind === 'card_catalog' && (phase === 'complete' || phase === 'refresh_pending')) {
-    return 'list_updated';
+    return 'Catalog Updated';
   }
-  return phase ?? 'not_started';
+  return phase ? labels[phase] : 'Not Started';
 };
 
 export const formatLocalPresenceLabel = (presence: LocalUploadJob['localPresence']): string =>
-  presence === 'present' ? 'present_locally' : 'missing_locally';
+  presence === 'present' ? 'Present' : 'Missing';
+
+export const formatDetectedFileStateLabel = (state: LocalDetectedFile['localState']): string => {
+  const labels: Record<LocalDetectedFile['localState'], string> = {
+    detected: 'Detected',
+    queued_local: 'Queued Locally',
+    awaiting_format_assignment: 'Awaiting Format Assignment',
+    ignored: 'Ignored'
+  };
+  return labels[state];
+};
 
 export const getUploadJobModifiedAt = (job: LocalUploadJob): number | null => {
   const sourceModifiedAt = Number(job.sourceModifiedAt);
@@ -682,7 +731,7 @@ export const QueueTable = ({
                 <LocalPresenceBadge presence={job.localPresence} />
               </td>
               <td className="desktop-mono">
-                {job.duplicateReason ? 'duplicate' : job.remoteChecksum ? 'uploaded' : 'pending'}
+                {job.duplicateReason ? 'Duplicate' : job.remoteChecksum ? 'Uploaded' : 'Pending'}
               </td>
               <td>
                 <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
@@ -760,7 +809,7 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
           <th>Tournament ID</th>
           <th>Teams</th>
           <th>Mode</th>
-          <th>Run env</th>
+          <th>Run Environment</th>
           <th>Park</th>
           <th>Cap</th>
           <th>OVR range</th>
@@ -975,7 +1024,7 @@ export const PreferencesForm = ({
         </label>
         <label className="desktop-checkbox-row">
           <input type="checkbox" checked={closeToTray} onChange={(event) => setCloseToTray(event.currentTarget.checked)} />
-          <span>Close to background</span>
+          <span>Keep running in the background</span>
         </label>
         <TextInput
           label="Polling interval (seconds)"

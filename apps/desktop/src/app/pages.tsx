@@ -4,6 +4,7 @@ import { useDesktop } from './DesktopContext';
 import {
   FormatRuleTable,
   FormatsTable,
+  formatDetectedFileStateLabel,
   formatFileKindLabel,
   formatLifecycleLabel,
   formatLocalPresenceLabel,
@@ -115,9 +116,9 @@ export const OverviewPage = (): JSX.Element => {
                       .map((file) => (
                         <tr key={file.id}>
                           <td>{file.filename}</td>
-                          <td>{file.fileKind}</td>
+                          <td>{formatFileKindLabel(file.fileKind)}</td>
                           <td className="desktop-mono">{file.checksum.slice(0, 16)}...</td>
-                          <td>{file.localState}</td>
+                          <td>{formatDetectedFileStateLabel(file.localState)}</td>
                         </tr>
                       ))}
                   </tbody>
@@ -190,7 +191,7 @@ export const OverviewPage = (): JSX.Element => {
         <SummaryCard label="Watch folders" value={String(snapshot.watchRoots.length)} detail="Configured folder monitors" />
         <SummaryCard label="Pending uploads" value={String(pendingCount)} detail="Local queue work not yet complete" />
         <SummaryCard label="Completed" value={String(completedCount)} detail="Finished uploads in local history" />
-        <SummaryCard label="Cards" value={String(cards.length)} detail={`Source: ${cardSource ?? 'unknown'}`} />
+        <SummaryCard label="Cards" value={String(cards.length)} detail={`Source: ${cardSource ?? 'Unknown'}`} />
       </SimpleGrid>
     </Stack>
   );
@@ -568,7 +569,7 @@ export const UploadQueuePage = (): JSX.Element => {
         </Card>
         <Card withBorder className="desktop-card">
           <Stack gap="sm">
-            <Text fw={700}>Selected job detail</Text>
+            <Text fw={700}>Selected job details</Text>
             {!selectedJob ? (
               <Alert color="gray">Select a queue row to inspect its file path, checksum, and lifecycle details.</Alert>
             ) : (
@@ -1114,7 +1115,7 @@ export const DiagnosticsPage = (): JSX.Element => {
                 Export diagnostics
               </Button>
               <Button size="xs" variant="light" onClick={() => void openAppDataDirectory()}>
-                Open logs folder
+                Open app data folder
               </Button>
             </Group>
             {lastExportPath ? (
@@ -1306,7 +1307,7 @@ export const SettingsPage = (): JSX.Element => {
         <Stack gap="sm">
           <Text fw={700}>Cards and personal aggregate</Text>
           <Text size="sm" c="dimmed">
-            Desktop view of your current card source and private aggregate rows.
+            Desktop view of your current card source and personal aggregate rows.
           </Text>
           <Group>
             <Badge color={cardSource === 'user' ? 'teal' : 'blue'} variant="light">
@@ -1316,10 +1317,10 @@ export const SettingsPage = (): JSX.Element => {
               Card rows {cards.length}
             </Badge>
             <Badge color="cyan" variant="light">
-              My agg cards {myAggCards.length}
+              Personal card rows {myAggCards.length}
             </Badge>
             <Badge color="grape" variant="light">
-              My agg teams {myAggTeams.length}
+              Personal team rows {myAggTeams.length}
             </Badge>
           </Group>
           <Group>
@@ -1340,7 +1341,7 @@ export const SettingsPage = (): JSX.Element => {
                 void refreshMyAgg(selectedProfile.id);
               }}
             >
-              Refresh my agg
+              Refresh personal aggregate
             </Button>
             <Button
               size="xs"
