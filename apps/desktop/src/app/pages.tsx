@@ -322,6 +322,11 @@ export const UploadQueuePage = (): JSX.Element => {
   const [editingFilenameJobId, setEditingFilenameJobId] = useState('');
   const [inlineTournamentId, setInlineTournamentId] = useState('');
   const [bulkDismissInFlight, setBulkDismissInFlight] = useState(false);
+  const formatById = useMemo(
+    () =>
+      Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format])),
+    [snapshot.cachedFormats]
+  );
   const formatLabelById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),

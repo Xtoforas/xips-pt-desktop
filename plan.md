@@ -4,6 +4,7 @@ This plan is based on the current `~/git/xips-pt` backend as it exists today.
 
 ## Current maintenance
 
+- [x] Restore the Upload Queue page after a render-time crash by rebuilding its cached-format lookup map locally.
 - [x] Accept backend `teamCount` format payloads in the desktop contract/cache layer and align shared auth-role types to the current `xips-pt` API.
 - [x] Review desktop user-facing copy and replace raw internal labels or awkward wording with readable UI text.
 - [x] Clarify overview and top-bar queue status so "needs action" is separated from uploads already progressing automatically.
