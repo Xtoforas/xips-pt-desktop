@@ -44,7 +44,28 @@ const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
 );
 
 const formatMatchesTeamCount = (teamsPerTournament: number, teamCount: number): boolean =>
-  teamCount === 0 || teamsPerTournament === 0 || teamsPerTournament === teamCount;
+  teamCount === 0 || teamsPerTournament === 0 || teamCount <= teamsPerTournament;
+
+const getIncompleteTeamCountWarning = (
+  fileKind: string,
+  teamCount: number,
+  format: { name: string; teamsPerTournament: number } | null | undefined
+): { badgeLabel: string; message: string } | null => {
+  if (
+    fileKind !== 'stats_export' ||
+    !format ||
+    teamCount === 0 ||
+    format.teamsPerTournament === 0 ||
+    teamCount >= format.teamsPerTournament
+  ) {
+    return null;
+  }
+
+  return {
+    badgeLabel: `${teamCount}/${format.teamsPerTournament} teams`,
+    message: `Detected ${teamCount} distinct team codes for ${format.name}'s ${format.teamsPerTournament}-team format. The app still assigned it because the filename matched, but this usually means a team was left unrostered or collapsed into an unknown placeholder in the export.`
+  };
+};
 
 const extractTournamentIdCandidates = (value: string): string[] => {
   const matches = value.match(/\d+/gu) ?? [];
@@ -79,7 +100,7 @@ const explainFilenameAutoAssignment = (
 
     if (compatibleMatches.length === 0) {
       return teamCount > 0
-        ? `The filename looks like tournament ID ${candidate}, but none of the cached formats with that prefix match this file's ${teamCount}-team export.`
+        ? `The filename looks like tournament ID ${candidate}, but none of the cached formats with that prefix accept this file's ${teamCount} detected teams.`
         : `The filename looks like tournament ID ${candidate}, but none of the cached formats with that prefix are eligible for automatic assignment.`;
     }
 
@@ -96,6 +117,11 @@ export const OverviewPage = (): JSX.Element => {
   const formatLabelById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
+    [snapshot.cachedFormats]
+  );
+  const formatById = useMemo(
+    () =>
+      Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format])),
     [snapshot.cachedFormats]
   );
   const completedCount = useMemo(
@@ -368,7 +394,7 @@ export const UploadQueuePage = (): JSX.Element => {
       ? ''
       : tournamentFormatMatches.length === 0
         ? selectedJobTeamCount > 0
-          ? `No cached tournament format matches that 5 to 7 digit tournament ID for a ${selectedJobTeamCount}-team export.`
+          ? `No cached tournament format matches that 5 to 7 digit tournament ID for ${selectedJobTeamCount} detected teams.`
           : 'No cached tournament format matches that 5 to 7 digit tournament ID.'
         : tournamentFormatMatches.length > 1
           ? 'More than one cached format shares that tournament ID prefix. Refresh formats or assign by format instead.'
@@ -391,7 +417,7 @@ export const UploadQueuePage = (): JSX.Element => {
       ? ''
       : inlineTournamentFormatMatches.length === 0
         ? inlineEditingJobTeamCount > 0
-          ? `No cached format matches that tournament ID for a ${inlineEditingJobTeamCount}-team export.`
+          ? `No cached format matches that tournament ID for ${inlineEditingJobTeamCount} detected teams.`
           : 'No cached format matches that tournament ID.'
         : inlineTournamentFormatMatches.length > 1
           ? 'More than one cached format shares that tournament ID prefix.'
@@ -406,6 +432,15 @@ export const UploadQueuePage = (): JSX.Element => {
     }
     return explainFilenameAutoAssignment(selectedJob.filename, selectedJob.teamCount, snapshot.cachedFormats);
   }, [selectedJob, snapshot.cachedFormats]);
+  const selectedJobTeamCountWarning = useMemo(
+    () =>
+      getIncompleteTeamCountWarning(
+        selectedJob?.fileKind ?? '',
+        selectedJob?.teamCount ?? 0,
+        selectedJobFormat
+      ),
+    [selectedJob?.fileKind, selectedJob?.teamCount, selectedJobFormat]
+  );
 
   const submitInlineTournamentAssignment = async (jobId: string): Promise<void> => {
     const tournamentId = inlineTournamentId.trim();
@@ -540,6 +575,11 @@ export const UploadQueuePage = (): JSX.Element => {
               }}
               renderFilename={(job) => {
                 const canInlineAssign = job.localState === 'awaiting_format_assignment' && job.fileKind === 'stats_export';
+                const teamCountWarning = getIncompleteTeamCountWarning(
+                  job.fileKind,
+                  job.teamCount,
+                  job.formatId ? formatById[job.formatId] : null
+                );
                 if (editingFilenameJobId === job.id) {
                   return (
                     <TextInput
@@ -571,26 +611,33 @@ export const UploadQueuePage = (): JSX.Element => {
                   );
                 }
                 return (
-                  <button
-                    type="button"
-                    className="desktop-link-button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedJobId(job.id);
-                    }}
-                    onDoubleClick={(event) => {
-                      if (!canInlineAssign) {
-                        return;
-                      }
-                      event.stopPropagation();
-                      setSelectedJobId(job.id);
-                      setEditingFilenameJobId(job.id);
-                      setInlineTournamentId('');
-                    }}
-                    title={canInlineAssign ? 'Double-click to enter a 5 to 7 digit tournament ID.' : job.filename}
-                  >
-                    {job.filename}
-                  </button>
+                  <Group gap="xs" wrap="nowrap">
+                    <button
+                      type="button"
+                      className="desktop-link-button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedJobId(job.id);
+                      }}
+                      onDoubleClick={(event) => {
+                        if (!canInlineAssign) {
+                          return;
+                        }
+                        event.stopPropagation();
+                        setSelectedJobId(job.id);
+                        setEditingFilenameJobId(job.id);
+                        setInlineTournamentId('');
+                      }}
+                      title={canInlineAssign ? 'Double-click to enter a 5 to 7 digit tournament ID.' : job.filename}
+                    >
+                      {job.filename}
+                    </button>
+                    {teamCountWarning ? (
+                      <Badge color="yellow" variant="light">
+                        {teamCountWarning.badgeLabel}
+                      </Badge>
+                    ) : null}
+                  </Group>
                 );
               }}
               actions={(job) => (
@@ -669,6 +716,11 @@ export const UploadQueuePage = (): JSX.Element => {
                 {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' && selectedJobAutoAssignmentReason ? (
                   <Alert color="blue" title="Why this was not auto-assigned">
                     {selectedJobAutoAssignmentReason}
+                  </Alert>
+                ) : null}
+                {selectedJobTeamCountWarning ? (
+                  <Alert color="yellow" title="Team count looks short">
+                    {selectedJobTeamCountWarning.message}
                   </Alert>
                 ) : null}
                 <div className="desktop-table-wrap">

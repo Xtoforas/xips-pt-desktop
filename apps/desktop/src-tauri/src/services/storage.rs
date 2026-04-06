@@ -521,7 +521,7 @@ fn match_format_for_tournament_id(
 }
 
 fn format_matches_team_count(format: &TournamentFormat, team_count: u32) -> bool {
-    team_count == 0 || format.teams_per_tournament == 0 || format.teams_per_tournament == team_count
+    team_count == 0 || format.teams_per_tournament == 0 || team_count <= format.teams_per_tournament
 }
 
 fn find_format_by_id<'a>(
@@ -2087,12 +2087,65 @@ mod tests {
     }
 
     #[test]
-    fn rejects_prefix_match_when_team_count_does_not_match() {
+    fn allows_prefix_match_when_export_has_fewer_teams_than_format() {
+        let mut format = format("fmt-1", "12");
+        format.teams_per_tournament = 16;
+        let matched = match_format_for_tournament_id(&[format], "120001", 15)
+            .expect("match should allow fewer detected teams");
+        assert_eq!(matched.id, "fmt-1");
+    }
+
+    #[test]
+    fn rejects_prefix_match_when_export_has_more_teams_than_format() {
         let mut format = format("fmt-1", "12");
         format.teams_per_tournament = 16;
         let error =
-            match_format_for_tournament_id(&[format], "120001", 8).expect_err("match should fail");
+            match_format_for_tournament_id(&[format], "120001", 17).expect_err("match should fail");
         assert_eq!(error, "tournament_id_format_not_found");
+    }
+
+    #[test]
+    fn auto_assigns_prefix_match_when_export_has_fewer_teams_than_format() {
+        let db_path = temp_db_path("auto-assigns-prefix-match-fewer-teams");
+        let fixture_root = db_path
+            .parent()
+            .expect("db path should have parent")
+            .join("watch");
+        let csv_path = write_fixture_file(
+            &fixture_root,
+            "120001.csv",
+            "POS,CID,VLvl,PA,IP,ERA+,FRM,ARM\nCF,1,1,10,2,100,0,0\n",
+        );
+
+        ensure_db(&db_path).expect("db should initialize");
+        let mut cached_format = format("fmt-1", "12");
+        cached_format.teams_per_tournament = 16;
+        cache_formats(&db_path, &[cached_format]).expect("formats should cache");
+
+        let mut scan = scan_result(&csv_path, "1000");
+        scan.team_count = 15;
+        let snapshot =
+            save_scan_results(&db_path, "profile-1", &[scan]).expect("scan should succeed");
+        let detected = snapshot
+            .detected_files
+            .first()
+            .expect("detected file should exist");
+        let upload_job = snapshot
+            .upload_jobs
+            .first()
+            .expect("upload job should exist");
+
+        assert_eq!(detected.format_id, "fmt-1");
+        assert_eq!(detected.tournament_id, "120001");
+        assert_eq!(upload_job.format_id, "fmt-1");
+        assert_eq!(upload_job.tournament_id, "120001");
+        assert_eq!(upload_job.local_state, "queued_local");
+
+        if let Some(parent) = db_path.parent() {
+            if parent.exists() {
+                fs::remove_dir_all(parent).expect("temporary directory should be removed");
+            }
+        }
     }
 
     #[test]

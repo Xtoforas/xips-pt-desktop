@@ -18,6 +18,7 @@ This plan is based on the current `~/git/xips-pt` backend as it exists today.
 - [x] Stop generic OOTP stats-export filenames from auto-applying saved filename format rules when the filename itself does not identify the tournament.
 - [x] Simplify the upload queue page filters to `All`, `Queued`, and `Uploaded`, with queued covering files still waiting on local assignment or upload progress.
 - [x] Add queue-row checkbox multi-select plus a select-all control so removable queue entries can be dismissed in bulk from the upload queue page.
+- [x] Allow filename-based format assignment when a stats export detects fewer teams than the cached format, and flag likely unknown or unrostered teams in the queue UI.
 
 Desktop-relevant backend capabilities now available on the stable API surface:
 
