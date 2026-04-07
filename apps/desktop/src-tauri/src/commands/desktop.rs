@@ -610,7 +610,32 @@ pub(crate) async fn process_upload_queue_for_profile(
             let _ = storage::mark_all_profile_jobs_auth_blocked(db_path, profile_id);
             String::from("authentication_required")
         })?;
+    if let Err(error) =
+        flush_pending_upload_batches(db_path, profile_id, &base_url, &access_token).await
+    {
+        if error.is_auth_error() {
+            return handle_auth_api_error(
+                db_path,
+                profile_id,
+                "Deferred upload batch release failed",
+                &error,
+            );
+        }
+        storage::write_diagnostic_event(
+            db_path,
+            "warn",
+            "queue",
+            "Deferred upload batch release failed",
+            &format!("profile_id={},reason={}", profile_id, error),
+        )?;
+    }
     let jobs = storage::list_pending_upload_jobs_for_profile(db_path, profile_id)?;
+    let upload_batch_id = if jobs.len() > 1 {
+        Some(uuid::Uuid::new_v4().to_string())
+    } else {
+        None
+    };
+    let mut deferred_uploads_created = false;
     for (index, job) in jobs.iter().enumerate() {
         storage::append_upload_attempt(
             db_path,
@@ -767,6 +792,8 @@ pub(crate) async fn process_upload_queue_for_profile(
             &job.file_kind,
             &job.format_id,
             &job.tournament_id,
+            upload_batch_id.as_deref(),
+            upload_batch_id.is_some(),
         )
         .await
         {
@@ -801,6 +828,12 @@ pub(crate) async fn process_upload_queue_for_profile(
                     "",
                     job.retries,
                 )?;
+                if let Some(batch_id) = upload_batch_id.as_deref() {
+                    if !created.payload.skipped {
+                        storage::set_upload_job_batch_id(db_path, &job.id, batch_id)?;
+                        deferred_uploads_created = true;
+                    }
+                }
                 storage::append_upload_attempt(
                     db_path,
                     &job.id,
@@ -848,6 +881,28 @@ pub(crate) async fn process_upload_queue_for_profile(
             }
         }
     }
+    if deferred_uploads_created {
+        if let Some(batch_id) = upload_batch_id.as_deref() {
+            if let Err(error) = release_upload_batch(db_path, profile_id, &base_url, &access_token, batch_id).await
+            {
+                if error.is_auth_error() {
+                    return handle_auth_api_error(
+                        db_path,
+                        profile_id,
+                        "Deferred upload batch release failed",
+                        &error,
+                    );
+                }
+                storage::write_diagnostic_event(
+                    db_path,
+                    "warn",
+                    "queue",
+                    "Deferred upload batch release failed",
+                    &format!("profile_id={},batch_id={},reason={}", profile_id, batch_id, error),
+                )?;
+            }
+        }
+    }
     poll_active_uploads_for_profile(db_path, profile_id).await
 }
 
@@ -858,6 +913,54 @@ pub async fn desktop_poll_active_uploads(
 ) -> Result<DesktopSnapshot, String> {
     let _queue_guard = state.queue_lock.lock().await;
     poll_active_uploads_for_profile(&state.db_path, &profile_id).await
+}
+
+fn storage_api_error(detail: String) -> api_client::ApiError {
+    api_client::ApiError {
+        status: 500,
+        code: String::from("storage_error"),
+        request_id: String::new(),
+        detail,
+    }
+}
+
+async fn release_upload_batch(
+    db_path: &Path,
+    profile_id: &str,
+    base_url: &str,
+    access_token: &str,
+    upload_batch_id: &str,
+) -> Result<(), api_client::ApiError> {
+    let released = api_client::complete_upload_batch(base_url, access_token, upload_batch_id).await?;
+    storage::clear_upload_batch_id_for_profile_batch(db_path, profile_id, upload_batch_id)
+        .map_err(storage_api_error)?;
+    storage::write_diagnostic_event(
+        db_path,
+        "info",
+        "queue",
+        "Released deferred upload batch",
+        &format!(
+            "profile_id={},batch_id={},request_id={}",
+            profile_id, upload_batch_id, released.request_id
+        ),
+    )
+    .map_err(storage_api_error)?;
+    Ok(())
+}
+
+async fn flush_pending_upload_batches(
+    db_path: &Path,
+    profile_id: &str,
+    base_url: &str,
+    access_token: &str,
+) -> Result<(), api_client::ApiError> {
+    let pending_batch_ids =
+        storage::list_pending_upload_batch_ids_for_profile(db_path, profile_id)
+            .map_err(storage_api_error)?;
+    for batch_id in pending_batch_ids {
+        release_upload_batch(db_path, profile_id, base_url, access_token, &batch_id).await?;
+    }
+    Ok(())
 }
 
 #[tauri::command]

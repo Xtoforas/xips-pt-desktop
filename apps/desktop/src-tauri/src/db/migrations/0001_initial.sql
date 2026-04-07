@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS upload_jobs (
   refreshing_at TEXT NOT NULL DEFAULT '',
   completed_at TEXT NOT NULL DEFAULT '',
   failed_at TEXT NOT NULL DEFAULT '',
+  upload_batch_id TEXT NOT NULL DEFAULT '',
   error TEXT NOT NULL,
   retries INTEGER NOT NULL,
   created_at TEXT NOT NULL,

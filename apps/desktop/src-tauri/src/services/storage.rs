@@ -105,6 +105,7 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
     ensure_upload_job_column(connection, "refreshing_at", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "completed_at", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "failed_at", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_upload_job_column(connection, "upload_batch_id", "TEXT NOT NULL DEFAULT ''")?;
     repair_cached_format_payloads(connection)?;
     Ok(())
 }
@@ -1294,6 +1295,73 @@ pub fn list_active_upload_jobs_for_profile(
         .collect())
 }
 
+pub fn list_pending_upload_batch_ids_for_profile(
+    db_path: &Path,
+    profile_id: &str,
+) -> Result<Vec<String>, String> {
+    let connection = open_db(db_path)?;
+    let mut statement = connection
+        .prepare(
+            "
+      SELECT DISTINCT upload_batch_id
+      FROM upload_jobs
+      WHERE profile_id = ?1
+        AND upload_batch_id <> ''
+        AND upload_id <> ''
+        AND local_state NOT IN ('complete', 'duplicate_skipped_local', 'failed_terminal')
+      ORDER BY upload_batch_id ASC
+      ",
+        )
+        .map_err(|error| error.to_string())?;
+    let mapped = statement
+        .query_map(params![profile_id], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?;
+    mapped
+        .collect::<SqlResult<Vec<String>>>()
+        .map_err(|error| error.to_string())
+}
+
+pub fn set_upload_job_batch_id(
+    db_path: &Path,
+    upload_job_id: &str,
+    upload_batch_id: &str,
+) -> Result<(), String> {
+    let connection = open_db(db_path)?;
+    connection
+        .execute(
+            "
+      UPDATE upload_jobs
+      SET upload_batch_id = ?2,
+          updated_at = ?3
+      WHERE upload_job_id = ?1
+      ",
+            params![upload_job_id, upload_batch_id.trim(), now_iso()],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub fn clear_upload_batch_id_for_profile_batch(
+    db_path: &Path,
+    profile_id: &str,
+    upload_batch_id: &str,
+) -> Result<(), String> {
+    let connection = open_db(db_path)?;
+    connection
+        .execute(
+            "
+      UPDATE upload_jobs
+      SET upload_batch_id = '',
+          updated_at = ?3
+      WHERE profile_id = ?1
+        AND upload_batch_id = ?2
+      ",
+            params![profile_id, upload_batch_id.trim(), now_iso()],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 pub fn load_upload_job_by_id(
     db_path: &Path,
     upload_job_id: &str,
@@ -1991,7 +2059,8 @@ fn ensure_upload_job_column(
 #[cfg(test)]
 mod tests {
     use super::{
-        assign_detected_file_format, cache_formats, ensure_db, load_snapshot,
+        assign_detected_file_format, cache_formats, clear_upload_batch_id_for_profile_batch,
+        ensure_db, list_pending_upload_batch_ids_for_profile, load_snapshot,
         match_format_for_tournament_id, save_scan_results,
     };
     use crate::models::api::TournamentFormat;
@@ -2310,6 +2379,64 @@ mod tests {
         assert_eq!(unchanged_job.updated_at, first_updated_at);
         assert_eq!(unchanged_job.source_modified_at, "1000");
         assert_eq!(unchanged_job.local_presence, "present");
+
+        if let Some(parent) = db_path.parent() {
+            if parent.exists() {
+                fs::remove_dir_all(parent).expect("temporary directory should be removed");
+            }
+        }
+    }
+
+    #[test]
+    fn tracks_pending_upload_batch_ids_until_batch_release() {
+        let db_path = temp_db_path("pending-upload-batches");
+        let fixture_root = db_path
+            .parent()
+            .expect("db path should have parent")
+            .join("watch");
+        let csv_path = write_fixture_file(
+            &fixture_root,
+            "sortable_stats.csv",
+            "POS,CID,VLvl,PA,IP,ERA+,FRM,ARM\nCF,1,1,10,2,100,0,0\n",
+        );
+
+        ensure_db(&db_path).expect("db should initialize");
+        let snapshot = save_scan_results(&db_path, "profile-1", &[scan_result(&csv_path, "1000")])
+            .expect("scan should succeed");
+        let upload_job_id = snapshot
+            .upload_jobs
+            .first()
+            .expect("upload job should exist")
+            .id
+            .clone();
+
+        let connection = super::open_db(&db_path).expect("db should open");
+        connection
+            .execute(
+                "
+          UPDATE upload_jobs
+          SET upload_id = 'upload-1',
+              local_state = 'uploaded_waiting_server',
+              upload_batch_id = 'batch-1'
+          WHERE upload_job_id = ?1
+          ",
+                rusqlite::params![upload_job_id],
+            )
+            .expect("upload job should update");
+
+        assert_eq!(
+            list_pending_upload_batch_ids_for_profile(&db_path, "profile-1")
+                .expect("batch ids should load"),
+            vec![String::from("batch-1")]
+        );
+
+        clear_upload_batch_id_for_profile_batch(&db_path, "profile-1", "batch-1")
+            .expect("batch id should clear");
+        assert!(
+            list_pending_upload_batch_ids_for_profile(&db_path, "profile-1")
+                .expect("batch ids should reload")
+                .is_empty()
+        );
 
         if let Some(parent) = db_path.parent() {
             if parent.exists() {

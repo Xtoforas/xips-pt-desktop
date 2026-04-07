@@ -106,6 +106,8 @@ pub async fn create_upload(
     file_kind: &str,
     format_id: &str,
     tournament_id: &str,
+    upload_batch_id: Option<&str>,
+    defer_processing: bool,
 ) -> Result<ApiResponse<UploadCreateResponse>, ApiError> {
     let mut body = json!({
       "sourceFilename": source_filename,
@@ -114,6 +116,12 @@ pub async fn create_upload(
       "gameVersion": "ootp27",
       "rawContent": raw_content
     });
+    if defer_processing {
+        body["deferProcessing"] = Value::Bool(true);
+    }
+    if let Some(batch_id) = upload_batch_id.filter(|value| !value.trim().is_empty()) {
+        body["uploadBatchId"] = Value::String(batch_id.trim().to_string());
+    }
     if file_kind == "stats_export" {
         body["formatId"] = Value::String(format_id.to_string());
         if !tournament_id.trim().is_empty() {
@@ -126,6 +134,26 @@ pub async fn create_upload(
         &format!("{}/api/v1/my/uploads", base_url.trim_end_matches('/')),
         Some(access_token),
         Some(body),
+    )
+    .await
+}
+
+pub async fn complete_upload_batch(
+    base_url: &str,
+    access_token: &str,
+    upload_batch_id: &str,
+) -> Result<ApiResponse<Value>, ApiError> {
+    send_json::<Value>(
+        &Client::new(),
+        Method::POST,
+        &format!(
+            "{}/api/v1/my/uploads/batch/complete",
+            base_url.trim_end_matches('/')
+        ),
+        Some(access_token),
+        Some(json!({
+            "uploadBatchId": upload_batch_id
+        })),
     )
     .await
 }
