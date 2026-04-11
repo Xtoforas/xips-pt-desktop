@@ -75,3 +75,19 @@ npx tauri build
 `npx tauri build` rebuilds the React frontend before packaging the desktop app, so you do not need to run a separate Vite build first.
 
 Windows builds should be done with the Windows toolchain, not Linux Tauri tooling inside WSL.
+
+## Windows Helper Script
+
+If you want a one-click Windows flow that pulls the latest code, installs dependencies, builds the desktop app, and launches it, run:
+
+```bat
+run-xips-pt-desktop-windows.bat
+```
+
+Run it from Windows, not WSL. The script expects these tools to already be installed and available on `PATH`:
+
+- Git
+- Node.js with `npm` and `npx`
+- Rust with the Windows MSVC toolchain
+
+The script uses `git pull --ff-only`, `npm install`, and `npx tauri build`, then launches the built desktop executable from `apps\desktop\src-tauri\target\release`.
