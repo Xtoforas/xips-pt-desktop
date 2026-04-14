@@ -85,12 +85,24 @@ a {
   gap: 6px;
 }
 
+.desktop-nav-support-label {
+  margin: 10px 0 4px;
+  color: #7f91a6;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
 .desktop-nav-link {
   padding: 10px 12px;
   border-radius: 9px;
   color: var(--text-muted);
   font-size: 0.93rem;
   transition: 140ms ease;
+}
+
+.desktop-nav-link-support {
+  color: #8d9baa;
 }
 
 .desktop-nav-link:hover {

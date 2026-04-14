@@ -13,15 +13,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
 
-const navItems = [
-  { to: '/', label: 'Overview' },
-  { to: '/queue', label: 'Upload Queue' },
-  { to: '/watch-folders', label: 'Watch Folders' },
-  { to: '/formats', label: 'Formats' },
-  { to: '/history', label: 'History' },
-  { to: '/diagnostics', label: 'Diagnostics' },
-  { to: '/settings', label: 'Settings' }
-] as const;
+const navItems: ReadonlyArray<{ to: string; label: string; support?: boolean }> = [
+  { to: '/today', label: 'Today' },
+  { to: '/queue', label: 'Queue' },
+  { to: '/automation', label: 'Automation' },
+  { to: '/settings', label: 'Settings' },
+  { to: '/diagnostics', label: 'Diagnostics', support: true }
+];
 
 const serverOptions = (profiles: LocalServerProfile[]): Array<{ value: string; label: string }> =>
   profiles.map((profile) => ({
@@ -39,18 +37,22 @@ export const DesktopSidebar = (): JSX.Element => {
         <div className="desktop-brand-mark">XP</div>
         <div>
           <h1>xips-pt Desktop</h1>
-          <p>Perfect Team upload control room</p>
+          <p>Operator workflow control room</p>
         </div>
       </div>
       <div className="desktop-nav">
         {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            className={`desktop-nav-link${location.pathname === item.to ? ' active' : ''}`}
-            to={item.to}
-          >
-            {item.label}
-          </NavLink>
+          <div key={item.to}>
+            {item.support ? <div className="desktop-nav-support-label">Support tools</div> : null}
+            <NavLink
+              className={`desktop-nav-link${location.pathname === item.to ? ' active' : ''}${
+                item.support ? ' desktop-nav-link-support' : ''
+              }`}
+              to={item.to}
+            >
+              {item.label}
+            </NavLink>
+          </div>
         ))}
       </div>
       <Card withBorder className="desktop-status-card">
@@ -129,7 +131,7 @@ export const DesktopTopbar = (): JSX.Element => {
       <Group gap="sm">
         {!selectedProfile ? (
           <Alert className="desktop-topbar-alert" color="blue" variant="light" title="Setup required">
-            Add a server profile below to start sign-in.
+            Add a server profile below to unlock the workflow.
           </Alert>
         ) : null}
         {needsAttentionCount > 0 ? (

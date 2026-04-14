@@ -112,7 +112,7 @@ const explainFilenameAutoAssignment = (
   return `The filename contains ${candidates.join(', ')}, but none of those IDs match a cached tournament prefix on this desktop.`;
 };
 
-export const OverviewPage = (): JSX.Element => {
+export const TodayPage = (): JSX.Element => {
   const { snapshot, selectedProfile, cards, cardSource } = useDesktop();
   const formatLabelById = useMemo(
     () =>
@@ -165,7 +165,8 @@ export const OverviewPage = (): JSX.Element => {
   return (
     <Stack gap="md">
       <div>
-        <h2 className="desktop-page-title">Overview</h2>
+        <h2 className="desktop-page-title">Today</h2>
+        <p className="desktop-page-subtitle">Readiness, blockers, active uploads, and recent completions.</p>
       </div>
       <Stack gap="md">
         {needsAttentionCount > 0 ? (
@@ -992,6 +993,192 @@ export const WatchFoldersPage = (): JSX.Element => {
   );
 };
 
+export const AutomationPage = (): JSX.Element => {
+  const {
+    snapshot,
+    selectedProfile,
+    deleteFormatRule,
+    deleteWatchRoot,
+    refreshFormats,
+    saveFormatRule,
+    scanWatchRoots,
+    toggleWatchRoot
+  } = useDesktop();
+  const [selectedWatchRootId, setSelectedWatchRootId] = useState('');
+  const [selectedFormatId, setSelectedFormatId] = useState('');
+  const [pattern, setPattern] = useState('');
+  const [focusedFormatId, setFocusedFormatId] = useState('');
+
+  useEffect(() => {
+    if (!focusedFormatId && snapshot.cachedFormats.length > 0) {
+      setFocusedFormatId(snapshot.cachedFormats[0]?.id ?? '');
+    }
+  }, [focusedFormatId, snapshot.cachedFormats]);
+
+  const focusedFormat = snapshot.cachedFormats.find((format) => format.id === focusedFormatId) ?? null;
+
+  return (
+    <Stack gap="lg">
+      <div>
+        <h2 className="desktop-page-title">Automation</h2>
+        <p className="desktop-page-subtitle">Watch folders, filename rules, and cached formats that drive background uploads.</p>
+      </div>
+      <Card withBorder className="desktop-card">
+        <Stack gap="xs">
+          <Text fw={700}>Automation flow</Text>
+          <Text size="sm" c="dimmed">
+            Link a watched folder to a filename pattern, then match it against the cached tournament formats from the selected server.
+          </Text>
+          <Group gap="xs">
+            <Badge color="blue" variant="light">
+              Watch folders
+            </Badge>
+            <Badge color="teal" variant="light">
+              Rules
+            </Badge>
+            <Badge color="grape" variant="light">
+              Formats
+            </Badge>
+          </Group>
+        </Stack>
+      </Card>
+      <SimpleGrid cols={{ base: 1, xl: 2 }}>
+        <WatchRootForm />
+        <Card withBorder className="desktop-card">
+          <Stack gap="sm">
+            <Text fw={700}>Save format rule</Text>
+            <Text size="sm" c="dimmed">
+              Map a folder or filename pattern to a tournament format.
+            </Text>
+            <select value={selectedWatchRootId} onChange={(event) => setSelectedWatchRootId(event.currentTarget.value)}>
+              <option value="">Choose a watch folder</option>
+              {snapshot.watchRoots.map((root) => (
+                <option key={root.id} value={root.id}>
+                  {root.path}
+                </option>
+              ))}
+            </select>
+            <select value={selectedFormatId} onChange={(event) => setSelectedFormatId(event.currentTarget.value)}>
+              <option value="">Choose a format</option>
+              {snapshot.cachedFormats.map((format) => (
+                <option key={format.id} value={format.id}>
+                  {format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}
+                </option>
+              ))}
+            </select>
+            <input
+              className="mantine-Input-input"
+              placeholder="Filename contains..."
+              value={pattern}
+              onChange={(event) => setPattern(event.currentTarget.value)}
+            />
+            <Group justify="flex-end">
+              <Button
+                disabled={!selectedWatchRootId || !selectedFormatId || !pattern.trim()}
+                onClick={() => {
+                  const format = snapshot.cachedFormats.find((item) => item.id === selectedFormatId) ?? null;
+                  const selectedWatchRoot = snapshot.watchRoots.find((item) => item.id === selectedWatchRootId) ?? null;
+                  if (!format || !selectedWatchRoot) {
+                    return;
+                  }
+                  void saveFormatRule({
+                    profileId: selectedWatchRoot.profileId,
+                    watchRootId: selectedWatchRoot.id,
+                    matchType: 'filename',
+                    pattern: pattern.trim(),
+                    formatId: format.id,
+                    formatName: format.name
+                  }).then(() => {
+                    setPattern('');
+                  });
+                }}
+              >
+                Save rule
+              </Button>
+            </Group>
+          </Stack>
+        </Card>
+      </SimpleGrid>
+      <Card withBorder className="desktop-card">
+        <Stack gap="sm">
+          <Group justify="space-between">
+            <Text fw={700}>Watched directories</Text>
+            <Button size="xs" variant="light" disabled={!snapshot.selectedProfileId} onClick={() => void scanWatchRoots(snapshot.selectedProfileId)}>
+              Scan now
+            </Button>
+          </Group>
+          <WatchRootTable watchRoots={snapshot.watchRoots} onToggle={toggleWatchRoot} onDelete={deleteWatchRoot} />
+        </Stack>
+      </Card>
+      <Card withBorder className="desktop-card">
+        <Stack gap="sm">
+          <Text fw={700}>Saved format rules</Text>
+          <FormatRuleTable rules={snapshot.formatRules} onDelete={deleteFormatRule} />
+        </Stack>
+      </Card>
+      <Card withBorder className="desktop-card">
+        <Stack gap="sm">
+          <Group justify="space-between">
+            <div>
+              <Text fw={700}>Cached formats</Text>
+              <Text size="sm" c="dimmed">
+                Refresh from the selected server to update the automation match set.
+              </Text>
+            </div>
+            <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshFormats()}>
+              Refresh formats
+            </Button>
+          </Group>
+          <Select
+            value={focusedFormatId || null}
+            data={snapshot.cachedFormats.map((format) => ({
+              value: format.id,
+              label: format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name
+            }))}
+            placeholder="Choose a format"
+            onChange={(value) => {
+              setFocusedFormatId(value ?? '');
+            }}
+          />
+          {!focusedFormat ? (
+            <Alert color="gray">Select a format to inspect the live restriction metadata from the server.</Alert>
+          ) : (
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              <Card withBorder className="desktop-subcard">
+                <Stack gap={4}>
+                  <Text fw={600}>{focusedFormat.name}</Text>
+                  <Text size="sm" c="dimmed">
+                    Tournament ID pattern: {focusedFormat.tournamentIdPrefix ? `${focusedFormat.tournamentIdPrefix} + 4-digit suffix (${focusedFormat.tournamentIdPrefix.length + 4} digits total)` : '-'}
+                  </Text>
+                  <Text size="sm" c="dimmed">Teams per tournament: {formatTeamsPerTournamentLabel(focusedFormat)}</Text>
+                  <Text size="sm" c="dimmed">Mode: {focusedFormat.mode || '-'}</Text>
+                  <Text size="sm" c="dimmed">Run environment: {focusedFormat.runEnvironment || '-'}</Text>
+                  <Text size="sm" c="dimmed">Park: {focusedFormat.parkKey || '-'}</Text>
+                  <Text size="sm" c="dimmed">Cap: {focusedFormat.capValue || '-'}</Text>
+                </Stack>
+              </Card>
+              <Card withBorder className="desktop-subcard">
+                <Stack gap={4}>
+                  <Text size="sm">OVR range: {formatOvrRangeLabel(focusedFormat)}</Text>
+                  <Text size="sm">Slots tournament: {focusedFormat.isSlotsTournament ? 'Yes' : 'No'}</Text>
+                  <Text size="sm">Slot counts: {formatSlotCountsLabel(focusedFormat)}</Text>
+                  <Text size="sm">Era restrictions: {focusedFormat.eraRestrictions.join(', ') || '-'}</Text>
+                  <Text size="sm">Card type restrictions: {focusedFormat.cardTypeRestrictions.join(', ') || '-'}</Text>
+                  <Text size="sm">Variant limit: {focusedFormat.variantLimitValue || '-'}</Text>
+                  <Text size="sm">Format type: {focusedFormat.formatType || '-'}</Text>
+                </Stack>
+              </Card>
+            </SimpleGrid>
+          )}
+        </Stack>
+      </Card>
+      <Card withBorder className="desktop-card">
+        <FormatsTable formats={snapshot.cachedFormats} />
+      </Card>
+    </Stack>
+  );
+};
+
 export const FormatsPage = (): JSX.Element => {
   const { snapshot, selectedProfile, refreshFormats } = useDesktop();
   const [selectedFormatId, setSelectedFormatId] = useState('');
@@ -1235,7 +1422,7 @@ export const DiagnosticsPage = (): JSX.Element => {
     <Stack gap="lg">
       <div>
         <h2 className="desktop-page-title">Diagnostics</h2>
-        <p className="desktop-page-subtitle">Request state, auth state, queue metadata, and recent events.</p>
+        <p className="desktop-page-subtitle">Support tooling for request state, auth state, queue metadata, and recent events.</p>
       </div>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
         <Card withBorder className="desktop-card">

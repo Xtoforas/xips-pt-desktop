@@ -1,14 +1,12 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { DesktopProvider, useDesktop } from './DesktopContext';
 import { DesktopSidebar, DesktopTopbar, OnboardingGate } from './components';
 import {
+  AutomationPage,
   DiagnosticsPage,
-  FormatsPage,
-  HistoryPage,
-  OverviewPage,
   SettingsPage,
   UploadQueuePage,
-  WatchFoldersPage
+  TodayPage
 } from './pages';
 
 export const App = (): JSX.Element => {
@@ -34,13 +32,17 @@ const DesktopShell = (): JSX.Element => {
             <OnboardingGate />
           ) : (
             <Routes>
-              <Route path="/" element={<OverviewPage />} />
+              <Route path="/" element={<Navigate to="/today" replace />} />
+              <Route path="/today" element={<TodayPage />} />
+              <Route path="/overview" element={<Navigate to="/today" replace />} />
               <Route path="/queue" element={<UploadQueuePage />} />
-              <Route path="/watch-folders" element={<WatchFoldersPage />} />
-              <Route path="/formats" element={<FormatsPage />} />
-              <Route path="/history" element={<HistoryPage />} />
+              <Route path="/automation" element={<AutomationPage />} />
+              <Route path="/watch-folders" element={<Navigate to="/automation" replace />} />
+              <Route path="/formats" element={<Navigate to="/automation" replace />} />
+              <Route path="/history" element={<Navigate to="/today" replace />} />
               <Route path="/diagnostics" element={<DiagnosticsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/today" replace />} />
             </Routes>
           )}
         </main>

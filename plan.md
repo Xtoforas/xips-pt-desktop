@@ -40,7 +40,7 @@ Use a "control room" interaction model:
 
 ### Phase status
 
-- [ ] Phase 1: Information architecture and shell
+- [x] Phase 1: Information architecture and shell
 - [ ] Phase 2: Onboarding redesign
 - [ ] Phase 3: Today page redesign
 - [ ] Phase 4: Queue workspace redesign
