@@ -1044,6 +1044,22 @@ pub fn desktop_remove_awaiting_upload_job(
 }
 
 #[tauri::command]
+pub fn desktop_dismiss_working_upload_job(
+    upload_job_id: String,
+    state: State<'_, AppState>,
+) -> Result<DesktopSnapshot, String> {
+    let snapshot = storage::dismiss_working_upload_job(&state.db_path, &upload_job_id)?;
+    storage::write_diagnostic_event(
+        &state.db_path,
+        "info",
+        "queue",
+        "Dismissed working queue row",
+        &format!("upload_job_id={}", upload_job_id),
+    )?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
 pub fn desktop_open_upload_file_location(
     upload_job_id: String,
     state: State<'_, AppState>,

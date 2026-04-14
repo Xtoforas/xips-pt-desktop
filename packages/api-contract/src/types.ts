@@ -319,7 +319,19 @@ export type LocalUploadJob = {
   remoteChecksum: string;
   lastRequestId: string;
   duplicateReason: string;
-  ignoredFromState: '' | 'awaiting_format_assignment' | 'failed_retryable' | 'auth_blocked';
+  ignoredFromState:
+    | ''
+    | 'detected'
+    | 'queued_local'
+    | 'uploading'
+    | 'uploaded_waiting_server'
+    | 'server_queued'
+    | 'server_processing'
+    | 'server_refresh_pending'
+    | 'server_refreshing'
+    | 'awaiting_format_assignment'
+    | 'failed_retryable'
+    | 'auth_blocked';
   nextRetryAfter: string;
   queuedAt: string;
   processingAt: string;
@@ -349,6 +361,7 @@ export type DesktopPreferences = {
   pollingIntervalSeconds: number;
   diagnosticsRetentionDays: number;
   dismissAutomationRuleReadiness: boolean;
+  dismissCompletedReadinessCard: boolean;
 };
 
 export type DesktopSnapshot = {

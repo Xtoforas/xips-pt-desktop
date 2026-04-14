@@ -34,6 +34,8 @@ By the end of this sprint, the app should:
 - [x] Tighten repeated hero and inspector copy so the workflow pages read more compactly.
 - [x] Collapse completed-readiness UI, surface the sidebar checklist sooner, and remove duplicate page-level queue badges.
 - [x] Improve shell and queue responsiveness so the desktop app remains usable below full-screen widths.
+- [x] Move readiness management out of the sidebar, add a Settings readiness tab, and let the completed Today readiness card be dismissed.
+- [x] Fix topbar server URL spacing and let Working rows be ignored or dismissed when that action is safe.
 
 ## Design direction
 

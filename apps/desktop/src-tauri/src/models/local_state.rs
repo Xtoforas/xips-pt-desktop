@@ -190,6 +190,9 @@ pub struct DesktopPreferences {
     #[serde(default)]
     #[serde(rename = "dismissAutomationRuleReadiness")]
     pub dismiss_automation_rule_readiness: bool,
+    #[serde(default)]
+    #[serde(rename = "dismissCompletedReadinessCard")]
+    pub dismiss_completed_readiness_card: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -262,6 +265,8 @@ pub struct UpdatePreferencesInput {
     pub diagnostics_retention_days: u32,
     #[serde(rename = "dismissAutomationRuleReadiness")]
     pub dismiss_automation_rule_readiness: bool,
+    #[serde(rename = "dismissCompletedReadinessCard")]
+    pub dismiss_completed_readiness_card: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

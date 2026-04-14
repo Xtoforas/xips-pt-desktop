@@ -135,10 +135,7 @@ export const buildOnboardingSteps = ({
 
 export const DesktopSidebar = (): JSX.Element => {
   const location = useLocation();
-  const { snapshot, health, selectedProfile, authFlowState, updatePreferences } = useDesktop();
-  const onboardingSteps = buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState });
-  const completedCount = onboardingSteps.filter((step) => step.complete).length;
-  const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
+  const { snapshot, health } = useDesktop();
 
   return (
     <aside className="desktop-sidebar">
@@ -149,63 +146,6 @@ export const DesktopSidebar = (): JSX.Element => {
           <p>Operator workflow control room</p>
         </div>
       </div>
-      <Card withBorder className="desktop-status-card desktop-onboarding-card">
-        <Stack gap="xs">
-          <Group justify="space-between" align="flex-start">
-            <div>
-              <Text className="desktop-micro-label">Setup checklist</Text>
-              <Text fw={700}>First-run readiness</Text>
-            </div>
-            <Badge color={nextStep ? 'orange' : 'teal'} variant="light">
-              {completedCount}/5
-            </Badge>
-          </Group>
-          <Text size="xs" c="dimmed">
-            {nextStep ? `Next: ${nextStep.label.toLowerCase()}` : 'Setup complete. The app is ready for normal operation.'}
-          </Text>
-          <Stack gap={6}>
-            {onboardingSteps.map((step) => (
-              <div key={step.key} className={`desktop-onboarding-step${step === nextStep ? ' next' : ''}`}>
-                <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
-                  <div>
-                    <Text size="sm" fw={600}>
-                      {step.label}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {step.status}
-                    </Text>
-                  </div>
-                  <Badge color={step.complete ? 'teal' : step === nextStep ? 'orange' : 'gray'} variant="light">
-                    {step.complete ? 'Ready' : 'Next'}
-                  </Badge>
-                </Group>
-                {step === nextStep ? (
-                  <Group gap="xs" wrap="wrap" className="desktop-onboarding-actions">
-                    <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-onboarding-action">
-                      {step.actionLabel}
-                    </Button>
-                    {step.dismissible ? (
-                      <Button
-                        size="compact-xs"
-                        variant="subtle"
-                        color="gray"
-                        onClick={() => {
-                          void updatePreferences({
-                            ...snapshot.preferences,
-                            dismissAutomationRuleReadiness: true
-                          });
-                        }}
-                      >
-                        Dismiss
-                      </Button>
-                    ) : null}
-                  </Group>
-                ) : null}
-              </div>
-            ))}
-          </Stack>
-        </Stack>
-      </Card>
       <div className="desktop-nav">
         {navItems.map((item) => (
           <div key={item.to}>
@@ -261,8 +201,8 @@ export const DesktopTopbar = (): JSX.Element => {
 
   return (
     <header className="desktop-topbar">
-      <Group gap="sm" wrap="wrap" className="desktop-topbar-left">
-        <Group gap="xs" wrap="nowrap" className="desktop-server-field">
+      <div className="desktop-topbar-left">
+        <Group gap="xs" wrap="nowrap" className="desktop-topbar-primary">
           <Text size="sm" fw={600}>
             Server
           </Text>
@@ -278,22 +218,24 @@ export const DesktopTopbar = (): JSX.Element => {
             }}
           />
         </Group>
-        {selectedProfile ? (
-          <Text size="sm" c="dimmed" className="desktop-mono desktop-topbar-endpoint">
-            {selectedProfile.baseUrl}
-          </Text>
-        ) : null}
-        {snapshot.tokenExpiresAt && isAuthenticated ? (
-          <Text size="xs" c="dimmed">
-            Token {new Date(snapshot.tokenExpiresAt).toLocaleString()}
-          </Text>
-        ) : null}
-        {authFlowState === 'waiting' ? (
-          <Badge color="orange" variant="light">
-            Completing sign-in...
-          </Badge>
-        ) : null}
-      </Group>
+        <Group gap="sm" wrap="wrap" className="desktop-topbar-meta">
+          {selectedProfile ? (
+            <Text size="sm" c="dimmed" className="desktop-mono desktop-topbar-endpoint">
+              {selectedProfile.baseUrl}
+            </Text>
+          ) : null}
+          {snapshot.tokenExpiresAt && isAuthenticated ? (
+            <Text size="xs" c="dimmed">
+              Token {new Date(snapshot.tokenExpiresAt).toLocaleString()}
+            </Text>
+          ) : null}
+          {authFlowState === 'waiting' ? (
+            <Badge color="orange" variant="light">
+              Completing sign-in...
+            </Badge>
+          ) : null}
+        </Group>
+      </div>
       <Group gap="sm" wrap="wrap" className="desktop-topbar-actions">
         {!selectedProfile ? (
           <Alert className="desktop-topbar-alert" color="blue" variant="light" title="Setup in progress">
@@ -1258,6 +1200,7 @@ export const PreferencesForm = ({
   const [pollingIntervalSeconds, setPollingIntervalSeconds] = useState(String(preferences.pollingIntervalSeconds));
   const [diagnosticsRetentionDays, setDiagnosticsRetentionDays] = useState(String(preferences.diagnosticsRetentionDays));
   const [dismissAutomationRuleReadiness, setDismissAutomationRuleReadiness] = useState(preferences.dismissAutomationRuleReadiness);
+  const [dismissCompletedReadinessCard, setDismissCompletedReadinessCard] = useState(preferences.dismissCompletedReadinessCard);
 
   return (
     <Card withBorder className="desktop-card">
@@ -1283,6 +1226,14 @@ export const PreferencesForm = ({
           />
           <span>Keep automation rule in the readiness checklist</span>
         </label>
+        <label className="desktop-checkbox-row">
+          <input
+            type="checkbox"
+            checked={!dismissCompletedReadinessCard}
+            onChange={(event) => setDismissCompletedReadinessCard(!event.currentTarget.checked)}
+          />
+          <span>Keep the completed readiness card on Today</span>
+        </label>
         <TextInput
           label="Polling interval (seconds)"
           value={pollingIntervalSeconds}
@@ -1306,7 +1257,8 @@ export const PreferencesForm = ({
                 closeToTray,
                 pollingIntervalSeconds: polling,
                 diagnosticsRetentionDays: retention,
-                dismissAutomationRuleReadiness
+                dismissAutomationRuleReadiness,
+                dismissCompletedReadinessCard
               });
             }}
           >

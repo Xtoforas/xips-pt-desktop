@@ -329,6 +329,7 @@ pub fn update_preferences(
             polling_interval_seconds: input.polling_interval_seconds,
             diagnostics_retention_days: input.diagnostics_retention_days,
             dismiss_automation_rule_readiness: input.dismiss_automation_rule_readiness,
+            dismiss_completed_readiness_card: input.dismiss_completed_readiness_card,
         })
         .map_err(|error| error.to_string())?,
     )
@@ -1419,7 +1420,17 @@ pub fn ignore_upload_job(db_path: &Path, upload_job_id: &str) -> Result<DesktopS
     let job = load_upload_job_by_id(db_path, upload_job_id)?;
     if !matches!(
         job.local_state.as_str(),
-        "awaiting_format_assignment" | "failed_retryable" | "auth_blocked"
+        "detected"
+            | "queued_local"
+            | "uploading"
+            | "uploaded_waiting_server"
+            | "server_queued"
+            | "server_processing"
+            | "server_refresh_pending"
+            | "server_refreshing"
+            | "awaiting_format_assignment"
+            | "failed_retryable"
+            | "auth_blocked"
     ) {
         return Err(String::from("ignorable_upload_job_required"));
     }
@@ -1472,6 +1483,67 @@ pub fn remove_awaiting_upload_job(
     let job = load_upload_job_by_id(db_path, upload_job_id)?;
     if job.local_state != "awaiting_format_assignment" || !job.upload_id.is_empty() {
         return Err(String::from("awaiting_upload_job_required"));
+    }
+
+    let detected_file = load_detected_files(&connection)?.into_iter().find(|file| {
+        file.profile_id == job.profile_id
+            && file.path == job.path
+            && same_file_instance(
+                &file.checksum,
+                &job.checksum,
+                &file.source_modified_at,
+                &job.source_modified_at,
+            )
+    });
+    let detected_file_id = detected_file.as_ref().map(|file| file.id.clone());
+    let staged_path = if !job.staged_path.is_empty() {
+        Some(job.staged_path.clone())
+    } else {
+        detected_file
+            .as_ref()
+            .and_then(|file| (!file.staged_path.is_empty()).then(|| file.staged_path.clone()))
+    };
+
+    connection
+        .execute(
+            "DELETE FROM upload_attempts WHERE upload_job_id = ?1",
+            params![upload_job_id],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM upload_jobs WHERE upload_job_id = ?1",
+            params![upload_job_id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    if let Some(detected_file_id) = detected_file_id {
+        connection
+            .execute(
+                "DELETE FROM detected_files WHERE detected_file_id = ?1",
+                params![detected_file_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    if let Some(path) = staged_path {
+        let staged = PathBuf::from(path);
+        if staged.exists() {
+            fs::remove_file(&staged).map_err(|error| error.to_string())?;
+        }
+    }
+
+    load_snapshot(db_path)
+}
+
+pub fn dismiss_working_upload_job(
+    db_path: &Path,
+    upload_job_id: &str,
+) -> Result<DesktopSnapshot, String> {
+    let connection = open_db(db_path)?;
+    let job = load_upload_job_by_id(db_path, upload_job_id)?;
+    if !matches!(job.local_state.as_str(), "detected" | "queued_local") || !job.upload_id.is_empty() {
+        return Err(String::from("dismissable_working_upload_job_required"));
     }
 
     let detected_file = load_detected_files(&connection)?.into_iter().find(|file| {
@@ -2040,6 +2112,7 @@ fn load_preferences(connection: &Connection) -> Result<DesktopPreferences, Strin
             polling_interval_seconds: 5,
             diagnostics_retention_days: 14,
             dismiss_automation_rule_readiness: false,
+            dismiss_completed_readiness_card: false,
         });
     }
     serde_json::from_str::<DesktopPreferences>(&raw).map_err(|error| error.to_string())

@@ -85,6 +85,7 @@ type DesktopContextValue = {
   pollActiveUploads: (profileId: string) => Promise<void>;
   retryUploadJob: (uploadJobId: string) => Promise<void>;
   dismissDuplicateUploadJob: (uploadJobId: string) => Promise<void>;
+  dismissWorkingUploadJob: (uploadJobId: string) => Promise<void>;
   ignoreUploadJob: (uploadJobId: string) => Promise<void>;
   restoreIgnoredUploadJob: (uploadJobId: string) => Promise<void>;
   removeAwaitingUploadJob: (uploadJobId: string) => Promise<void>;
@@ -111,7 +112,8 @@ const emptySnapshot: DesktopSnapshot = {
     closeToTray: true,
     pollingIntervalSeconds: 5,
     diagnosticsRetentionDays: 14,
-    dismissAutomationRuleReadiness: false
+    dismissAutomationRuleReadiness: false,
+    dismissCompletedReadinessCard: false
   },
   diagnostics: [],
   cachedFormats: []
@@ -475,6 +477,11 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setSnapshot(next);
   }, []);
 
+  const dismissWorkingUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
+    const next = await desktopClient.dismissWorkingUploadJob(uploadJobId);
+    setSnapshot(next);
+  }, []);
+
   const ignoreUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
     const next = await desktopClient.ignoreUploadJob(uploadJobId);
     setSnapshot(next);
@@ -549,6 +556,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       pollActiveUploads,
       retryUploadJob,
       dismissDuplicateUploadJob,
+      dismissWorkingUploadJob,
       ignoreUploadJob,
       restoreIgnoredUploadJob,
       removeAwaitingUploadJob,
@@ -593,6 +601,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       pollActiveUploads,
       retryUploadJob,
       dismissDuplicateUploadJob,
+      dismissWorkingUploadJob,
       ignoreUploadJob,
       restoreIgnoredUploadJob,
       removeAwaitingUploadJob,

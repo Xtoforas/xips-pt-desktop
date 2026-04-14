@@ -164,11 +164,24 @@ a {
 }
 
 .desktop-topbar-left {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 520px;
   min-width: 0;
 }
 
 .desktop-server-field {
   flex-shrink: 0;
+}
+
+.desktop-topbar-primary {
+  align-items: center;
+  min-width: 0;
+}
+
+.desktop-topbar-meta {
+  align-items: center;
+  min-width: 0;
 }
 
 .desktop-topbar-alert {
@@ -446,7 +459,9 @@ a {
 }
 
 .desktop-topbar-endpoint {
-  max-width: min(28vw, 420px);
+  flex: 1 1 280px;
+  min-width: 0;
+  max-width: min(42vw, 560px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -454,6 +469,7 @@ a {
 
 .desktop-topbar-actions {
   justify-content: flex-end;
+  align-items: center;
 }
 
 .desktop-table-wrap {
@@ -544,7 +560,7 @@ a {
   }
 
   .desktop-topbar-endpoint {
-    max-width: min(40vw, 360px);
+    max-width: min(52vw, 420px);
   }
 
   .desktop-today-mini-row,
@@ -569,6 +585,10 @@ a {
   .desktop-topbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .desktop-topbar-left {
+    gap: 6px;
   }
 
   .desktop-topbar-actions {

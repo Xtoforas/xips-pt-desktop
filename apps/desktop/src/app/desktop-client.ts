@@ -70,6 +70,7 @@ type DesktopClient = {
   pollActiveUploads: (profileId: string) => Promise<DesktopSnapshot>;
   retryUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
   dismissDuplicateUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
+  dismissWorkingUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
   ignoreUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
   restoreIgnoredUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
   removeAwaitingUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
@@ -118,7 +119,8 @@ const mockSnapshot = (): DesktopSnapshot => ({
     closeToTray: true,
     pollingIntervalSeconds: 5,
     diagnosticsRetentionDays: 14,
-    dismissAutomationRuleReadiness: false
+    dismissAutomationRuleReadiness: false,
+    dismissCompletedReadinessCard: false
   },
   diagnostics: [],
   cachedFormats: []
@@ -212,6 +214,9 @@ const browserClient: DesktopClient = {
   async dismissDuplicateUploadJob() {
     return mockSnapshot();
   },
+  async dismissWorkingUploadJob() {
+    return mockSnapshot();
+  },
   async ignoreUploadJob() {
     return mockSnapshot();
   },
@@ -262,6 +267,8 @@ const tauriClient: DesktopClient = {
   retryUploadJob: (uploadJobId) => invoke<DesktopSnapshot>('desktop_retry_upload_job', { uploadJobId }),
   dismissDuplicateUploadJob: (uploadJobId) =>
     invoke<DesktopSnapshot>('desktop_dismiss_duplicate_upload_job', { uploadJobId }),
+  dismissWorkingUploadJob: (uploadJobId) =>
+    invoke<DesktopSnapshot>('desktop_dismiss_working_upload_job', { uploadJobId }),
   ignoreUploadJob: (uploadJobId) => invoke<DesktopSnapshot>('desktop_ignore_upload_job', { uploadJobId }),
   restoreIgnoredUploadJob: (uploadJobId) =>
     invoke<DesktopSnapshot>('desktop_restore_ignored_upload_job', { uploadJobId }),

@@ -143,7 +143,7 @@ const queueWorkspaceViewLabel: Record<QueueWorkspaceView, string> = {
 
 const queueWorkspaceViewDetail: Record<QueueWorkspaceView, string> = {
   needs_action: 'Rows waiting on a user decision.',
-  ignored: 'Rows hidden from Needs Action until you restore them.',
+  ignored: 'Rows hidden from the active queue until you restore them.',
   working: 'Automatic or server-side work that is still progressing.',
   done: 'Finished, skipped, or terminal rows.'
 };
@@ -198,6 +198,15 @@ const queueWorkspaceViewForJob = (job: LocalUploadJob): QueueWorkspaceView => {
 
 const isQueueJobDone = (job: LocalUploadJob): boolean => queueWorkspaceViewForJob(job) === 'done';
 
+const canIgnoreUploadJob = (job: LocalUploadJob): boolean =>
+  uploadJobNeedsAttention(job) || uploadJobWorkingAutomatically(job);
+
+const canDismissUploadJob = (job: LocalUploadJob): boolean =>
+  job.localState === 'duplicate_skipped_local' ||
+  job.localState === 'awaiting_format_assignment' ||
+  job.localState === 'detected' ||
+  job.localState === 'queued_local';
+
 const blockerPriority: Record<TodayBlockerState, number> = {
   auth_blocked: 0,
   awaiting_format_assignment: 1,
@@ -241,6 +250,137 @@ const getUploadJobKindDetail = (job: Pick<LocalUploadJob, 'fileKind' | 'lifecycl
     return 'The queue is waiting for a format match.';
   }
   return job.lifecyclePhase ? formatLifecycleLabel(job.lifecyclePhase, job.fileKind) : 'In progress';
+};
+
+const ReadinessCard = ({
+  id,
+  onboardingSteps,
+  nextStep,
+  selectedProfileName,
+  dismissCompletedReadinessCard,
+  onDismissCompletedReadinessCard,
+  onDismissAutomationReminder,
+  variant
+}: {
+  id?: string;
+  onboardingSteps: ReturnType<typeof buildOnboardingSteps>;
+  nextStep: ReturnType<typeof buildOnboardingSteps>[number] | null;
+  selectedProfileName: string;
+  dismissCompletedReadinessCard: boolean;
+  onDismissCompletedReadinessCard: (dismissed: boolean) => void;
+  onDismissAutomationReminder: () => void;
+  variant: 'today' | 'settings';
+}): JSX.Element | null => {
+  if (!nextStep && variant === 'today' && dismissCompletedReadinessCard) {
+    return null;
+  }
+
+  if (!nextStep) {
+    return (
+      <Card withBorder className="desktop-card desktop-today-readiness-compact" id={id}>
+        <Stack gap="sm">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <div>
+              <Text className="desktop-micro-label">Readiness</Text>
+              <Text fw={700}>Operationally ready</Text>
+            </div>
+            <Text size="sm" c="dimmed">
+              {selectedProfileName}
+            </Text>
+          </Group>
+          <Group gap="xs" wrap="wrap">
+            {onboardingSteps.map((step) => (
+              <Badge key={step.key} color="teal" variant="light">
+                {step.label}
+              </Badge>
+            ))}
+          </Group>
+          <Group gap="xs" wrap="wrap" justify="space-between">
+            <Text size="sm" c="dimmed">
+              The desktop app is ready for normal operation.
+            </Text>
+            <Group gap="xs" wrap="wrap">
+              {variant === 'today' ? (
+                <Button size="compact-xs" variant="subtle" color="gray" onClick={() => onDismissCompletedReadinessCard(true)}>
+                  Dismiss
+                </Button>
+              ) : (
+                <Button
+                  size="compact-xs"
+                  variant="light"
+                  color="gray"
+                  onClick={() => onDismissCompletedReadinessCard(!dismissCompletedReadinessCard)}
+                >
+                  {dismissCompletedReadinessCard ? 'Show on Today' : 'Hide from Today'}
+                </Button>
+              )}
+              {variant === 'today' ? (
+                <Button component={Link} to="/settings#readiness" size="compact-xs" variant="light">
+                  Manage readiness
+                </Button>
+              ) : (
+                <Button component={Link} to="/today" size="compact-xs" variant="light">
+                  Open Today
+                </Button>
+              )}
+            </Group>
+          </Group>
+        </Stack>
+      </Card>
+    );
+  }
+
+  return (
+    <Card withBorder className="desktop-card desktop-today-strip" id={id}>
+      <Stack gap="sm">
+        <Group justify="space-between" align="center" wrap="wrap">
+          <div>
+            <Text className="desktop-micro-label">Readiness</Text>
+            <Text fw={700}>Finish setup</Text>
+          </div>
+          <Text size="sm" c="dimmed">
+            {selectedProfileName}
+          </Text>
+        </Group>
+        <SimpleGrid cols={{ base: 1, md: 2, xl: variant === 'today' ? 3 : 2 }} spacing="sm">
+          {onboardingSteps.map((step, index) => (
+            <Card key={step.key} withBorder className={`desktop-card desktop-today-strip-item${step.complete ? ' complete' : ''}`}>
+              <Stack gap={6}>
+                <Group justify="space-between" align="flex-start" wrap="nowrap">
+                  <div>
+                    <Text size="sm" fw={700}>
+                      {index + 1}. {step.label}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {step.status}
+                    </Text>
+                  </div>
+                  <Badge color={step.complete ? 'teal' : step === nextStep ? 'orange' : 'gray'} variant="light">
+                    {step.complete ? 'Ready' : 'Pending'}
+                  </Badge>
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {step === nextStep ? step.detail : step.complete ? 'Ready for normal operation.' : 'Still needs setup.'}
+                </Text>
+                {!step.complete ? (
+                  <Group gap="xs" wrap="wrap">
+                    <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-today-strip-action">
+                      {step.actionLabel}
+                    </Button>
+                    {step.dismissible ? (
+                      <Button size="compact-xs" variant="subtle" color="gray" onClick={onDismissAutomationReminder}>
+                        Dismiss
+                      </Button>
+                    ) : null}
+                  </Group>
+                ) : null}
+              </Stack>
+            </Card>
+          ))}
+        </SimpleGrid>
+      </Stack>
+    </Card>
+  );
 };
 
 export const TodayPage = (): JSX.Element => {
@@ -343,88 +483,25 @@ export const TodayPage = (): JSX.Element => {
           )}
         </Stack>
       </Card>
-      {nextStep ? (
-        <Card withBorder className="desktop-card desktop-today-strip">
-          <Stack gap="sm">
-            <Group justify="space-between" align="center" wrap="wrap">
-              <div>
-                <Text className="desktop-micro-label">Readiness strip</Text>
-                <Text fw={700}>Finish setup</Text>
-              </div>
-              <Text size="sm" c="dimmed">
-                {selectedProfile ? `${selectedProfile.name} is the active server profile.` : 'No server profile selected yet.'}
-              </Text>
-            </Group>
-            <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="sm">
-              {readinessItems.map((step, index) => (
-                <Card key={step.key} withBorder className={`desktop-card desktop-today-strip-item${step.complete ? ' complete' : ''}`}>
-                  <Stack gap={6}>
-                    <Group justify="space-between" align="flex-start" wrap="nowrap">
-                      <div>
-                        <Text size="sm" fw={700}>
-                          {index + 1}. {step.label}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          {step.status}
-                        </Text>
-                      </div>
-                      <Badge color={step.complete ? 'teal' : step === nextStep ? 'orange' : 'gray'} variant="light">
-                        {step.complete ? 'Ready' : 'Pending'}
-                      </Badge>
-                    </Group>
-                    <Text size="xs" c="dimmed">
-                      {step === nextStep ? step.detail : step.complete ? 'Ready for normal operation.' : 'Still needs setup.'}
-                    </Text>
-                    {!step.complete ? (
-                      <Group gap="xs" wrap="wrap">
-                        <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-today-strip-action">
-                          {step.actionLabel}
-                        </Button>
-                        {step.dismissible ? (
-                          <Button
-                            size="compact-xs"
-                            variant="subtle"
-                            color="gray"
-                            onClick={() => {
-                              void updatePreferences({
-                                ...snapshot.preferences,
-                                dismissAutomationRuleReadiness: true
-                              });
-                            }}
-                          >
-                            Dismiss
-                          </Button>
-                        ) : null}
-                      </Group>
-                    ) : null}
-                  </Stack>
-                </Card>
-              ))}
-            </SimpleGrid>
-          </Stack>
-        </Card>
-      ) : (
-        <Card withBorder className="desktop-card desktop-today-readiness-compact">
-          <Stack gap="sm">
-            <Group justify="space-between" align="center" wrap="wrap">
-              <div>
-                <Text className="desktop-micro-label">Readiness</Text>
-                <Text fw={700}>Operationally ready</Text>
-              </div>
-              <Text size="sm" c="dimmed">
-                {selectedProfile ? `${selectedProfile.name} is active.` : 'No server profile selected yet.'}
-              </Text>
-            </Group>
-            <Group gap="xs" wrap="wrap">
-              {readinessItems.map((step) => (
-                <Badge key={step.key} color={step.complete ? 'teal' : 'orange'} variant="light">
-                  {step.label}
-                </Badge>
-              ))}
-            </Group>
-          </Stack>
-        </Card>
-      )}
+      <ReadinessCard
+        onboardingSteps={readinessItems}
+        nextStep={nextStep}
+        selectedProfileName={selectedProfile ? `${selectedProfile.name} is active.` : 'No server profile selected yet.'}
+        dismissCompletedReadinessCard={snapshot.preferences.dismissCompletedReadinessCard}
+        onDismissCompletedReadinessCard={(dismissed) => {
+          void updatePreferences({
+            ...snapshot.preferences,
+            dismissCompletedReadinessCard: dismissed
+          });
+        }}
+        onDismissAutomationReminder={() => {
+          void updatePreferences({
+            ...snapshot.preferences,
+            dismissAutomationRuleReadiness: true
+          });
+        }}
+        variant="today"
+      />
       <Card withBorder className="desktop-card desktop-today-section">
         <Stack gap="md">
           <Group justify="space-between" align="center" wrap="wrap">
@@ -675,6 +752,7 @@ export const UploadQueuePage = (): JSX.Element => {
     assignDetectedFileTournament,
     retryUploadJob,
     dismissDuplicateUploadJob,
+    dismissWorkingUploadJob,
     ignoreUploadJob,
     restoreIgnoredUploadJob,
     removeAwaitingUploadJob,
@@ -746,15 +824,11 @@ export const UploadQueuePage = (): JSX.Element => {
   );
   const dismissibleSelectedJobs = useMemo(
     () =>
-      selectedQueueJobs.filter(
-        (job) =>
-          job.localState === 'duplicate_skipped_local' ||
-          job.localState === 'awaiting_format_assignment'
-      ),
+      selectedQueueJobs.filter(canDismissUploadJob),
     [selectedQueueJobs]
   );
   const ignorableSelectedJobs = useMemo(
-    () => selectedQueueJobs.filter(uploadJobNeedsAttention),
+    () => selectedQueueJobs.filter(canIgnoreUploadJob),
     [selectedQueueJobs]
   );
 
@@ -849,8 +923,10 @@ export const UploadQueuePage = (): JSX.Element => {
       ? 'Awaiting format assignment'
       : selectedJob.localState === 'failed_retryable'
         ? 'Needs a retry after a transient failure'
-        : selectedJob.localState === 'auth_blocked'
+      : selectedJob.localState === 'auth_blocked'
           ? 'Blocked until the account signs in again'
+          : selectedJob.localState === 'detected' || selectedJob.localState === 'queued_local'
+            ? 'Queued locally and safe to remove before upload starts'
           : selectedJob.localState === 'ignored'
             ? selectedJob.ignoredFromState
               ? `Ignored ${formatQueueStateLabel(selectedJob.ignoredFromState, selectedJob.fileKind).toLowerCase()} row`
@@ -976,6 +1052,8 @@ export const UploadQueuePage = (): JSX.Element => {
           await dismissDuplicateUploadJob(job.id);
         } else if (job.localState === 'awaiting_format_assignment') {
           await removeAwaitingUploadJob(job.id);
+        } else if (job.localState === 'detected' || job.localState === 'queued_local') {
+          await dismissWorkingUploadJob(job.id);
         }
       }
       setSelectedQueueJobIds((current) => current.filter((jobId) => !removedIds.includes(jobId)));
@@ -1015,6 +1093,8 @@ export const UploadQueuePage = (): JSX.Element => {
         ? 'Retry now'
         : selectedJob?.localState === 'auth_blocked'
           ? 'Re-authenticate'
+          : selectedJob?.localState === 'detected' || selectedJob?.localState === 'queued_local'
+            ? 'Dismiss row'
           : selectedJob?.localState === 'ignored'
             ? 'Restore row'
           : 'Inspect row';
@@ -1073,12 +1153,10 @@ export const UploadQueuePage = (): JSX.Element => {
                 <Group gap="xs" align="center" wrap="wrap">
                   {selectedQueueJobIds.length > 0 ? (
                     <Text size="sm" c="dimmed">
-                      {queueView === 'needs_action'
-                        ? `${ignorableSelectedJobs.length} of ${selectedQueueJobIds.length} selected can be ignored.`
-                        : `${dismissibleSelectedJobs.length} of ${selectedQueueJobIds.length} selected can be dismissed.`}
+                      {ignorableSelectedJobs.length} of {selectedQueueJobIds.length} selected can be ignored. {dismissibleSelectedJobs.length} can be dismissed.
                     </Text>
                   ) : null}
-                  {queueView === 'needs_action' ? (
+                  {queueView !== 'ignored' ? (
                     <Button
                       size="xs"
                       variant="light"
@@ -1245,7 +1323,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Re-auth
                       </Button>
                     ) : null}
-                    {uploadJobNeedsAttention(job) ? (
+                    {canIgnoreUploadJob(job) ? (
                       <Button
                         size="compact-xs"
                         variant="subtle"
@@ -1256,6 +1334,19 @@ export const UploadQueuePage = (): JSX.Element => {
                         }}
                       >
                         Ignore
+                      </Button>
+                    ) : null}
+                    {job.localState === 'detected' || job.localState === 'queued_local' ? (
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        color="red"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void dismissWorkingUploadJob(job.id);
+                        }}
+                      >
+                        Dismiss
                       </Button>
                     ) : null}
                     {job.localState === 'ignored' ? (
@@ -1358,6 +1449,18 @@ export const UploadQueuePage = (): JSX.Element => {
                             Re-authenticate
                           </Button>
                         ) : null}
+                        {canIgnoreUploadJob(selectedJob) ? (
+                          <Button
+                            size="xs"
+                            variant="light"
+                            color="gray"
+                            onClick={() => {
+                              void ignoreUploadJob(selectedJob.id);
+                            }}
+                          >
+                            Ignore row
+                          </Button>
+                        ) : null}
                         {selectedJob.localState === 'ignored' ? (
                           <Button
                             size="xs"
@@ -1366,7 +1469,19 @@ export const UploadQueuePage = (): JSX.Element => {
                               void restoreIgnoredUploadJob(selectedJob.id);
                             }}
                           >
-                            Restore to Needs Action
+                            Restore row
+                          </Button>
+                        ) : null}
+                        {selectedJob.localState === 'detected' || selectedJob.localState === 'queued_local' ? (
+                          <Button
+                            size="xs"
+                            color="red"
+                            variant="light"
+                            onClick={() => {
+                              void dismissWorkingUploadJob(selectedJob.id);
+                            }}
+                          >
+                            Dismiss row
                           </Button>
                         ) : null}
                         {selectedJob.localState === 'awaiting_format_assignment' ? (
@@ -1411,8 +1526,13 @@ export const UploadQueuePage = (): JSX.Element => {
                     {selectedJob.localState === 'ignored' ? (
                       <Alert color="gray" title="Ignored row">
                         {selectedJob.ignoredFromState
-                          ? `This row was hidden after ${formatQueueStateLabel(selectedJob.ignoredFromState, selectedJob.fileKind).toLowerCase()}. Restore it when you want it back in Needs Action.`
-                          : 'This row was hidden from Needs Action. Restore it when you want it back in the main lane.'}
+                          ? `This row was hidden after ${formatQueueStateLabel(selectedJob.ignoredFromState, selectedJob.fileKind).toLowerCase()}. Restore it when you want it back in the queue.`
+                          : 'This row was hidden from the queue. Restore it when you want it back in the main lane.'}
+                      </Alert>
+                    ) : null}
+                    {(selectedJob.localState === 'detected' || selectedJob.localState === 'queued_local') && !selectedJob.uploadId ? (
+                      <Alert color="blue" title="Local-only queue row">
+                        This file has not been uploaded yet. You can ignore it to hide it for now or dismiss it to remove it from the local queue entirely.
                       </Alert>
                     ) : null}
                     {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
@@ -2433,10 +2553,12 @@ export const DiagnosticsPage = (): JSX.Element => {
 };
 
 export const SettingsPage = (): JSX.Element => {
+  const location = useLocation();
   const {
     snapshot,
     selectedProfile,
     health,
+    authFlowState,
     deleteServerProfile,
     refreshHealth,
     openAuthWindow,
@@ -2446,6 +2568,12 @@ export const SettingsPage = (): JSX.Element => {
   } = useDesktop();
   useScrollToHash();
   const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
+  const onboardingSteps = useMemo(
+    () => buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState }),
+    [authFlowState, health, selectedProfile, snapshot]
+  );
+  const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
+  const settingsHash = location.hash || '#server-profile';
 
   return (
     <Stack gap="lg">
@@ -2453,10 +2581,43 @@ export const SettingsPage = (): JSX.Element => {
         <h2 className="desktop-page-title">Settings</h2>
         <p className="desktop-page-subtitle">Server profiles and desktop behavior configuration.</p>
       </div>
+      <Group gap="xs" wrap="wrap">
+        <Button component={Link} to="/settings#server-profile" size="xs" variant={settingsHash === '#server-profile' ? 'filled' : 'light'}>
+          Server
+        </Button>
+        <Button component={Link} to="/settings#readiness" size="xs" variant={settingsHash === '#readiness' ? 'filled' : 'light'}>
+          Readiness
+        </Button>
+        <Button component={Link} to="/settings#desktop-behavior" size="xs" variant={settingsHash === '#desktop-behavior' ? 'filled' : 'light'}>
+          Desktop behavior
+        </Button>
+      </Group>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
         <ServerProfileForm id="server-profile" />
-        <PreferencesForm preferences={snapshot.preferences} onSave={updatePreferences} />
+        <div id="desktop-behavior">
+          <PreferencesForm preferences={snapshot.preferences} onSave={updatePreferences} />
+        </div>
       </SimpleGrid>
+      <ReadinessCard
+        id="readiness"
+        onboardingSteps={onboardingSteps}
+        nextStep={nextStep}
+        selectedProfileName={selectedProfile ? `${selectedProfile.name} is active.` : 'No server profile selected yet.'}
+        dismissCompletedReadinessCard={snapshot.preferences.dismissCompletedReadinessCard}
+        onDismissCompletedReadinessCard={(dismissed) => {
+          void updatePreferences({
+            ...snapshot.preferences,
+            dismissCompletedReadinessCard: dismissed
+          });
+        }}
+        onDismissAutomationReminder={() => {
+          void updatePreferences({
+            ...snapshot.preferences,
+            dismissAutomationRuleReadiness: true
+          });
+        }}
+        variant="settings"
+      />
       <Card withBorder className="desktop-card desktop-support-card" id="server-health">
         <Stack gap="sm">
           <Text fw={700}>Connection checks</Text>
