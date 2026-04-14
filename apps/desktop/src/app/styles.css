@@ -1,14 +1,26 @@
 :root {
-  --page-bg: #101113;
-  --surface-0: #15171a;
-  --surface-1: #1b1f24;
-  --surface-2: #232931;
-  --line-0: #2f3741;
-  --text-main: #f1f5fb;
-  --text-muted: #9aa7b6;
-  --accent: #2f80ed;
-  --accent-soft: #19355d;
-  --accent-green: #16c185;
+  --page-bg: #0d1014;
+  --page-glow: rgba(40, 112, 208, 0.16);
+  --surface-0: #12161b;
+  --surface-1: #171c22;
+  --surface-2: #202730;
+  --surface-3: #262e39;
+  --line-0: #2f3944;
+  --line-1: #394756;
+  --text-main: #f3f7fb;
+  --text-muted: #97a6b6;
+  --text-soft: #b7c4d2;
+  --accent: #4ea1ff;
+  --accent-soft: rgba(78, 161, 255, 0.14);
+  --accent-strong: #74b4ff;
+  --good: #22c18a;
+  --good-soft: rgba(34, 193, 138, 0.15);
+  --info: #4ea1ff;
+  --info-soft: rgba(78, 161, 255, 0.16);
+  --warn: #f09a2d;
+  --warn-soft: rgba(240, 154, 45, 0.18);
+  --danger: #ea5d5d;
+  --danger-soft: rgba(234, 93, 93, 0.18);
 }
 
 * {
@@ -23,7 +35,10 @@ body,
 }
 
 body {
-  background: var(--page-bg);
+  background:
+    radial-gradient(circle at 16% 0%, var(--page-glow), transparent 26%),
+    radial-gradient(circle at 84% 8%, rgba(52, 176, 142, 0.08), transparent 22%),
+    linear-gradient(180deg, #0b0e12 0%, var(--page-bg) 100%);
   color: var(--text-main);
   font-family: "IBM Plex Sans", "Trebuchet MS", sans-serif;
 }
@@ -37,6 +52,9 @@ a {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 260px 1fr;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 18%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, transparent 24%);
 }
 
 .desktop-sidebar {
@@ -44,7 +62,9 @@ a {
   flex-direction: column;
   gap: 14px;
   padding: 16px 14px;
-  background: linear-gradient(180deg, #171a1e 0%, #121418 100%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 12%),
+    linear-gradient(180deg, #151a20 0%, #101318 100%);
   border-right: 1px solid var(--line-0);
 }
 
@@ -60,10 +80,13 @@ a {
   display: grid;
   place-items: center;
   border-radius: 14px;
-  background: linear-gradient(145deg, #3188ff 0%, #1a5cc2 100%);
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.22), transparent 38%),
+    linear-gradient(145deg, #4c9cff 0%, #234f9b 100%);
   color: #fff;
   font-weight: 700;
   letter-spacing: 0.08em;
+  box-shadow: 0 10px 24px rgba(11, 20, 32, 0.35);
 }
 
 .desktop-brand h1 {
@@ -76,8 +99,7 @@ a {
   margin: 2px 0 0;
   color: var(--text-muted);
   font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.04em;
 }
 
 .desktop-nav {
@@ -89,8 +111,7 @@ a {
   margin: 10px 0 4px;
   color: #7f91a6;
   font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.04em;
 }
 
 .desktop-nav-link {
@@ -106,14 +127,15 @@ a {
 }
 
 .desktop-nav-link:hover {
-  background: #1d232c;
+  background: #1a2028;
   color: #dce6f4;
 }
 
 .desktop-nav-link.active {
-  background: var(--accent-soft);
-  color: #b7d2fb;
-  border: 1px solid #254c84;
+  background: linear-gradient(180deg, rgba(78, 161, 255, 0.18) 0%, rgba(78, 161, 255, 0.08) 100%);
+  color: #dcecff;
+  border: 1px solid rgba(78, 161, 255, 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .desktop-main {
@@ -125,12 +147,15 @@ a {
 .desktop-topbar {
   min-height: 56px;
   border-bottom: 1px solid var(--line-0);
-  background: #14181d;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 28%),
+    rgba(18, 22, 28, 0.96);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 16px;
+  box-shadow: 0 8px 24px rgba(6, 9, 12, 0.2);
 }
 
 .desktop-topbar-left {
@@ -147,8 +172,8 @@ a {
 
 .desktop-content {
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: 18px;
+  padding: 18px;
 }
 
 .desktop-oobe-wrap {
@@ -159,8 +184,8 @@ a {
 
 .desktop-oobe-hero {
   background:
-    radial-gradient(circle at top left, rgba(47, 128, 237, 0.18), transparent 28%),
-    linear-gradient(180deg, #161a20 0%, #13171c 100%);
+    radial-gradient(circle at top left, rgba(78, 161, 255, 0.2), transparent 28%),
+    linear-gradient(180deg, #171d24 0%, #13181e 100%);
   border: 1px solid var(--line-0);
 }
 
@@ -174,24 +199,27 @@ a {
   display: grid;
   gap: 10px;
   padding: 14px;
-  border-radius: 10px;
-  border: 1px solid #27303a;
-  background: #121820;
+  border-radius: 12px;
+  border: 1px solid #2b3540;
+  background: rgba(15, 20, 27, 0.8);
 }
 
 .desktop-card {
-  background: var(--surface-1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, transparent 18%),
+    linear-gradient(180deg, var(--surface-1) 0%, #12161c 100%);
   border: 1px solid var(--line-0);
+  box-shadow: 0 10px 30px rgba(4, 8, 12, 0.18);
 }
 
 .desktop-subcard {
-  background: #121820;
-  border: 1px solid #27303a;
+  background: linear-gradient(180deg, #11161d 0%, #0f1419 100%);
+  border: 1px solid #2a3440;
 }
 
 .desktop-status-card {
   margin-top: auto;
-  background: #14181d;
+  background: linear-gradient(180deg, #151a20 0%, #11151b 100%);
   border: 1px solid var(--line-0);
 }
 
@@ -203,8 +231,8 @@ a {
   display: grid;
   gap: 8px;
   padding: 10px;
-  border-radius: 10px;
-  background: #11161d;
+  border-radius: 12px;
+  background: rgba(14, 19, 25, 0.92);
   border: 1px solid #24303a;
 }
 
@@ -214,15 +242,15 @@ a {
 
 .desktop-today-setup-card {
   background:
-    radial-gradient(circle at top right, rgba(47, 128, 237, 0.15), transparent 30%),
-    linear-gradient(180deg, #171b21 0%, #13181f 100%);
+    radial-gradient(circle at top right, rgba(78, 161, 255, 0.14), transparent 30%),
+    linear-gradient(180deg, #171c23 0%, #13181e 100%);
   border: 1px solid #2a3744;
 }
 
 .desktop-today-hero {
   background:
-    radial-gradient(circle at 15% 0%, rgba(47, 128, 237, 0.18), transparent 28%),
-    linear-gradient(180deg, #171b21 0%, #12171d 100%);
+    radial-gradient(circle at 15% 0%, rgba(78, 161, 255, 0.18), transparent 28%),
+    linear-gradient(180deg, #171c23 0%, #12171d 100%);
   border: 1px solid #2a3744;
 }
 
@@ -238,14 +266,14 @@ a {
 
 .desktop-today-strip-item {
   min-height: 100%;
-  background: #11161d;
+  background: linear-gradient(180deg, #11161d 0%, #0f1419 100%);
   border: 1px solid #24303a;
 }
 
 .desktop-today-strip-item.complete {
   background:
     linear-gradient(180deg, rgba(17, 28, 23, 0.96) 0%, rgba(14, 22, 19, 0.98) 100%);
-  border-color: #1f4e3d;
+  border-color: #23644f;
 }
 
 .desktop-today-strip-action {
@@ -253,13 +281,15 @@ a {
 }
 
 .desktop-today-section {
-  background: #14181d;
+  background: linear-gradient(180deg, #151a20 0%, #11161b 100%);
 }
 
 .desktop-today-blocker-card {
   background:
-    linear-gradient(180deg, rgba(17, 22, 29, 0.98) 0%, rgba(15, 20, 26, 0.98) 100%);
-  border: 1px solid #27303a;
+    radial-gradient(circle at top right, rgba(234, 93, 93, 0.08), transparent 24%),
+    linear-gradient(180deg, rgba(18, 23, 30, 0.99) 0%, rgba(14, 18, 24, 0.99) 100%);
+  border: 1px solid rgba(234, 93, 93, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(234, 93, 93, 0.06);
 }
 
 .desktop-today-mini-list {
@@ -273,8 +303,8 @@ a {
   gap: 12px;
   align-items: flex-start;
   padding: 12px 14px;
-  border-radius: 10px;
-  background: #11161d;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #11161d 0%, #0f1419 100%);
   border: 1px solid #24303a;
 }
 
@@ -289,15 +319,15 @@ a {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: 10px;
-  background: #11161d;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #11161d 0%, #0f1419 100%);
   border: 1px solid #24303a;
 }
 
 .desktop-queue-hero {
   background:
-    radial-gradient(circle at top right, rgba(47, 128, 237, 0.14), transparent 28%),
-    linear-gradient(180deg, #171b21 0%, #12171d 100%);
+    radial-gradient(circle at top right, rgba(78, 161, 255, 0.15), transparent 28%),
+    linear-gradient(180deg, #171c23 0%, #12171d 100%);
   border: 1px solid #2a3744;
 }
 
@@ -307,7 +337,7 @@ a {
 
 .desktop-queue-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
   gap: 16px;
   align-items: start;
 }
@@ -324,13 +354,13 @@ a {
 }
 
 .desktop-queue-resolution {
-  background: #11161d;
+  background: linear-gradient(180deg, #11161d 0%, #0f1419 100%);
 }
 
 .desktop-automation-hero {
   background:
-    radial-gradient(circle at top right, rgba(47, 128, 237, 0.14), transparent 30%),
-    linear-gradient(180deg, #171b21 0%, #12171d 100%);
+    radial-gradient(circle at top right, rgba(78, 161, 255, 0.15), transparent 30%),
+    linear-gradient(180deg, #171c23 0%, #12171d 100%);
   border: 1px solid #2a3744;
 }
 
@@ -345,41 +375,45 @@ a {
 
 .desktop-support-hero {
   background:
-    radial-gradient(circle at top left, rgba(47, 128, 237, 0.1), transparent 30%),
+    radial-gradient(circle at top left, rgba(78, 161, 255, 0.1), transparent 30%),
     linear-gradient(180deg, #151a20 0%, #12171d 100%);
   border: 1px solid #26323d;
 }
 
 .desktop-support-card {
-  background: #12171d;
+  background: linear-gradient(180deg, #12171d 0%, #0f1419 100%);
   border-color: #26323d;
 }
 
 .desktop-page-title {
   margin: 0;
-  font-size: clamp(1.3rem, 2.8vw, 2rem);
-  letter-spacing: 0.01em;
+  padding-left: 14px;
+  border-left: 3px solid rgba(78, 161, 255, 0.5);
+  font-size: clamp(1.38rem, 3vw, 2.15rem);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
 }
 
 .desktop-page-subtitle {
   margin: 4px 0 0;
   color: var(--text-muted);
   font-size: 0.74rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.03em;
+  max-width: 76ch;
 }
 
 .desktop-micro-label {
-  color: #9db0c6;
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .desktop-stat {
   font-family: "JetBrains Mono", monospace;
   font-size: 1.1rem;
   font-weight: 700;
+  color: var(--text-main);
 }
 
 .desktop-mono {
@@ -399,9 +433,9 @@ a {
 
 .desktop-table-wrap {
   overflow: auto;
-  border: 1px solid #27303a;
-  border-radius: 10px;
-  background: #121820;
+  border: 1px solid #2a3340;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #121820 0%, #0f1419 100%);
 }
 
 .desktop-table {
@@ -411,28 +445,27 @@ a {
 }
 
 .desktop-table thead tr {
-  background: #11161d;
+  background: linear-gradient(180deg, #10151b 0%, #0d1117 100%);
 }
 
 .desktop-table th {
   text-align: left;
-  color: #90a2b6;
-  font-size: 0.68rem;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
+  color: #9cade0;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
   padding: 8px 10px;
 }
 
 .desktop-table td {
   padding: 9px 10px;
-  border-top: 1px solid #27303a;
+  border-top: 1px solid #24303a;
   color: #d7e6fb;
   font-size: 0.82rem;
   white-space: nowrap;
 }
 
 .desktop-table tbody tr:hover {
-  background: #1b2230;
+  background: rgba(78, 161, 255, 0.08);
 }
 
 .desktop-table tbody tr {
@@ -440,7 +473,7 @@ a {
 }
 
 .desktop-row-selected {
-  background: #1a2534;
+  background: rgba(78, 161, 255, 0.12);
 }
 
 .desktop-link-button {

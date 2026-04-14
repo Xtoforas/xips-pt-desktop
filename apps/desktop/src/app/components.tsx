@@ -613,13 +613,13 @@ const lifecycleColor = (value: string | null): string => {
     case 'refresh_pending':
       return 'blue';
     case 'processing':
-      return 'orange';
+      return 'blue';
     case 'failed':
       return 'red';
     case 'skipped_duplicate':
       return 'gray';
     case 'queued':
-      return 'yellow';
+      return 'blue';
     default:
       return 'gray';
   }
@@ -629,20 +629,26 @@ const localStateColor = (value: LocalUploadJob['localState']): string => {
   switch (value) {
     case 'complete':
       return 'teal';
+    case 'detected':
+    case 'queued_local':
     case 'uploading':
-      return 'orange';
+      return 'blue';
+    case 'uploaded_waiting_server':
+    case 'server_queued':
     case 'server_processing':
     case 'server_refresh_pending':
     case 'server_refreshing':
       return 'blue';
     case 'failed_retryable':
-      return 'yellow';
+      return 'orange';
     case 'failed_terminal':
       return 'red';
     case 'duplicate_skipped_local':
       return 'gray';
     case 'auth_blocked':
       return 'red';
+    case 'awaiting_format_assignment':
+      return 'orange';
     default:
       return 'gray';
   }

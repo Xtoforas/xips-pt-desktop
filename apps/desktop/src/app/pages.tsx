@@ -943,7 +943,7 @@ export const UploadQueuePage = (): JSX.Element => {
     selectedJob?.localState === 'awaiting_format_assignment'
       ? 'orange'
       : selectedJob?.localState === 'failed_retryable'
-        ? 'yellow'
+        ? 'orange'
         : selectedJob?.localState === 'auth_blocked'
           ? 'red'
           : selectedJobView === 'done'
@@ -1243,7 +1243,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         {selectedJob.localState === 'failed_retryable' ? (
                           <Button
                             size="xs"
-                            color="yellow"
+                            color="orange"
                             onClick={() => {
                               void retryUploadJob(selectedJob.id);
                             }}
@@ -1265,8 +1265,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         {selectedJob.localState === 'awaiting_format_assignment' ? (
                           <Button
                             size="xs"
-                            color="red"
-                            variant="light"
+                            color="orange"
                             onClick={() => {
                               void removeAwaitingUploadJob(selectedJob.id);
                             }}
@@ -1293,7 +1292,7 @@ export const UploadQueuePage = (): JSX.Element => {
                       </Alert>
                     ) : null}
                     {selectedJob.localState === 'failed_retryable' ? (
-                      <Alert color="yellow" title="Retryable failure">
+                      <Alert color="orange" title="Retryable failure">
                         {selectedJob.error || 'A transient error paused this upload. Retry from the queue or after the service recovers.'}
                       </Alert>
                     ) : null}
@@ -1328,6 +1327,7 @@ export const UploadQueuePage = (): JSX.Element => {
                           <Group justify="flex-end">
                             <Button
                               size="xs"
+                              color="orange"
                               disabled={!matchedTournamentFormat || selectedTournamentId.trim().length < 5}
                               onClick={() => {
                                 const detectedFile = snapshot.detectedFiles.find(
@@ -1363,6 +1363,7 @@ export const UploadQueuePage = (): JSX.Element => {
                           <Group justify="flex-end">
                             <Button
                               size="xs"
+                              color="orange"
                               disabled={!selectedFormatId}
                               onClick={() => {
                                 const detectedFile = snapshot.detectedFiles.find(

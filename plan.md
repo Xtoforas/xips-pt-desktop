@@ -46,7 +46,7 @@ Use a "control room" interaction model:
 - [x] Phase 4: Queue workspace redesign
 - [x] Phase 5: Automation workflow redesign
 - [x] Phase 6: Settings and diagnostics cleanup
-- [ ] Phase 7: Visual system refresh
+- [x] Phase 7: Visual system refresh
 
 Phase details, deliverables, dependencies, and validation notes are tracked in the linked subdocuments above.
 
