@@ -297,6 +297,7 @@ export type LocalUploadJob = {
     | 'awaiting_format_assignment'
     | 'queued_local'
     | 'duplicate_skipped_local'
+    | 'ignored'
     | 'uploading'
     | 'uploaded_waiting_server'
     | 'server_queued'
@@ -318,6 +319,7 @@ export type LocalUploadJob = {
   remoteChecksum: string;
   lastRequestId: string;
   duplicateReason: string;
+  ignoredFromState: '' | 'awaiting_format_assignment' | 'failed_retryable' | 'auth_blocked';
   nextRetryAfter: string;
   queuedAt: string;
   processingAt: string;
@@ -346,6 +348,7 @@ export type DesktopPreferences = {
   closeToTray: boolean;
   pollingIntervalSeconds: number;
   diagnosticsRetentionDays: number;
+  dismissAutomationRuleReadiness: boolean;
 };
 
 export type DesktopSnapshot = {

@@ -130,24 +130,27 @@ const explainFilenameAutoAssignment = (
   return `The filename contains ${candidates.join(', ')}, but none of those IDs match a cached tournament prefix on this desktop.`;
 };
 
-type QueueWorkspaceView = 'needs_action' | 'working' | 'done';
+type QueueWorkspaceView = 'needs_action' | 'ignored' | 'working' | 'done';
 
 type TodayBlockerState = 'awaiting_format_assignment' | 'failed_retryable' | 'auth_blocked';
 
 const queueWorkspaceViewLabel: Record<QueueWorkspaceView, string> = {
   needs_action: 'Needs Action',
+  ignored: 'Ignored',
   working: 'Working',
   done: 'Done'
 };
 
 const queueWorkspaceViewDetail: Record<QueueWorkspaceView, string> = {
-  needs_action: 'Blocked jobs that need a user decision.',
+  needs_action: 'Rows waiting on a user decision.',
+  ignored: 'Rows hidden from Needs Action until you restore them.',
   working: 'Automatic or server-side work that is still progressing.',
   done: 'Finished, skipped, or terminal rows.'
 };
 
 const queueWorkspaceViewColor: Record<QueueWorkspaceView, string> = {
   needs_action: 'orange',
+  ignored: 'gray',
   working: 'blue',
   done: 'teal'
 };
@@ -161,7 +164,7 @@ const queueLinkForJob = (jobId: string, view: QueueWorkspaceView = 'needs_action
 };
 
 const parseQueueWorkspaceView = (value: string | null): QueueWorkspaceView | null => {
-  if (value === 'needs_action' || value === 'working' || value === 'done') {
+  if (value === 'needs_action' || value === 'ignored' || value === 'working' || value === 'done') {
     return value;
   }
   return null;
@@ -183,6 +186,9 @@ const parseLegacyQueueWorkspaceView = (
 const queueWorkspaceViewForJob = (job: LocalUploadJob): QueueWorkspaceView => {
   if (uploadJobNeedsAttention(job)) {
     return 'needs_action';
+  }
+  if (job.localState === 'ignored') {
+    return 'ignored';
   }
   if (uploadJobWorkingAutomatically(job)) {
     return 'working';
@@ -238,7 +244,17 @@ const getUploadJobKindDetail = (job: Pick<LocalUploadJob, 'fileKind' | 'lifecycl
 };
 
 export const TodayPage = (): JSX.Element => {
-  const { snapshot, selectedProfile, health, authFlowState, cards, cardSource, refreshCards, refreshMyAgg } = useDesktop();
+  const {
+    snapshot,
+    selectedProfile,
+    health,
+    authFlowState,
+    cards,
+    cardSource,
+    refreshCards,
+    refreshMyAgg,
+    updatePreferences
+  } = useDesktop();
   const onboardingSteps = useMemo(
     () => buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState }),
     [authFlowState, health, selectedProfile, snapshot]
@@ -377,9 +393,26 @@ export const TodayPage = (): JSX.Element => {
                     {step.detail}
                   </Text>
                   {!step.complete ? (
-                    <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-today-strip-action">
-                      {step.actionLabel}
-                    </Button>
+                    <Group gap="xs" wrap="wrap">
+                      <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-today-strip-action">
+                        {step.actionLabel}
+                      </Button>
+                      {step.dismissible ? (
+                        <Button
+                          size="compact-xs"
+                          variant="subtle"
+                          color="gray"
+                          onClick={() => {
+                            void updatePreferences({
+                              ...snapshot.preferences,
+                              dismissAutomationRuleReadiness: true
+                            });
+                          }}
+                        >
+                          Dismiss
+                        </Button>
+                      ) : null}
+                    </Group>
                   ) : null}
                 </Stack>
               </Card>
@@ -637,6 +670,8 @@ export const UploadQueuePage = (): JSX.Element => {
     assignDetectedFileTournament,
     retryUploadJob,
     dismissDuplicateUploadJob,
+    ignoreUploadJob,
+    restoreIgnoredUploadJob,
     removeAwaitingUploadJob,
     openUploadFileLocation,
     openAuthWindow
@@ -674,6 +709,10 @@ export const UploadQueuePage = (): JSX.Element => {
     () => sortedJobs.filter((job) => uploadJobWorkingAutomatically(job) && !uploadJobNeedsAttention(job)),
     [sortedJobs]
   );
+  const ignoredJobs = useMemo(
+    () => sortedJobs.filter((job) => job.localState === 'ignored'),
+    [sortedJobs]
+  );
   const doneJobs = useMemo(
     () => sortedJobs.filter(isQueueJobDone),
     [sortedJobs]
@@ -681,18 +720,20 @@ export const UploadQueuePage = (): JSX.Element => {
   const queueJobsByView = useMemo(
     () => ({
       needs_action: needsActionJobs,
+      ignored: ignoredJobs,
       working: workingJobs,
       done: doneJobs
     }),
-    [doneJobs, needsActionJobs, workingJobs]
+    [doneJobs, ignoredJobs, needsActionJobs, workingJobs]
   );
   const queueCounts = useMemo(
     () => ({
       needs_action: needsActionJobs.length,
+      ignored: ignoredJobs.length,
       working: workingJobs.length,
       done: doneJobs.length
     }),
-    [doneJobs.length, needsActionJobs.length, workingJobs.length]
+    [doneJobs.length, ignoredJobs.length, needsActionJobs.length, workingJobs.length]
   );
   const selectedQueueJobs = useMemo(
     () => queueJobsByView[queueView].filter((job) => selectedQueueJobIds.includes(job.id)),
@@ -705,6 +746,10 @@ export const UploadQueuePage = (): JSX.Element => {
           job.localState === 'duplicate_skipped_local' ||
           job.localState === 'awaiting_format_assignment'
       ),
+    [selectedQueueJobs]
+  );
+  const ignorableSelectedJobs = useMemo(
+    () => selectedQueueJobs.filter(uploadJobNeedsAttention),
     [selectedQueueJobs]
   );
 
@@ -801,6 +846,10 @@ export const UploadQueuePage = (): JSX.Element => {
         ? 'Needs a retry after a transient failure'
         : selectedJob.localState === 'auth_blocked'
           ? 'Blocked until the account signs in again'
+          : selectedJob.localState === 'ignored'
+            ? selectedJob.ignoredFromState
+              ? `Ignored ${formatQueueStateLabel(selectedJob.ignoredFromState, selectedJob.fileKind).toLowerCase()} row`
+              : 'Ignored row'
           : selectedJobView === 'done'
             ? 'Finished or terminal queue row'
             : 'Automatic progress is still underway'
@@ -824,6 +873,8 @@ export const UploadQueuePage = (): JSX.Element => {
       ? queueWorkspaceViewForJob(selectedJobFromQuery)
       : needsActionJobs.length > 0
         ? 'needs_action'
+        : ignoredJobs.length > 0
+          ? 'ignored'
         : workingJobs.length > 0
           ? 'working'
           : 'done';
@@ -831,7 +882,7 @@ export const UploadQueuePage = (): JSX.Element => {
     setQueueView(parsedView ?? defaultView);
     setSelectedJobId(selectedJobIdFromQuery);
     setSelectedQueueJobIds(selectedJobIdsFromQuery.length > 0 ? selectedJobIdsFromQuery : selectedJobIdFromQuery ? [selectedJobIdFromQuery] : []);
-  }, [location.search, needsActionJobs.length, sortedJobs, workingJobs.length]);
+  }, [ignoredJobs.length, location.search, needsActionJobs.length, sortedJobs, workingJobs.length]);
 
   useEffect(() => {
     if (currentViewJobs.length === 0) {
@@ -931,6 +982,27 @@ export const UploadQueuePage = (): JSX.Element => {
     }
   };
 
+  const ignoreSelectedJobs = async (): Promise<void> => {
+    if (ignorableSelectedJobs.length === 0 || bulkDismissInFlight) {
+      return;
+    }
+
+    setBulkDismissInFlight(true);
+    const ignoredIds = ignorableSelectedJobs.map((job) => job.id);
+    try {
+      for (const job of ignorableSelectedJobs) {
+        await ignoreUploadJob(job.id);
+      }
+      setSelectedQueueJobIds((current) => current.filter((jobId) => !ignoredIds.includes(jobId)));
+      if (ignoredIds.includes(selectedJobId)) {
+        setSelectedJobId('');
+      }
+      setQueueView('ignored');
+    } finally {
+      setBulkDismissInFlight(false);
+    }
+  };
+
   const selectedJobActionLabel =
     selectedJob?.localState === 'awaiting_format_assignment'
       ? 'Assign format'
@@ -938,6 +1010,8 @@ export const UploadQueuePage = (): JSX.Element => {
         ? 'Retry now'
         : selectedJob?.localState === 'auth_blocked'
           ? 'Re-authenticate'
+          : selectedJob?.localState === 'ignored'
+            ? 'Restore row'
           : 'Inspect row';
   const selectedJobStateColor =
     selectedJob?.localState === 'awaiting_format_assignment'
@@ -946,6 +1020,8 @@ export const UploadQueuePage = (): JSX.Element => {
         ? 'orange'
         : selectedJob?.localState === 'auth_blocked'
           ? 'red'
+          : selectedJob?.localState === 'ignored'
+            ? 'gray'
           : selectedJobView === 'done'
             ? 'teal'
             : 'blue';
@@ -954,21 +1030,20 @@ export const UploadQueuePage = (): JSX.Element => {
     <Stack gap="lg">
       <div>
         <h2 className="desktop-page-title">Upload Queue</h2>
-        <p className="desktop-page-subtitle">Needs Action, Working, and Done views with a sticky inspector for row-level actions.</p>
+        <p className="desktop-page-subtitle">Resolve blockers, track active work, and park ignored rows outside the main action lane.</p>
       </div>
       <Card withBorder className="desktop-card desktop-queue-hero">
         <Stack gap="xs">
           <Group justify="space-between" align="flex-start" wrap="wrap">
             <div>
-              <Text className="desktop-micro-label">Queue workspace</Text>
               <Text fw={700}>Action first, dense scan second</Text>
-              <Text size="sm" c="dimmed">
-                Needs Action opens automatically when blockers exist. The inspector stays visible so fixes never fall below the fold.
-              </Text>
             </div>
             <Group gap="xs" wrap="wrap">
               <Badge color="orange" variant="light">
                 {queueCounts.needs_action} needs action
+              </Badge>
+              <Badge color="gray" variant="light">
+                {queueCounts.ignored} ignored
               </Badge>
               <Badge color="blue" variant="light">
                 {queueCounts.working} working
@@ -1014,8 +1089,24 @@ export const UploadQueuePage = (): JSX.Element => {
                 <Group gap="xs" align="center" wrap="wrap">
                   {selectedQueueJobIds.length > 0 ? (
                     <Text size="sm" c="dimmed">
-                      {dismissibleSelectedJobs.length} of {selectedQueueJobIds.length} selected can be dismissed.
+                      {queueView === 'needs_action'
+                        ? `${ignorableSelectedJobs.length} of ${selectedQueueJobIds.length} selected can be ignored.`
+                        : `${dismissibleSelectedJobs.length} of ${selectedQueueJobIds.length} selected can be dismissed.`}
                     </Text>
+                  ) : null}
+                  {queueView === 'needs_action' ? (
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="gray"
+                      disabled={ignorableSelectedJobs.length === 0 || bulkDismissInFlight}
+                      loading={bulkDismissInFlight}
+                      onClick={() => {
+                        void ignoreSelectedJobs();
+                      }}
+                    >
+                      Ignore selected
+                    </Button>
                   ) : null}
                   <Button
                     size="xs"
@@ -1170,6 +1261,32 @@ export const UploadQueuePage = (): JSX.Element => {
                         Re-auth
                       </Button>
                     ) : null}
+                    {uploadJobNeedsAttention(job) ? (
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        color="gray"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void ignoreUploadJob(job.id);
+                        }}
+                      >
+                        Ignore
+                      </Button>
+                    ) : null}
+                    {job.localState === 'ignored' ? (
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        color="gray"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void restoreIgnoredUploadJob(job.id);
+                        }}
+                      >
+                        Restore
+                      </Button>
+                    ) : null}
                     {job.localState === 'duplicate_skipped_local' ? (
                       <Button
                         size="compact-xs"
@@ -1208,7 +1325,7 @@ export const UploadQueuePage = (): JSX.Element => {
                 <Text className="desktop-micro-label">Inspector</Text>
                 <Text fw={700}>{selectedJob ? selectedJob.filename : 'No row selected'}</Text>
                 <Text size="sm" c="dimmed">
-                  {selectedJob ? selectedJobDetail : 'Select a row to inspect its blocked-state actions and queue metadata.'}
+                  {selectedJob ? selectedJobDetail : 'Select a row to inspect its actions and queue metadata.'}
                 </Text>
               </div>
               {selectedJob ? (
@@ -1224,12 +1341,7 @@ export const UploadQueuePage = (): JSX.Element => {
                 <Card withBorder className="desktop-subcard">
                   <Stack gap="sm">
                     <Group justify="space-between" align="flex-start" wrap="wrap">
-                      <div>
-                        <Text fw={600}>Primary action</Text>
-                        <Text size="sm" c="dimmed">
-                          The controls below stay visible while you scan the queue list.
-                        </Text>
-                      </div>
+                      <Text fw={600}>Primary action</Text>
                       <Group gap="xs" wrap="wrap">
                         <Button
                           size="xs"
@@ -1260,6 +1372,17 @@ export const UploadQueuePage = (): JSX.Element => {
                             }}
                           >
                             Re-authenticate
+                          </Button>
+                        ) : null}
+                        {selectedJob.localState === 'ignored' ? (
+                          <Button
+                            size="xs"
+                            color="gray"
+                            onClick={() => {
+                              void restoreIgnoredUploadJob(selectedJob.id);
+                            }}
+                          >
+                            Restore to Needs Action
                           </Button>
                         ) : null}
                         {selectedJob.localState === 'awaiting_format_assignment' ? (
@@ -1299,6 +1422,13 @@ export const UploadQueuePage = (): JSX.Element => {
                     {selectedJob.localState === 'auth_blocked' ? (
                       <Alert color="red" title="Sign-in required">
                         The selected account needs to sign in again. After successful auth, the queue resumes automatically.
+                      </Alert>
+                    ) : null}
+                    {selectedJob.localState === 'ignored' ? (
+                      <Alert color="gray" title="Ignored row">
+                        {selectedJob.ignoredFromState
+                          ? `This row was hidden after ${formatQueueStateLabel(selectedJob.ignoredFromState, selectedJob.fileKind).toLowerCase()}. Restore it when you want it back in Needs Action.`
+                          : 'This row was hidden from Needs Action. Restore it when you want it back in the main lane.'}
                       </Alert>
                     ) : null}
                     {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
@@ -1570,7 +1700,8 @@ export const AutomationPage = (): JSX.Element => {
     refreshFormats,
     saveFormatRule,
     scanWatchRoots,
-    toggleWatchRoot
+    toggleWatchRoot,
+    updatePreferences
   } = useDesktop();
   const [selectedWatchRootId, setSelectedWatchRootId] = useState('');
   const [selectedFormatId, setSelectedFormatId] = useState('');
@@ -1607,7 +1738,7 @@ export const AutomationPage = (): JSX.Element => {
             <div>
               <Text fw={700}>Automation flow</Text>
               <Text size="sm" c="dimmed">
-                The app watches a folder, applies a filename rule, resolves a tournament format, and explains misses with the same logic used in the queue.
+                The app watches a folder, tries filename-based format detection first, and only needs saved rules when generic filenames need extra help.
               </Text>
             </div>
             <Group gap="xs" wrap="wrap">
@@ -1622,9 +1753,6 @@ export const AutomationPage = (): JSX.Element => {
               </Badge>
             </Group>
           </Group>
-          <Text size="sm" c="dimmed">
-            Follow the sequence below to keep the relationship between a watched folder, its rule, and the target format obvious.
-          </Text>
           <Group gap="xs" wrap="wrap" className="desktop-automation-sequence">
             <Badge color="blue" variant="light">
               1 Watch folder
@@ -1678,10 +1806,34 @@ export const AutomationPage = (): JSX.Element => {
         <Stack gap="lg">
           <Card withBorder className="desktop-card" id="format-rules">
             <Stack gap="sm">
-              <Text fw={700}>Save format rule</Text>
-              <Text size="sm" c="dimmed">
-                Connect a watch root to a filename pattern, then point it at the selected tournament format.
-              </Text>
+              <Group justify="space-between" align="flex-start" wrap="wrap">
+                <div>
+                  <Text fw={700}>Format rule</Text>
+                  <Text size="sm" c="dimmed">
+                    Optional. Use this when watched files keep arriving with generic names.
+                  </Text>
+                </div>
+                <Group gap="xs" wrap="wrap">
+                  {snapshot.preferences.dismissAutomationRuleReadiness ? (
+                    <Badge color="gray" variant="light">
+                      Reminder dismissed
+                    </Badge>
+                  ) : null}
+                  <Button
+                    size="xs"
+                    variant="light"
+                    color="gray"
+                    onClick={() => {
+                      void updatePreferences({
+                        ...snapshot.preferences,
+                        dismissAutomationRuleReadiness: !snapshot.preferences.dismissAutomationRuleReadiness
+                      });
+                    }}
+                  >
+                    {snapshot.preferences.dismissAutomationRuleReadiness ? 'Show reminder again' : 'Dismiss checklist reminder'}
+                  </Button>
+                </Group>
+              </Group>
               <Group gap="xs" wrap="wrap" className="desktop-automation-relation">
                 <Badge color="blue" variant="light">
                   Watch folder: {selectedWatchRoot?.path ?? 'Choose one'}
@@ -1714,7 +1866,7 @@ export const AutomationPage = (): JSX.Element => {
                 onChange={(event) => setPattern(event.currentTarget.value)}
               />
               <Text size="xs" c="dimmed">
-                The selected format below is the target the app will try first when this rule matches.
+                The selected format below is used only when this optional rule matches.
               </Text>
               <Group justify="flex-end">
                 <Button

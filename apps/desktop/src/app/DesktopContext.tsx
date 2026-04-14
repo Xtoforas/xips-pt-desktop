@@ -85,6 +85,8 @@ type DesktopContextValue = {
   pollActiveUploads: (profileId: string) => Promise<void>;
   retryUploadJob: (uploadJobId: string) => Promise<void>;
   dismissDuplicateUploadJob: (uploadJobId: string) => Promise<void>;
+  ignoreUploadJob: (uploadJobId: string) => Promise<void>;
+  restoreIgnoredUploadJob: (uploadJobId: string) => Promise<void>;
   removeAwaitingUploadJob: (uploadJobId: string) => Promise<void>;
   openUploadFileLocation: (uploadJobId: string) => Promise<void>;
   updatePreferences: (preferences: DesktopPreferences) => Promise<void>;
@@ -108,7 +110,8 @@ const emptySnapshot: DesktopSnapshot = {
     launchAtLogin: false,
     closeToTray: true,
     pollingIntervalSeconds: 5,
-    diagnosticsRetentionDays: 14
+    diagnosticsRetentionDays: 14,
+    dismissAutomationRuleReadiness: false
   },
   diagnostics: [],
   cachedFormats: []
@@ -472,6 +475,16 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setSnapshot(next);
   }, []);
 
+  const ignoreUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
+    const next = await desktopClient.ignoreUploadJob(uploadJobId);
+    setSnapshot(next);
+  }, []);
+
+  const restoreIgnoredUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
+    const next = await desktopClient.restoreIgnoredUploadJob(uploadJobId);
+    setSnapshot(next);
+  }, []);
+
   const removeAwaitingUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
     const next = await desktopClient.removeAwaitingUploadJob(uploadJobId);
     setSnapshot(next);
@@ -536,6 +549,8 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       pollActiveUploads,
       retryUploadJob,
       dismissDuplicateUploadJob,
+      ignoreUploadJob,
+      restoreIgnoredUploadJob,
       removeAwaitingUploadJob,
       openUploadFileLocation,
       updatePreferences,
@@ -578,6 +593,8 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       pollActiveUploads,
       retryUploadJob,
       dismissDuplicateUploadJob,
+      ignoreUploadJob,
+      restoreIgnoredUploadJob,
       removeAwaitingUploadJob,
       openUploadFileLocation,
       updatePreferences,

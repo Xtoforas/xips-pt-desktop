@@ -70,6 +70,8 @@ type DesktopClient = {
   pollActiveUploads: (profileId: string) => Promise<DesktopSnapshot>;
   retryUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
   dismissDuplicateUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
+  ignoreUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
+  restoreIgnoredUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
   removeAwaitingUploadJob: (uploadJobId: string) => Promise<DesktopSnapshot>;
   openUploadFileLocation: (uploadJobId: string) => Promise<void>;
   updatePreferences: (preferences: DesktopPreferences) => Promise<DesktopSnapshot>;
@@ -115,7 +117,8 @@ const mockSnapshot = (): DesktopSnapshot => ({
     launchAtLogin: false,
     closeToTray: true,
     pollingIntervalSeconds: 5,
-    diagnosticsRetentionDays: 14
+    diagnosticsRetentionDays: 14,
+    dismissAutomationRuleReadiness: false
   },
   diagnostics: [],
   cachedFormats: []
@@ -209,6 +212,12 @@ const browserClient: DesktopClient = {
   async dismissDuplicateUploadJob() {
     return mockSnapshot();
   },
+  async ignoreUploadJob() {
+    return mockSnapshot();
+  },
+  async restoreIgnoredUploadJob() {
+    return mockSnapshot();
+  },
   async removeAwaitingUploadJob() {
     return mockSnapshot();
   },
@@ -253,6 +262,9 @@ const tauriClient: DesktopClient = {
   retryUploadJob: (uploadJobId) => invoke<DesktopSnapshot>('desktop_retry_upload_job', { uploadJobId }),
   dismissDuplicateUploadJob: (uploadJobId) =>
     invoke<DesktopSnapshot>('desktop_dismiss_duplicate_upload_job', { uploadJobId }),
+  ignoreUploadJob: (uploadJobId) => invoke<DesktopSnapshot>('desktop_ignore_upload_job', { uploadJobId }),
+  restoreIgnoredUploadJob: (uploadJobId) =>
+    invoke<DesktopSnapshot>('desktop_restore_ignored_upload_job', { uploadJobId }),
   removeAwaitingUploadJob: (uploadJobId) =>
     invoke<DesktopSnapshot>('desktop_remove_awaiting_upload_job', { uploadJobId }),
   openUploadFileLocation: (uploadJobId) => invoke<void>('desktop_open_upload_file_location', { uploadJobId }),

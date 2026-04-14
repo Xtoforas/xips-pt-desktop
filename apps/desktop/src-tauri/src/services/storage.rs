@@ -98,6 +98,7 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
     ensure_upload_job_column(connection, "remote_checksum", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "last_request_id", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "duplicate_reason", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_upload_job_column(connection, "ignored_from_state", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "next_retry_after", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "queued_at", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "processing_at", "TEXT NOT NULL DEFAULT ''")?;
@@ -327,6 +328,7 @@ pub fn update_preferences(
             close_to_tray: input.close_to_tray,
             polling_interval_seconds: input.polling_interval_seconds,
             diagnostics_retention_days: input.diagnostics_retention_days,
+            dismiss_automation_rule_readiness: input.dismiss_automation_rule_readiness,
         })
         .map_err(|error| error.to_string())?,
     )
@@ -1092,7 +1094,7 @@ pub fn mark_all_profile_jobs_auth_blocked(
       SET local_state = 'auth_blocked',
           updated_at = ?2
       WHERE profile_id = ?1
-        AND local_state NOT IN ('complete', 'duplicate_skipped_local', 'failed_terminal')
+        AND local_state NOT IN ('complete', 'duplicate_skipped_local', 'failed_terminal', 'ignored')
       ",
             params![profile_id, now_iso()],
         )
@@ -1225,7 +1227,9 @@ fn derive_existing_upload_local_state(
         return String::from("failed_terminal");
     }
     match current_state {
-        "complete" | "duplicate_skipped_local" | "failed_terminal" => current_state.to_string(),
+        "complete" | "duplicate_skipped_local" | "failed_terminal" | "ignored" => {
+            current_state.to_string()
+        }
         _ => derive_new_upload_local_state(file_kind, format_id),
     }
 }
@@ -1246,7 +1250,7 @@ fn derive_detected_file_state(
         if !job.upload_id.is_empty()
             || matches!(
                 job.local_state.as_str(),
-                "complete" | "duplicate_skipped_local" | "failed_terminal"
+                "complete" | "duplicate_skipped_local" | "failed_terminal" | "ignored"
             )
         {
             return String::from("ignored");
@@ -1289,7 +1293,7 @@ pub fn list_active_upload_jobs_for_profile(
                 && !job.upload_id.is_empty()
                 && !matches!(
                     job.local_state.as_str(),
-                    "complete" | "duplicate_skipped_local" | "failed_terminal"
+                    "complete" | "duplicate_skipped_local" | "failed_terminal" | "ignored"
                 )
         })
         .collect())
@@ -1401,6 +1405,56 @@ pub fn dismiss_duplicate_upload_job(
             "
       UPDATE upload_jobs
       SET local_state = 'complete',
+          updated_at = ?2
+      WHERE upload_job_id = ?1
+      ",
+            params![upload_job_id, now_iso()],
+        )
+        .map_err(|error| error.to_string())?;
+    load_snapshot(db_path)
+}
+
+pub fn ignore_upload_job(db_path: &Path, upload_job_id: &str) -> Result<DesktopSnapshot, String> {
+    let connection = open_db(db_path)?;
+    let job = load_upload_job_by_id(db_path, upload_job_id)?;
+    if !matches!(
+        job.local_state.as_str(),
+        "awaiting_format_assignment" | "failed_retryable" | "auth_blocked"
+    ) {
+        return Err(String::from("ignorable_upload_job_required"));
+    }
+
+    connection
+        .execute(
+            "
+      UPDATE upload_jobs
+      SET ignored_from_state = local_state,
+          local_state = 'ignored',
+          updated_at = ?2
+      WHERE upload_job_id = ?1
+      ",
+            params![upload_job_id, now_iso()],
+        )
+        .map_err(|error| error.to_string())?;
+    load_snapshot(db_path)
+}
+
+pub fn restore_ignored_upload_job(
+    db_path: &Path,
+    upload_job_id: &str,
+) -> Result<DesktopSnapshot, String> {
+    let connection = open_db(db_path)?;
+    let job = load_upload_job_by_id(db_path, upload_job_id)?;
+    if job.local_state != "ignored" || job.ignored_from_state.is_empty() {
+        return Err(String::from("ignored_upload_job_required"));
+    }
+
+    connection
+        .execute(
+            "
+      UPDATE upload_jobs
+      SET local_state = ignored_from_state,
+          ignored_from_state = '',
           updated_at = ?2
       WHERE upload_job_id = ?1
       ",
@@ -1779,7 +1833,7 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
       "
       SELECT upload_job_id, profile_id, filename, path, staged_path, file_kind, local_presence, local_state, lifecycle_phase, checksum, team_count, source_modified_at, format_id, tournament_id, upload_id,
              error, retries, created_at, updated_at, server_status, remote_checksum, last_request_id, duplicate_reason,
-             next_retry_after, queued_at, processing_at, parsed_at, refreshing_at, completed_at, failed_at
+             ignored_from_state, next_retry_after, queued_at, processing_at, parsed_at, refreshing_at, completed_at, failed_at
       FROM upload_jobs
       ORDER BY updated_at DESC
       ",
@@ -1811,13 +1865,14 @@ fn load_upload_jobs(connection: &Connection) -> Result<Vec<LocalUploadJob>, Stri
                 remote_checksum: row.get(20)?,
                 last_request_id: row.get(21)?,
                 duplicate_reason: row.get(22)?,
-                next_retry_after: row.get(23)?,
-                queued_at: row.get(24)?,
-                processing_at: row.get(25)?,
-                parsed_at: row.get(26)?,
-                refreshing_at: row.get(27)?,
-                completed_at: row.get(28)?,
-                failed_at: row.get(29)?,
+                ignored_from_state: row.get(23)?,
+                next_retry_after: row.get(24)?,
+                queued_at: row.get(25)?,
+                processing_at: row.get(26)?,
+                parsed_at: row.get(27)?,
+                refreshing_at: row.get(28)?,
+                completed_at: row.get(29)?,
+                failed_at: row.get(30)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -1984,6 +2039,7 @@ fn load_preferences(connection: &Connection) -> Result<DesktopPreferences, Strin
             close_to_tray: true,
             polling_interval_seconds: 5,
             diagnostics_retention_days: 14,
+            dismiss_automation_rule_readiness: false,
         });
     }
     serde_json::from_str::<DesktopPreferences>(&raw).map_err(|error| error.to_string())

@@ -138,6 +138,8 @@ pub struct LocalUploadJob {
     pub last_request_id: String,
     #[serde(rename = "duplicateReason")]
     pub duplicate_reason: String,
+    #[serde(rename = "ignoredFromState")]
+    pub ignored_from_state: String,
     #[serde(rename = "nextRetryAfter")]
     pub next_retry_after: String,
     #[serde(rename = "queuedAt")]
@@ -185,6 +187,9 @@ pub struct DesktopPreferences {
     pub polling_interval_seconds: u32,
     #[serde(rename = "diagnosticsRetentionDays")]
     pub diagnostics_retention_days: u32,
+    #[serde(default)]
+    #[serde(rename = "dismissAutomationRuleReadiness")]
+    pub dismiss_automation_rule_readiness: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,6 +260,8 @@ pub struct UpdatePreferencesInput {
     pub polling_interval_seconds: u32,
     #[serde(rename = "diagnosticsRetentionDays")]
     pub diagnostics_retention_days: u32,
+    #[serde(rename = "dismissAutomationRuleReadiness")]
+    pub dismiss_automation_rule_readiness: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

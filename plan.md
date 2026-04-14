@@ -27,6 +27,12 @@ By the end of this sprint, the app should:
 - unify watch-folder and format-assignment setup into a single automation workflow
 - reduce navigation weight for support-only surfaces like diagnostics
 
+## Recent follow-ups
+
+- [x] Make automation rules optional in first-run readiness and allow dismissing that reminder.
+- [x] Let Needs Action rows be ignored and reviewed later in a dedicated queue tab.
+- [x] Tighten repeated hero and inspector copy so the workflow pages read more compactly.
+
 ## Design direction
 
 Use a "control room" interaction model:

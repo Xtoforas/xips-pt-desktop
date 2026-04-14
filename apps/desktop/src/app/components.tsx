@@ -35,6 +35,7 @@ type OnboardingStep = {
   href: string;
   actionLabel: string;
   complete: boolean;
+  dismissible?: boolean;
 };
 
 export const buildOnboardingSteps = ({
@@ -52,6 +53,7 @@ export const buildOnboardingSteps = ({
   const watchRoots = selectedProfileId ? snapshot.watchRoots.filter((root) => root.profileId === selectedProfileId) : [];
   const formatRules = selectedProfileId ? snapshot.formatRules.filter((rule) => rule.profileId === selectedProfileId) : [];
   const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
+  const automationReminderDismissed = snapshot.preferences.dismissAutomationRuleReadiness;
 
   return [
     {
@@ -113,20 +115,27 @@ export const buildOnboardingSteps = ({
     {
       key: 'rules',
       label: 'Automation rule',
-      status: formatRules.length > 0 ? `${formatRules.length} rule${formatRules.length === 1 ? '' : 's'} saved` : 'No automation rule yet',
+      status: formatRules.length > 0
+        ? `${formatRules.length} rule${formatRules.length === 1 ? '' : 's'} saved`
+        : automationReminderDismissed
+          ? 'Reminder dismissed'
+          : 'Optional',
       detail: formatRules.length > 0
-        ? 'Rules connect watched files to the right tournament formats.'
-        : 'Add a filename or folder rule so the app can map new files to the right format automatically.',
+        ? 'Rules help generic filenames map faster.'
+        : automationReminderDismissed
+          ? 'Watch folders still work without a saved rule. The app keeps using filename-based detection from cached server formats.'
+          : 'Rules are optional. Add one when generic filenames need extra help.',
       href: '/automation#format-rules',
-      actionLabel: 'Add automation rule',
-      complete: formatRules.length > 0
+      actionLabel: formatRules.length > 0 ? 'Review automation' : 'Open automation',
+      complete: formatRules.length > 0 || automationReminderDismissed,
+      dismissible: formatRules.length === 0 && !automationReminderDismissed
     }
   ];
 };
 
 export const DesktopSidebar = (): JSX.Element => {
   const location = useLocation();
-  const { snapshot, health, selectedProfile, authFlowState } = useDesktop();
+  const { snapshot, health, selectedProfile, authFlowState, updatePreferences } = useDesktop();
   const onboardingSteps = buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState });
   const completedCount = onboardingSteps.filter((step) => step.complete).length;
   const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
@@ -188,9 +197,26 @@ export const DesktopSidebar = (): JSX.Element => {
                   </Badge>
                 </Group>
                 {!step.complete ? (
-                  <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-onboarding-action">
-                    {step.actionLabel}
-                  </Button>
+                  <Group gap="xs" wrap="wrap" className="desktop-onboarding-actions">
+                    <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-onboarding-action">
+                      {step.actionLabel}
+                    </Button>
+                    {step.dismissible ? (
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        color="gray"
+                        onClick={() => {
+                          void updatePreferences({
+                            ...snapshot.preferences,
+                            dismissAutomationRuleReadiness: true
+                          });
+                        }}
+                      >
+                        Dismiss
+                      </Button>
+                    ) : null}
+                  </Group>
                 ) : null}
               </div>
             ))}
@@ -643,6 +669,8 @@ const localStateColor = (value: LocalUploadJob['localState']): string => {
       return 'orange';
     case 'failed_terminal':
       return 'red';
+    case 'ignored':
+      return 'gray';
     case 'duplicate_skipped_local':
       return 'gray';
     case 'auth_blocked':
@@ -711,6 +739,7 @@ export const formatQueueStateLabel = (
     awaiting_format_assignment: 'Awaiting Format Assignment',
     queued_local: 'Queued Locally',
     duplicate_skipped_local: 'Skipped as Duplicate',
+    ignored: 'Ignored',
     uploading: 'Uploading',
     uploaded_waiting_server: 'Uploaded, Waiting on Server',
     server_queued: 'Queued on Server',
@@ -1239,6 +1268,7 @@ export const PreferencesForm = ({
   const [closeToTray, setCloseToTray] = useState(preferences.closeToTray);
   const [pollingIntervalSeconds, setPollingIntervalSeconds] = useState(String(preferences.pollingIntervalSeconds));
   const [diagnosticsRetentionDays, setDiagnosticsRetentionDays] = useState(String(preferences.diagnosticsRetentionDays));
+  const [dismissAutomationRuleReadiness, setDismissAutomationRuleReadiness] = useState(preferences.dismissAutomationRuleReadiness);
 
   return (
     <Card withBorder className="desktop-card">
@@ -1255,6 +1285,14 @@ export const PreferencesForm = ({
         <label className="desktop-checkbox-row">
           <input type="checkbox" checked={closeToTray} onChange={(event) => setCloseToTray(event.currentTarget.checked)} />
           <span>Keep running in the background</span>
+        </label>
+        <label className="desktop-checkbox-row">
+          <input
+            type="checkbox"
+            checked={!dismissAutomationRuleReadiness}
+            onChange={(event) => setDismissAutomationRuleReadiness(!event.currentTarget.checked)}
+          />
+          <span>Keep automation rule in the readiness checklist</span>
         </label>
         <TextInput
           label="Polling interval (seconds)"
@@ -1278,7 +1316,8 @@ export const PreferencesForm = ({
                 launchAtLogin,
                 closeToTray,
                 pollingIntervalSeconds: polling,
-                diagnosticsRetentionDays: retention
+                diagnosticsRetentionDays: retention,
+                dismissAutomationRuleReadiness
               });
             }}
           >
