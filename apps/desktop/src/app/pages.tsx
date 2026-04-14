@@ -238,7 +238,7 @@ const getUploadJobKindDetail = (job: Pick<LocalUploadJob, 'fileKind' | 'lifecycl
 };
 
 export const TodayPage = (): JSX.Element => {
-  const { snapshot, selectedProfile, health, authFlowState, cards, cardSource } = useDesktop();
+  const { snapshot, selectedProfile, health, authFlowState, cards, cardSource, refreshCards, refreshMyAgg } = useDesktop();
   const onboardingSteps = useMemo(
     () => buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState }),
     [authFlowState, health, selectedProfile, snapshot]
@@ -593,6 +593,24 @@ export const TodayPage = (): JSX.Element => {
             <Text size="xs" c="dimmed">
               Source: {cardSource ?? 'Unknown'}
             </Text>
+            <Group gap="xs" wrap="wrap" mt={4}>
+              <Button size="compact-xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshCards('')}>
+                Refresh cards
+              </Button>
+              <Button
+                size="compact-xs"
+                variant="light"
+                disabled={!selectedProfile}
+                onClick={() => {
+                  if (!selectedProfile) {
+                    return;
+                  }
+                  void refreshMyAgg(selectedProfile.id);
+                }}
+              >
+                Refresh personal aggregate
+              </Button>
+            </Group>
           </Stack>
         </Card>
         <Card withBorder className="desktop-card">
@@ -2075,15 +2093,61 @@ export const DiagnosticsPage = (): JSX.Element => {
   );
 
   return (
-    <Stack gap="lg">
+    <Stack gap="lg" className="desktop-support-page">
       <div>
         <h2 className="desktop-page-title">Diagnostics</h2>
-        <p className="desktop-page-subtitle">Support tooling for request state, auth state, queue metadata, and recent events.</p>
+        <p className="desktop-page-subtitle">Support-only tooling for exports, app data, and deeper troubleshooting.</p>
       </div>
+      <Card withBorder className="desktop-card desktop-support-hero">
+        <Stack gap="sm">
+          <Group justify="space-between" align="flex-start">
+            <div>
+              <Text className="desktop-micro-label">Support view</Text>
+              <Text fw={700}>Keep this page for investigation and handoff work</Text>
+              <Text size="sm" c="dimmed">
+                Normal workflow belongs on Today, Queue, and Automation. Diagnostics keeps the deeper traces and local files you need when something goes wrong.
+              </Text>
+            </div>
+            <Group gap="xs" wrap="wrap">
+              <Badge color="gray" variant="light">
+                Support only
+              </Badge>
+              <Badge color="blue" variant="light">
+                {snapshot.diagnostics.length} events
+              </Badge>
+            </Group>
+          </Group>
+          <Group gap="xs" wrap="wrap">
+            <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshHealth()}>
+              Refresh health snapshot
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              onClick={() => {
+                void exportDiagnosticsBundle().then((path) => setLastExportPath(path));
+              }}
+            >
+              Export diagnostics
+            </Button>
+            <Button size="xs" variant="light" onClick={() => void openAppDataDirectory()}>
+              Open app data folder
+            </Button>
+          </Group>
+          {lastExportPath ? (
+            <Alert color="teal" title="Export ready">
+              <span className="desktop-mono">{lastExportPath}</span>
+            </Alert>
+          ) : null}
+        </Stack>
+      </Card>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
-        <Card withBorder className="desktop-card">
+        <Card withBorder className="desktop-card desktop-support-card">
           <Stack gap="sm">
-            <Text fw={700}>Auth and server</Text>
+            <Text fw={700}>Connection snapshot</Text>
+            <Text size="sm" c="dimmed">
+              Current server health, signed-in identity, and the most relevant operational counts.
+            </Text>
             <Text size="sm">Selected profile: {snapshot.selectedProfileId || 'None'}</Text>
             <Text size="sm">Authenticated profile: {snapshot.authProfileId || 'None'}</Text>
             <Text size="sm">User: {snapshot.authUser?.displayName ?? 'Not signed in'}</Text>
@@ -2093,38 +2157,14 @@ export const DiagnosticsPage = (): JSX.Element => {
             <Text size="sm">Failed jobs: {health?.failedJobs ?? 0}</Text>
             <Text size="sm">Watch roots: {snapshot.watchRoots.length}</Text>
             <Text size="sm">Cached formats: {snapshot.cachedFormats.length}</Text>
-            <Group>
-              <Button
-                size="xs"
-                variant="light"
-                disabled={!selectedProfile}
-                onClick={() => void refreshHealth()}
-              >
-                Refresh health snapshot
-              </Button>
-              <Button
-                size="xs"
-                variant="light"
-                onClick={() => {
-                  void exportDiagnosticsBundle().then((path) => setLastExportPath(path));
-                }}
-              >
-                Export diagnostics
-              </Button>
-              <Button size="xs" variant="light" onClick={() => void openAppDataDirectory()}>
-                Open app data folder
-              </Button>
-            </Group>
-            {lastExportPath ? (
-              <Alert color="teal" title="Export ready">
-                <span className="desktop-mono">{lastExportPath}</span>
-              </Alert>
-            ) : null}
           </Stack>
         </Card>
-        <Card withBorder className="desktop-card">
+        <Card withBorder className="desktop-card desktop-support-card">
           <Stack gap="sm">
             <Text fw={700}>Queue inspector</Text>
+            <Text size="sm" c="dimmed">
+              Quick counters for the queue, failures, and background activity.
+            </Text>
             <Text size="sm">Detected files: {snapshot.detectedFiles.length}</Text>
             <Text size="sm">Upload jobs: {snapshot.uploadJobs.length}</Text>
             <Text size="sm">Active uploads: {snapshot.uploadJobs.filter((job) => job.uploadId && job.localState !== 'complete').length}</Text>
@@ -2134,9 +2174,12 @@ export const DiagnosticsPage = (): JSX.Element => {
           </Stack>
         </Card>
       </SimpleGrid>
-      <Card withBorder className="desktop-card">
+      <Card withBorder className="desktop-card desktop-support-card">
         <Stack gap="sm">
           <Text fw={700}>Watch roots</Text>
+          <Text size="sm" c="dimmed">
+            These are the background folders the app is monitoring. Automation owns the rescans, but diagnostics keeps the live inventory visible.
+          </Text>
           {snapshot.watchRoots.length === 0 ? (
             <Alert color="gray">No watch roots configured.</Alert>
           ) : (
@@ -2164,7 +2207,7 @@ export const DiagnosticsPage = (): JSX.Element => {
         </Stack>
       </Card>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
-        <Card withBorder className="desktop-card">
+        <Card withBorder className="desktop-card desktop-support-card">
           <Stack gap="sm">
             <Text fw={700}>Recent failures</Text>
             {recentFailures.length === 0 ? (
@@ -2191,7 +2234,7 @@ export const DiagnosticsPage = (): JSX.Element => {
             )}
           </Stack>
         </Card>
-        <Card withBorder className="desktop-card">
+        <Card withBorder className="desktop-card desktop-support-card">
           <Stack gap="sm">
             <Text fw={700}>Recent API requests</Text>
             {recentApiEvents.length === 0 ? (
@@ -2221,7 +2264,7 @@ export const DiagnosticsPage = (): JSX.Element => {
           </Stack>
         </Card>
       </SimpleGrid>
-      <Card withBorder className="desktop-card">
+      <Card withBorder className="desktop-card desktop-support-card">
         <Stack gap="sm">
           <Text fw={700}>Recent events</Text>
           {snapshot.diagnostics.length === 0 ? (
@@ -2257,18 +2300,10 @@ export const SettingsPage = (): JSX.Element => {
     snapshot,
     selectedProfile,
     health,
-    cards,
-    cardSource,
-    myAggCards,
-    myAggTeams,
     deleteServerProfile,
     refreshHealth,
-    refreshFormats,
-    refreshCards,
-    refreshMe,
-    refreshMyAgg,
-    scanWatchRoots,
     openAuthWindow,
+    refreshMe,
     selectServerProfile,
     updatePreferences
   } = useDesktop();
@@ -2285,9 +2320,9 @@ export const SettingsPage = (): JSX.Element => {
         <ServerProfileForm id="server-profile" />
         <PreferencesForm preferences={snapshot.preferences} onSave={updatePreferences} />
       </SimpleGrid>
-      <Card withBorder className="desktop-card" id="server-health">
+      <Card withBorder className="desktop-card desktop-support-card" id="server-health">
         <Stack gap="sm">
-          <Text fw={700}>Auth and server</Text>
+          <Text fw={700}>Connection checks</Text>
           <Text size="sm" c="dimmed">
             Current server health and signed-in desktop identity state.
           </Text>
@@ -2308,58 +2343,18 @@ export const SettingsPage = (): JSX.Element => {
           </Group>
         </Stack>
       </Card>
-      <Card withBorder className="desktop-card" id="sign-in">
+      <Card withBorder className="desktop-card desktop-support-card">
         <Stack gap="sm">
-          <Text fw={700}>Cards and personal aggregate</Text>
+          <Text fw={700}>Where routine actions live</Text>
           <Text size="sm" c="dimmed">
-            Desktop view of your current card source and personal aggregate rows.
+            Settings stays focused on server profiles and desktop behavior. Routine refreshes now live on Today and Automation so the main workflow keeps its own tools.
           </Text>
-          <Group>
-            <Badge color={cardSource === 'user' ? 'teal' : 'blue'} variant="light">
-              {cardSource === 'user' ? 'Using your card list' : 'Using shared fallback'}
-            </Badge>
-            <Badge color="orange" variant="light">
-              Card rows {cards.length}
-            </Badge>
-            <Badge color="cyan" variant="light">
-              Personal card rows {myAggCards.length}
-            </Badge>
-            <Badge color="grape" variant="light">
-              Personal team rows {myAggTeams.length}
-            </Badge>
-          </Group>
-          <Group>
-            <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshFormats()}>
-              Refresh formats
+          <Group gap="xs" wrap="wrap">
+            <Button component={Link} to="/today" size="xs" variant="light">
+              Open Today
             </Button>
-            <Button size="xs" variant="light" disabled={!selectedProfile || !isAuthenticated} onClick={() => void refreshCards('')}>
-              Refresh cards
-            </Button>
-            <Button
-              size="xs"
-              variant="light"
-              disabled={!selectedProfile || !isAuthenticated}
-              onClick={() => {
-                if (!selectedProfile) {
-                  return;
-                }
-                void refreshMyAgg(selectedProfile.id);
-              }}
-            >
-              Refresh personal aggregate
-            </Button>
-            <Button
-              size="xs"
-              variant="light"
-              disabled={!selectedProfile}
-              onClick={() => {
-                if (!selectedProfile) {
-                  return;
-                }
-                void scanWatchRoots(selectedProfile.id);
-              }}
-            >
-              Scan watch roots
+            <Button component={Link} to="/automation#cached-formats" size="xs" variant="light">
+              Open Automation
             </Button>
           </Group>
         </Stack>

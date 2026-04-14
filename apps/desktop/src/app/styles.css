@@ -339,6 +339,22 @@ a {
   align-items: center;
 }
 
+.desktop-support-page {
+  gap: 12px;
+}
+
+.desktop-support-hero {
+  background:
+    radial-gradient(circle at top left, rgba(47, 128, 237, 0.1), transparent 30%),
+    linear-gradient(180deg, #151a20 0%, #12171d 100%);
+  border: 1px solid #26323d;
+}
+
+.desktop-support-card {
+  background: #12171d;
+  border-color: #26323d;
+}
+
 .desktop-page-title {
   margin: 0;
   font-size: clamp(1.3rem, 2.8vw, 2rem);

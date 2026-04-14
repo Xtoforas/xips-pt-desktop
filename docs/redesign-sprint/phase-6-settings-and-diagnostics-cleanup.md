@@ -6,10 +6,10 @@ Reduce top-level clutter by moving routine operational work out of `Settings` wh
 
 ## Scope
 
-- [ ] Move routine operational controls out of `Settings` when they belong on `Today` or `Automation`.
-- [ ] Keep server profile and desktop behavior controls in `Settings`.
-- [ ] Simplify `Diagnostics` visually while preserving current troubleshooting depth.
-- [ ] Preserve access to diagnostic export and app-data actions.
+- [x] Move routine operational controls out of `Settings` when they belong on `Today` or `Automation`.
+- [x] Keep server profile and desktop behavior controls in `Settings`.
+- [x] Simplify `Diagnostics` visually while preserving current troubleshooting depth.
+- [x] Preserve access to diagnostic export and app-data actions.
 
 ## Deliverables
 
@@ -24,6 +24,6 @@ Reduce top-level clutter by moving routine operational work out of `Settings` wh
 
 ## Validation
 
-- [ ] Verify routine user actions no longer require visits to `Settings`.
-- [ ] Verify diagnostic export and app-data access remain intact.
-- [ ] Verify troubleshooting information remains discoverable when needed.
+- [x] Verify routine user actions no longer require visits to `Settings`.
+- [x] Verify diagnostic export and app-data access remain intact.
+- [x] Verify troubleshooting information remains discoverable when needed.
