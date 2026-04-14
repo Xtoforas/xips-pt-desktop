@@ -1,7 +1,9 @@
 import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useDesktop } from './DesktopContext';
 import {
+  buildOnboardingSteps,
   FormatRuleTable,
   FormatsTable,
   formatDetectedFileStateLabel,
@@ -25,6 +27,21 @@ import {
   WatchRootForm,
   WatchRootTable
 } from './components';
+
+const useScrollToHash = (): void => {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!location.hash) {
+      return;
+    }
+    const targetId = location.hash.slice(1);
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.hash, location.pathname]);
+};
 
 const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
   <Group gap="xs" wrap="nowrap">
@@ -113,7 +130,12 @@ const explainFilenameAutoAssignment = (
 };
 
 export const TodayPage = (): JSX.Element => {
-  const { snapshot, selectedProfile, cards, cardSource } = useDesktop();
+  const { snapshot, selectedProfile, health, authFlowState, cards, cardSource } = useDesktop();
+  const onboardingSteps = useMemo(
+    () => buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState }),
+    [authFlowState, health, selectedProfile, snapshot]
+  );
+  const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
   const formatLabelById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
@@ -168,6 +190,26 @@ export const TodayPage = (): JSX.Element => {
         <h2 className="desktop-page-title">Today</h2>
         <p className="desktop-page-subtitle">Readiness, blockers, active uploads, and recent completions.</p>
       </div>
+      {nextStep ? (
+        <Card withBorder className="desktop-card desktop-today-setup-card">
+          <Group justify="space-between" align="flex-start" wrap="nowrap">
+            <div>
+              <Text className="desktop-micro-label">Setup still needed</Text>
+              <Text fw={700}>{nextStep.label}</Text>
+              <Text size="sm" c="dimmed">
+                {nextStep.detail}
+              </Text>
+            </div>
+            <Button component={Link} to={nextStep.href} size="xs">
+              {nextStep.actionLabel}
+            </Button>
+          </Group>
+        </Card>
+      ) : (
+        <Alert color="teal" variant="light" title="Setup complete">
+          The desktop app is ready for normal operation. The shell stays visible while the workflow runs.
+        </Alert>
+      )}
       <Stack gap="md">
         {needsAttentionCount > 0 ? (
           <Alert color="yellow" title="Action needed">
@@ -905,6 +947,7 @@ export const WatchFoldersPage = (): JSX.Element => {
   const [selectedWatchRootId, setSelectedWatchRootId] = useState('');
   const [selectedFormatId, setSelectedFormatId] = useState('');
   const [pattern, setPattern] = useState('');
+  useScrollToHash();
 
   return (
     <Stack gap="lg">
@@ -913,8 +956,8 @@ export const WatchFoldersPage = (): JSX.Element => {
         <p className="desktop-page-subtitle">Configure the CSV folders that the desktop app watches in the background.</p>
       </div>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
-        <WatchRootForm />
-        <Card withBorder className="desktop-card">
+        <WatchRootForm id="watch-folders" />
+        <Card withBorder className="desktop-card" id="format-rules">
           <Stack gap="sm">
             <Text fw={700}>Save format rule</Text>
             <Text size="sm" c="dimmed">Map a folder or filename pattern to a tournament format.</Text>
@@ -1014,6 +1057,7 @@ export const AutomationPage = (): JSX.Element => {
       setFocusedFormatId(snapshot.cachedFormats[0]?.id ?? '');
     }
   }, [focusedFormatId, snapshot.cachedFormats]);
+  useScrollToHash();
 
   const focusedFormat = snapshot.cachedFormats.find((format) => format.id === focusedFormatId) ?? null;
 
@@ -1043,8 +1087,8 @@ export const AutomationPage = (): JSX.Element => {
         </Stack>
       </Card>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
-        <WatchRootForm />
-        <Card withBorder className="desktop-card">
+        <WatchRootForm id="watch-folders" />
+        <Card withBorder className="desktop-card" id="format-rules">
           <Stack gap="sm">
             <Text fw={700}>Save format rule</Text>
             <Text size="sm" c="dimmed">
@@ -1612,9 +1656,11 @@ export const SettingsPage = (): JSX.Element => {
     refreshMe,
     refreshMyAgg,
     scanWatchRoots,
+    openAuthWindow,
     selectServerProfile,
     updatePreferences
   } = useDesktop();
+  useScrollToHash();
   const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
 
   return (
@@ -1624,27 +1670,33 @@ export const SettingsPage = (): JSX.Element => {
         <p className="desktop-page-subtitle">Server profiles and desktop behavior configuration.</p>
       </div>
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
-        <ServerProfileForm />
+        <ServerProfileForm id="server-profile" />
         <PreferencesForm preferences={snapshot.preferences} onSave={updatePreferences} />
       </SimpleGrid>
-      <Card withBorder className="desktop-card">
+      <Card withBorder className="desktop-card" id="server-health">
         <Stack gap="sm">
           <Text fw={700}>Auth and server</Text>
           <Text size="sm" c="dimmed">
             Current server health and signed-in desktop identity state.
           </Text>
-          <Group>
-            <Alert color={health?.ok ? 'teal' : 'gray'} title="Health">
-              {health?.ok ? 'Server reachable' : 'Server not checked yet.'}
-            </Alert>
-          </Group>
+          <Alert color={health?.ok ? 'teal' : 'gray'} title="Health">
+            {health?.ok ? 'Server reachable' : 'Server not checked yet.'}
+          </Alert>
           <Text size="sm">Selected server: {selectedProfile?.name ?? 'No server selected'}</Text>
           <Text size="sm">Signed in user: {isAuthenticated ? snapshot.authUser?.displayName : 'Not signed in'}</Text>
           <Text size="sm">Token expiry: {isAuthenticated ? snapshot.tokenExpiresAt : 'No token issued'}</Text>
           <Text size="sm">Detected files: {snapshot.detectedFiles.length}</Text>
+          <Group>
+            <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshHealth()}>
+              Check health
+            </Button>
+            <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void openAuthWindow(selectedProfile?.id ?? '')}>
+              Open sign-in
+            </Button>
+          </Group>
         </Stack>
       </Card>
-      <Card withBorder className="desktop-card">
+      <Card withBorder className="desktop-card" id="sign-in">
         <Stack gap="sm">
           <Text fw={700}>Cards and personal aggregate</Text>
           <Text size="sm" c="dimmed">

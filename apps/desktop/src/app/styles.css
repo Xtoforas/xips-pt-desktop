@@ -195,6 +195,30 @@ a {
   border: 1px solid var(--line-0);
 }
 
+.desktop-onboarding-card {
+  gap: 10px;
+}
+
+.desktop-onboarding-step {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #11161d;
+  border: 1px solid #24303a;
+}
+
+.desktop-onboarding-action {
+  justify-self: start;
+}
+
+.desktop-today-setup-card {
+  background:
+    radial-gradient(circle at top right, rgba(47, 128, 237, 0.15), transparent 30%),
+    linear-gradient(180deg, #171b21 0%, #13181f 100%);
+  border: 1px solid #2a3744;
+}
+
 .desktop-page-title {
   margin: 0;
   font-size: clamp(1.3rem, 2.8vw, 2rem);

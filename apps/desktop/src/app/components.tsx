@@ -1,5 +1,5 @@
 import { Alert, Badge, Button, Card, Group, HoverCard, Select, Stack, Text, TextInput } from '@mantine/core';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import type {
   DesktopPreferences,
   LocalDetectedFile,
@@ -27,9 +27,109 @@ const serverOptions = (profiles: LocalServerProfile[]): Array<{ value: string; l
     label: profile.name
   }));
 
+type OnboardingStep = {
+  key: string;
+  label: string;
+  status: string;
+  detail: string;
+  href: string;
+  actionLabel: string;
+  complete: boolean;
+};
+
+export const buildOnboardingSteps = ({
+  snapshot,
+  health,
+  selectedProfile,
+  authFlowState
+}: {
+  snapshot: ReturnType<typeof useDesktop>['snapshot'];
+  health: ReturnType<typeof useDesktop>['health'];
+  selectedProfile: ReturnType<typeof useDesktop>['selectedProfile'];
+  authFlowState: ReturnType<typeof useDesktop>['authFlowState'];
+}): OnboardingStep[] => {
+  const selectedProfileId = selectedProfile?.id ?? '';
+  const watchRoots = selectedProfileId ? snapshot.watchRoots.filter((root) => root.profileId === selectedProfileId) : [];
+  const formatRules = selectedProfileId ? snapshot.formatRules.filter((rule) => rule.profileId === selectedProfileId) : [];
+  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
+
+  return [
+    {
+      key: 'server',
+      label: 'Server profile',
+      status: selectedProfile ? `Using ${selectedProfile.name}` : snapshot.profiles.length > 0 ? 'Choose the server to use' : 'No server profile yet',
+      detail: selectedProfile
+        ? 'Server settings and health checks live in Settings.'
+        : 'Add a server profile first so the desktop app knows which xips-pt instance to talk to.',
+      href: '/settings#server-profile',
+      actionLabel: selectedProfile ? 'Review server setup' : 'Open server setup',
+      complete: Boolean(selectedProfile)
+    },
+    {
+      key: 'health',
+      label: 'Health check',
+      status: !selectedProfile
+        ? 'Choose a server first'
+        : health?.ok
+          ? 'Server responded'
+          : health
+            ? 'Server needs attention'
+            : 'Not checked yet',
+      detail: !selectedProfile
+        ? 'Pick a server profile before running the health check.'
+        : health?.ok
+          ? 'A healthy response means the app can reach the selected server.'
+          : 'Run the check from Settings to confirm the server URL and backend are reachable.',
+      href: '/settings#server-health',
+      actionLabel: 'Check server',
+      complete: Boolean(selectedProfile && health?.ok)
+    },
+    {
+      key: 'auth',
+      label: 'Discord sign-in',
+      status: isAuthenticated
+        ? `Signed in as ${snapshot.authUser?.displayName ?? 'the selected user'}`
+        : authFlowState === 'waiting'
+          ? 'Waiting for sign-in callback'
+          : 'Sign-in still needed',
+      detail: isAuthenticated
+        ? 'Once signed in, the queue can use your account and the card views can switch to live personal data.'
+        : 'Sign in after the server responds so the app can finish token exchange and unlock queue actions.',
+      href: '/settings#sign-in',
+      actionLabel: 'Open sign-in',
+      complete: isAuthenticated
+    },
+    {
+      key: 'watch-folders',
+      label: 'Watch folders',
+      status: watchRoots.length > 0 ? `${watchRoots.length} watched folder${watchRoots.length === 1 ? '' : 's'}` : 'No watched folder yet',
+      detail: watchRoots.length > 0
+        ? 'The app can discover new files automatically from watched folders.'
+        : 'Add a watch folder so the desktop app can notice new exports without manual uploads.',
+      href: '/automation#watch-folders',
+      actionLabel: 'Add watch folder',
+      complete: watchRoots.length > 0
+    },
+    {
+      key: 'rules',
+      label: 'Automation rule',
+      status: formatRules.length > 0 ? `${formatRules.length} rule${formatRules.length === 1 ? '' : 's'} saved` : 'No automation rule yet',
+      detail: formatRules.length > 0
+        ? 'Rules connect watched files to the right tournament formats.'
+        : 'Add a filename or folder rule so the app can map new files to the right format automatically.',
+      href: '/automation#format-rules',
+      actionLabel: 'Add automation rule',
+      complete: formatRules.length > 0
+    }
+  ];
+};
+
 export const DesktopSidebar = (): JSX.Element => {
   const location = useLocation();
-  const { snapshot, health } = useDesktop();
+  const { snapshot, health, selectedProfile, authFlowState } = useDesktop();
+  const onboardingSteps = buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState });
+  const completedCount = onboardingSteps.filter((step) => step.complete).length;
+  const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
 
   return (
     <aside className="desktop-sidebar">
@@ -55,6 +155,57 @@ export const DesktopSidebar = (): JSX.Element => {
           </div>
         ))}
       </div>
+      <Card withBorder className="desktop-status-card desktop-onboarding-card">
+        <Stack gap="xs">
+          <Group justify="space-between" align="flex-start">
+            <div>
+              <Text className="desktop-micro-label">Setup checklist</Text>
+              <Text fw={700}>First-run readiness</Text>
+            </div>
+            <Badge color={nextStep ? 'orange' : 'teal'} variant="light">
+              {completedCount}/5
+            </Badge>
+          </Group>
+          <Text size="xs" c="dimmed">
+            {nextStep
+              ? `Next: ${nextStep.label.toLowerCase()}`
+              : 'Setup complete. The app is ready for normal operation.'}
+          </Text>
+          <Stack gap={6}>
+            {onboardingSteps.map((step) => (
+              <div key={step.key} className="desktop-onboarding-step">
+                <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
+                  <div>
+                    <Text size="sm" fw={600}>
+                      {step.label}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {step.status}
+                    </Text>
+                  </div>
+                  <Badge color={step.complete ? 'teal' : step === nextStep ? 'orange' : 'gray'} variant="light">
+                    {step.complete ? 'Ready' : 'Next'}
+                  </Badge>
+                </Group>
+                {!step.complete ? (
+                  <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-onboarding-action">
+                    {step.actionLabel}
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+          </Stack>
+          {nextStep ? (
+            <Button component={Link} to={nextStep.href} size="xs">
+              {nextStep.actionLabel}
+            </Button>
+          ) : (
+            <Alert color="teal" variant="light">
+              Signed in, watched folders configured, and automation rules ready.
+            </Alert>
+          )}
+        </Stack>
+      </Card>
       <Card withBorder className="desktop-status-card">
         <Stack gap={6}>
           <Text className="desktop-micro-label">Server status</Text>
@@ -130,8 +281,8 @@ export const DesktopTopbar = (): JSX.Element => {
       </Group>
       <Group gap="sm">
         {!selectedProfile ? (
-          <Alert className="desktop-topbar-alert" color="blue" variant="light" title="Setup required">
-            Add a server profile below to unlock the workflow.
+          <Alert className="desktop-topbar-alert" color="blue" variant="light" title="Setup in progress">
+            Use the checklist to add a server, check health, sign in, and finish watch-folder setup.
           </Alert>
         ) : null}
         {needsAttentionCount > 0 ? (
@@ -189,7 +340,7 @@ export const DesktopTopbar = (): JSX.Element => {
   );
 };
 
-export const OnboardingGate = (): JSX.Element => {
+export const OnboardingChecklist = (): JSX.Element => {
   const {
     snapshot,
     authFlowError,
@@ -207,6 +358,9 @@ export const OnboardingGate = (): JSX.Element => {
   const [busyAction, setBusyAction] = useState<'save' | 'health' | 'signin' | 'validate' | ''>('');
   const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
   const hasSelectedProfile = selectedProfile !== null;
+  const onboardingSteps = buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState });
+  const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
+  const completedCount = onboardingSteps.filter((step) => step.complete).length;
 
   const handleSaveProfile = async (): Promise<void> => {
     if (!profileName.trim() || !baseUrl.trim()) {
@@ -279,10 +433,17 @@ export const OnboardingGate = (): JSX.Element => {
       <Card withBorder className="desktop-oobe-hero">
         <Stack gap="lg">
           <div>
-            <Text className="desktop-micro-label">First Run Setup</Text>
-            <h2 className="desktop-page-title">Connect xips-pt desktop to your server first</h2>
-            <p className="desktop-page-subtitle">Add a server, verify it responds, then finish the Discord-backed desktop sign-in flow.</p>
+            <Text className="desktop-micro-label">First-run setup</Text>
+            <h2 className="desktop-page-title">Keep the app shell visible while setup finishes</h2>
+            <p className="desktop-page-subtitle">
+              Follow the checklist to add a server, verify health, sign in, and wire up automation without hiding the rest of the product.
+            </p>
           </div>
+          <Alert color={nextStep ? 'blue' : 'teal'} variant="light" title={nextStep ? `Next step: ${nextStep.label}` : 'Setup complete'}>
+            {nextStep
+              ? nextStep.detail
+              : 'The desktop app is ready for normal operation, and the full workflow is now unlocked.'}
+          </Alert>
           {errorMessage ? (
             <Alert color="red" title="Setup problem">
               {errorMessage}
@@ -293,6 +454,20 @@ export const OnboardingGate = (): JSX.Element => {
               {authFlowError}
             </Alert>
           ) : null}
+          <Group gap="sm">
+            <Badge color="blue" variant="light">
+              {completedCount}/5 ready
+            </Badge>
+            {selectedProfile ? (
+              <Badge color="teal" variant="light">
+                {selectedProfile.name}
+              </Badge>
+            ) : (
+              <Badge color="gray" variant="light">
+                No server selected
+              </Badge>
+            )}
+          </Group>
           <div className="desktop-oobe-grid">
             <Card withBorder className="desktop-card">
               <Stack gap="sm">
@@ -303,7 +478,7 @@ export const OnboardingGate = (): JSX.Element => {
                   </Badge>
                 </Group>
                 <Text size="sm" c="dimmed">
-                  Create the first server profile for the xips-pt instance this desktop app should talk to.
+                  Create or choose the server profile for the xips-pt instance this desktop app should talk to.
                 </Text>
                 <TextInput
                   label="Profile name"
@@ -417,7 +592,7 @@ export const OnboardingGate = (): JSX.Element => {
                 </Group>
                 {isAuthenticated ? (
                   <Alert color="teal" title="Setup complete">
-                    The desktop app is connected. You can now configure watch folders and upload flows.
+                    The desktop app is connected. Watch folders and automation rules are the next steps.
                   </Alert>
                 ) : null}
               </Stack>
@@ -890,14 +1065,14 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
   </div>
 );
 
-export const ServerProfileForm = (): JSX.Element => {
+export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
   const { snapshot, saveServerProfile } = useDesktop();
   const [editingId, setEditingId] = useState('');
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
 
   return (
-    <Card withBorder className="desktop-card">
+    <Card withBorder className="desktop-card" id={id}>
       <Stack gap="sm">
         <Text fw={700}>Add server profile</Text>
         <Select
@@ -943,7 +1118,7 @@ export const ServerProfileForm = (): JSX.Element => {
   );
 };
 
-export const WatchRootForm = (): JSX.Element => {
+export const WatchRootForm = ({ id }: { id?: string }): JSX.Element => {
   const { selectedProfile, addWatchRoot } = useDesktop();
   const [path, setPath] = useState('');
 
@@ -964,7 +1139,7 @@ export const WatchRootForm = (): JSX.Element => {
   }, [selectedProfile?.id]);
 
   return (
-    <Card withBorder className="desktop-card">
+    <Card withBorder className="desktop-card" id={id}>
       <Stack gap="sm">
         <Text fw={700}>Add watch folder</Text>
         <TextInput

@@ -41,7 +41,7 @@ Use a "control room" interaction model:
 ### Phase status
 
 - [x] Phase 1: Information architecture and shell
-- [ ] Phase 2: Onboarding redesign
+- [x] Phase 2: Onboarding redesign
 - [ ] Phase 3: Today page redesign
 - [ ] Phase 4: Queue workspace redesign
 - [ ] Phase 5: Automation workflow redesign
@@ -53,7 +53,7 @@ Phase details, deliverables, dependencies, and validation notes are tracked in t
 ## Implementation order
 
 1. Rework routes, nav, and shell framing for the new information architecture.
-2. Replace the hard onboarding gate with the new persistent setup checklist and readiness model.
+2. [x] Replace the hard onboarding gate with the new persistent setup checklist and readiness model.
 3. Build the `Today` page and blocker CTA model.
 4. Refactor the queue into action-first workflow states and a persistent inspector.
 5. Merge watch-folder and format setup into `Automation`.
