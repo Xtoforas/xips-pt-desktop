@@ -1,6 +1,7 @@
 import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import type { LocalUploadJob } from '@xips/api-contract';
 import { useDesktop } from './DesktopContext';
 import {
   buildOnboardingSteps,
@@ -129,6 +130,72 @@ const explainFilenameAutoAssignment = (
   return `The filename contains ${candidates.join(', ')}, but none of those IDs match a cached tournament prefix on this desktop.`;
 };
 
+type QueueFilter = 'all' | 'queued' | 'uploaded';
+
+type TodayBlockerState = 'awaiting_format_assignment' | 'failed_retryable' | 'auth_blocked';
+
+const queueLinkForJob = (jobId: string, filter: QueueFilter = 'queued'): string => {
+  const params = new URLSearchParams();
+  if (filter !== 'all') {
+    params.set('filter', filter);
+  }
+  params.set('job', jobId);
+  const query = params.toString();
+  return query ? `/queue?${query}` : '/queue';
+};
+
+const parseQueueFilter = (value: string | null): QueueFilter => {
+  if (value === 'queued' || value === 'uploaded') {
+    return value;
+  }
+  return 'all';
+};
+
+const blockerPriority: Record<TodayBlockerState, number> = {
+  auth_blocked: 0,
+  awaiting_format_assignment: 1,
+  failed_retryable: 2
+};
+
+const blockerTitleByState: Record<TodayBlockerState, string> = {
+  awaiting_format_assignment: 'Waiting for format assignment',
+  failed_retryable: 'Retryable failure',
+  auth_blocked: 'Sign-in required'
+};
+
+const blockerActionLabelByState: Record<TodayBlockerState, string> = {
+  awaiting_format_assignment: 'Open queue to assign format',
+  failed_retryable: 'Open queue to retry',
+  auth_blocked: 'Open queue to re-authenticate'
+};
+
+const blockerDetailByState = (
+  job: { fileKind: string; error?: string | null; formatId?: string | null; filename: string },
+  formatLabelById: Record<string, string>
+): string => {
+  switch (job.fileKind) {
+    case 'stats_export':
+      return `The export is blocked until it is mapped to a tournament format${job.formatId ? ` (${formatLabelById[job.formatId] ?? 'unknown format'})` : ''}.`;
+    case 'card_catalog':
+      return 'The catalog is waiting for the queue to finish assigning its next server lifecycle step.';
+    default:
+      return 'This file is blocked and needs one quick queue action before it can continue.';
+  }
+};
+
+const getUploadJobKindDetail = (job: Pick<LocalUploadJob, 'fileKind' | 'lifecyclePhase' | 'localState'>): string => {
+  if (job.localState === 'failed_retryable') {
+    return 'A transient error paused the upload.';
+  }
+  if (job.localState === 'auth_blocked') {
+    return 'The selected account needs to be signed in again.';
+  }
+  if (job.localState === 'awaiting_format_assignment') {
+    return 'The queue is waiting for a format match.';
+  }
+  return job.lifecyclePhase ? formatLifecycleLabel(job.lifecyclePhase, job.fileKind) : 'In progress';
+};
+
 export const TodayPage = (): JSX.Element => {
   const { snapshot, selectedProfile, health, authFlowState, cards, cardSource } = useDesktop();
   const onboardingSteps = useMemo(
@@ -141,10 +208,34 @@ export const TodayPage = (): JSX.Element => {
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
     [snapshot.cachedFormats]
   );
-  const formatById = useMemo(
+  const readinessItems = onboardingSteps;
+  const blockerJobs = useMemo(
     () =>
-      Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format])),
-    [snapshot.cachedFormats]
+      [...snapshot.uploadJobs]
+        .filter((job) => uploadJobNeedsAttention(job))
+        .sort((left, right) => {
+          const leftPriority = blockerPriority[left.localState as TodayBlockerState] ?? 99;
+          const rightPriority = blockerPriority[right.localState as TodayBlockerState] ?? 99;
+          if (leftPriority !== rightPriority) {
+            return leftPriority - rightPriority;
+          }
+          return (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0);
+        }),
+    [snapshot.uploadJobs]
+  );
+  const activeMachineJobs = useMemo(
+    () =>
+      snapshot.uploadJobs
+        .filter((job) => uploadJobWorkingAutomatically(job) && !uploadJobWaitingOnServer(job))
+        .sort((left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)),
+    [snapshot.uploadJobs]
+  );
+  const serverProgressJobs = useMemo(
+    () =>
+      snapshot.uploadJobs
+        .filter((job) => uploadJobWaitingOnServer(job))
+        .sort((left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)),
+    [snapshot.uploadJobs]
   );
   const completedCount = useMemo(
     () => snapshot.uploadJobs.filter((job) => job.localState === 'complete').length,
@@ -163,189 +254,322 @@ export const TodayPage = (): JSX.Element => {
     [snapshot.uploadJobs]
   );
   const localUploadCount = useMemo(
-    () => snapshot.uploadJobs.filter((job) => ['detected', 'queued_local', 'uploading'].includes(job.localState)).length,
-    [snapshot.uploadJobs]
+    () => activeMachineJobs.length,
+    [activeMachineJobs.length]
   );
-  const recentActivity = useMemo(
+  const completedJobs = useMemo(
     () =>
-      [...snapshot.uploadJobs]
+      snapshot.uploadJobs
+        .filter((job) => job.localState === 'complete')
         .sort((left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0))
-        .slice(0, 8),
+        .slice(0, 5),
     [snapshot.uploadJobs]
   );
-  const formatSummary = useMemo(() => {
-    const counts = new Map<string, number>();
-    snapshot.uploadJobs.forEach((job) => {
-      const key = job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned';
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    });
-    return [...counts.entries()]
-      .sort((left, right) => right[1] - left[1])
-      .slice(0, 6);
-  }, [formatLabelById, snapshot.uploadJobs]);
 
   return (
-    <Stack gap="md">
-      <div>
-        <h2 className="desktop-page-title">Today</h2>
-        <p className="desktop-page-subtitle">Readiness, blockers, active uploads, and recent completions.</p>
-      </div>
-      {nextStep ? (
-        <Card withBorder className="desktop-card desktop-today-setup-card">
-          <Group justify="space-between" align="flex-start" wrap="nowrap">
+    <Stack gap="lg">
+      <Card withBorder className="desktop-card desktop-today-hero">
+        <Stack gap="md">
+          <Group justify="space-between" align="flex-start" wrap="wrap">
             <div>
-              <Text className="desktop-micro-label">Setup still needed</Text>
-              <Text fw={700}>{nextStep.label}</Text>
-              <Text size="sm" c="dimmed">
-                {nextStep.detail}
-              </Text>
+              <Text className="desktop-micro-label">Today</Text>
+              <h2 className="desktop-page-title">What needs you right now</h2>
+              <p className="desktop-page-subtitle">
+                Readiness, blockers, automatic progress, and recent finishes all live on one operating surface.
+              </p>
             </div>
-            <Button component={Link} to={nextStep.href} size="xs">
-              {nextStep.actionLabel}
-            </Button>
+            <Group gap="xs" wrap="wrap">
+              <Badge color={needsAttentionCount > 0 ? 'orange' : 'teal'} variant="light">
+                {needsAttentionCount} needing action
+              </Badge>
+              <Badge color={automaticQueueCount > 0 ? 'blue' : 'gray'} variant="light">
+                {automaticQueueCount} working
+              </Badge>
+              <Badge color={completedCount > 0 ? 'teal' : 'gray'} variant="light">
+                {completedCount} completed
+              </Badge>
+            </Group>
           </Group>
-        </Card>
-      ) : (
-        <Alert color="teal" variant="light" title="Setup complete">
-          The desktop app is ready for normal operation. The shell stays visible while the workflow runs.
-        </Alert>
-      )}
-      <Stack gap="md">
-        {needsAttentionCount > 0 ? (
-          <Alert color="yellow" title="Action needed">
-            {needsAttentionCount} file(s) still need something from you. The items in
-            {' '}
-            <strong>Awaiting format assignment</strong>
-            {' '}
-            will not upload until you assign them in
-            {' '}
-            <strong>Upload Queue</strong>
-            .
-          </Alert>
-        ) : null}
-        {automaticQueueCount > 0 ? (
-          <Alert color="teal" title="Uploads are progressing automatically">
-            {waitingOnServerCount > 0
-              ? `${waitingOnServerCount} file(s) have already reached the server and are waiting on server processing or refresh.`
-              : 'The desktop app is still working through queued files automatically.'}
-            {localUploadCount > 0 ? ` ${localUploadCount} more file(s) are still being prepared or uploaded from this machine.` : ''}
-            {' '}
-            You do not need to do anything right now unless this stops changing or an error appears.
-          </Alert>
-        ) : null}
-        <Card withBorder className="desktop-card">
-          <Stack gap="sm">
-            <Text fw={700}>Recent upload queue</Text>
-            <QueueTable jobs={snapshot.uploadJobs.slice(0, 5)} formatLabels={formatLabelById} />
+          <Text size="sm" c="dimmed" className="desktop-today-summary">
+            The queue keeps moving when it can. When it cannot, these cards point at the exact next step.
+          </Text>
+          {nextStep ? (
+            <Alert color="blue" variant="light" title={`Next readiness step: ${nextStep.label}`}>
+              {nextStep.detail}
+            </Alert>
+          ) : (
+            <Alert color="teal" variant="light" title="Operational readiness complete">
+              The desktop app is fully set up for normal operation.
+            </Alert>
+          )}
+        </Stack>
+      </Card>
+      <Card withBorder className="desktop-card desktop-today-strip">
+        <Stack gap="sm">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <div>
+              <Text className="desktop-micro-label">Readiness strip</Text>
+              <Text fw={700}>Setup and operational state</Text>
+            </div>
+            <Text size="sm" c="dimmed">
+              {selectedProfile ? `${selectedProfile.name} is the active server profile.` : 'No server profile selected yet.'}
+            </Text>
+          </Group>
+          <SimpleGrid cols={{ base: 1, md: 2, xl: 5 }} spacing="sm">
+            {readinessItems.map((step, index) => (
+              <Card key={step.key} withBorder className={`desktop-card desktop-today-strip-item${step.complete ? ' complete' : ''}`}>
+                <Stack gap={6}>
+                  <Group justify="space-between" align="flex-start" wrap="nowrap">
+                    <div>
+                      <Text size="sm" fw={700}>
+                        {index + 1}. {step.label}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {step.status}
+                      </Text>
+                    </div>
+                    <Badge color={step.complete ? 'teal' : step === nextStep ? 'orange' : 'gray'} variant="light">
+                      {step.complete ? 'Ready' : 'Pending'}
+                    </Badge>
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    {step.detail}
+                  </Text>
+                  {!step.complete ? (
+                    <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-today-strip-action">
+                      {step.actionLabel}
+                    </Button>
+                  ) : null}
+                </Stack>
+              </Card>
+            ))}
+          </SimpleGrid>
+        </Stack>
+      </Card>
+      <Card withBorder className="desktop-card desktop-today-section">
+        <Stack gap="md">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <div>
+              <Text className="desktop-micro-label">Needs attention</Text>
+              <Text fw={700}>Blocked files</Text>
+            </div>
+            <Badge color={needsAttentionCount > 0 ? 'orange' : 'gray'} variant="light">
+              {needsAttentionCount} file{needsAttentionCount === 1 ? '' : 's'}
+            </Badge>
+          </Group>
+          {blockerJobs.length === 0 ? (
+            <Alert color="teal" variant="light">
+              No files are blocked right now. The queue is clear of user-driven work.
+            </Alert>
+          ) : (
+            <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="sm">
+              {blockerJobs.map((job) => {
+                const blockerState = job.localState as TodayBlockerState;
+                const queueLink = queueLinkForJob(job.id, 'queued');
+                return (
+                  <Card key={job.id} withBorder className="desktop-card desktop-today-blocker-card">
+                    <Stack gap="sm">
+                      <Group justify="space-between" align="flex-start" wrap="nowrap">
+                        <div>
+                          <Text size="sm" fw={700}>
+                            {job.filename}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {getUploadJobKindDetail(job)} Updated {formatUploadJobModifiedAt(job)}.
+                          </Text>
+                        </div>
+                        <Stack gap={4} align="flex-end">
+                          <Badge color="orange" variant="light">
+                            {blockerTitleByState[blockerState]}
+                          </Badge>
+                          <Badge color={job.fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
+                            {formatFileKindLabel(job.fileKind)}
+                          </Badge>
+                        </Stack>
+                      </Group>
+                      <Text size="sm">
+                        {blockerDetailByState(job, formatLabelById)}
+                      </Text>
+                      <Group gap="xs" wrap="wrap">
+                        <Button component={Link} to={queueLink} size="xs">
+                          {blockerActionLabelByState[blockerState]}
+                        </Button>
+                        <Button component={Link} to={queueLink} size="xs" variant="light">
+                          Open queue row
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Card>
+                );
+              })}
+            </SimpleGrid>
+          )}
+        </Stack>
+      </Card>
+      <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
+        <Card withBorder className="desktop-card desktop-today-section">
+          <Stack gap="md">
+            <Group justify="space-between" align="center" wrap="wrap">
+              <div>
+                <Text className="desktop-micro-label">In progress</Text>
+                <Text fw={700}>Automatic work</Text>
+              </div>
+              <Badge color="blue" variant="light">
+                {automaticQueueCount} moving
+              </Badge>
+            </Group>
+            <Stack gap="sm">
+              <div className="desktop-today-mini-list">
+                <Text size="sm" fw={600}>
+                  On this machine
+                </Text>
+                {activeMachineJobs.length === 0 ? (
+                  <Alert color="gray" variant="light">
+                    No uploads are currently staged or uploading on this desktop.
+                  </Alert>
+                ) : (
+                  activeMachineJobs.slice(0, 4).map((job) => (
+                    <div key={job.id} className="desktop-today-mini-row">
+                      <div>
+                        <Text size="sm" fw={600}>
+                          {job.filename}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {formatQueueStateLabel(job.localState, job.fileKind)} · {formatUploadJobModifiedAt(job)}
+                        </Text>
+                      </div>
+                      <Badge color="blue" variant="light">
+                        {formatFileKindLabel(job.fileKind)}
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Stack>
           </Stack>
         </Card>
-        <Card withBorder className="desktop-card">
-          <Stack gap="sm">
-            <Text fw={700}>Awaiting format assignment</Text>
-            {snapshot.detectedFiles.filter((file) => file.localPresence === 'present' && file.localState === 'awaiting_format_assignment').length === 0 ? (
-              <Alert color="gray">No scanned files are waiting for format assignment.</Alert>
-            ) : (
-              <div className="desktop-table-wrap">
-                <table className="desktop-table">
-                  <thead>
-                    <tr>
-                      <th>File</th>
-                      <th>Kind</th>
-                      <th>Checksum</th>
-                      <th>State</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshot.detectedFiles
-                      .filter((file) => file.localPresence === 'present' && file.localState === 'awaiting_format_assignment')
-                      .slice(0, 5)
-                      .map((file) => (
-                        <tr key={file.id}>
-                          <td>{file.filename}</td>
-                          <td>{formatFileKindLabel(file.fileKind)}</td>
-                          <td className="desktop-mono">{file.checksum.slice(0, 16)}...</td>
-                          <td>{formatDetectedFileStateLabel(file.localState)}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+        <Card withBorder className="desktop-card desktop-today-section">
+          <Stack gap="md">
+            <Group justify="space-between" align="center" wrap="wrap">
+              <div>
+                <Text className="desktop-micro-label">In progress</Text>
+                <Text fw={700}>Waiting on the server</Text>
               </div>
+              <Badge color="cyan" variant="light">
+                {waitingOnServerCount} on server
+              </Badge>
+            </Group>
+            {serverProgressJobs.length === 0 ? (
+              <Alert color="gray" variant="light">
+                Nothing is currently waiting on the server.
+              </Alert>
+            ) : (
+              <Stack gap="sm">
+                {serverProgressJobs.slice(0, 4).map((job) => (
+                  <div key={job.id} className="desktop-today-mini-row">
+                    <div>
+                      <Text size="sm" fw={600}>
+                        {job.filename}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {formatLifecycleLabel(job.lifecyclePhase, job.fileKind)} · {formatUploadJobModifiedAt(job)}
+                      </Text>
+                    </div>
+                    <Badge color="cyan" variant="light">
+                      {job.localState === 'uploaded_waiting_server' ? 'Uploaded' : formatQueueStateLabel(job.localState, job.fileKind)}
+                    </Badge>
+                  </div>
+                ))}
+              </Stack>
             )}
           </Stack>
         </Card>
+      </SimpleGrid>
+      <Card withBorder className="desktop-card desktop-today-section">
+        <Stack gap="md">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <div>
+              <Text className="desktop-micro-label">Recently completed</Text>
+              <Text fw={700}>Latest finished uploads</Text>
+            </div>
+            <Badge color="teal" variant="light">
+              {completedCount} total
+            </Badge>
+          </Group>
+          {completedJobs.length === 0 ? (
+            <Alert color="gray" variant="light">
+              No completed uploads have been recorded yet.
+            </Alert>
+          ) : (
+            <div className="desktop-today-completions">
+              {completedJobs.map((job) => (
+                <div key={job.id} className="desktop-today-completion-row">
+                  <div>
+                    <Text size="sm" fw={600}>
+                      {job.filename}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'} · {formatUploadJobModifiedAt(job)}
+                    </Text>
+                  </div>
+                  <Group gap="xs" wrap="nowrap">
+                    <Badge color="teal" variant="light">
+                      Complete
+                    </Badge>
+                    <Badge color={job.fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
+                      {formatFileKindLabel(job.fileKind)}
+                    </Badge>
+                  </Group>
+                </div>
+              ))}
+            </div>
+          )}
+        </Stack>
+      </Card>
+      <SimpleGrid cols={{ base: 1, md: 4 }} spacing="sm">
         <Card withBorder className="desktop-card">
-          <Stack gap="sm">
-            <Text fw={700}>Recent activity</Text>
-            {recentActivity.length === 0 ? (
-              <Alert color="gray">No upload activity recorded yet.</Alert>
-            ) : (
-              <div className="desktop-table-wrap">
-                <table className="desktop-table">
-                  <thead>
-                    <tr>
-                      <th>File</th>
-                      <th>Format</th>
-                      <th>State</th>
-                      <th>Modified</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentActivity.slice(0, 4).map((job) => (
-                      <tr key={job.id}>
-                        <td>{job.filename}</td>
-                        <td>{job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'}</td>
-                        <td>{formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}</td>
-                        <td>{formatUploadJobModifiedAt(job)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <Stack gap={4}>
+            <Text className="desktop-micro-label">Server</Text>
+            <Text fw={700}>{selectedProfile?.name ?? 'None'}</Text>
+            <Text size="xs" c="dimmed">
+              {selectedProfile?.baseUrl ?? 'No server selected'}
+            </Text>
           </Stack>
         </Card>
         <Card withBorder className="desktop-card">
-          <Stack gap="sm">
-            <Text fw={700}>Format activity</Text>
-            {formatSummary.length === 0 ? (
-              <Alert color="gray">No format-linked uploads yet.</Alert>
-            ) : (
-              <div className="desktop-table-wrap">
-                <table className="desktop-table">
-                  <thead>
-                    <tr>
-                      <th>Format</th>
-                      <th>Uploads</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formatSummary.map(([formatId, count]) => (
-                      <tr key={formatId}>
-                        <td>{formatId}</td>
-                        <td>{count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <Stack gap={4}>
+            <Text className="desktop-micro-label">Watch folders</Text>
+            <Text fw={700}>{snapshot.watchRoots.length}</Text>
+            <Text size="xs" c="dimmed">
+              Configured folder monitors
+            </Text>
           </Stack>
         </Card>
-      </Stack>
-      <SimpleGrid cols={{ base: 1, md: 2, xl: 6 }}>
-        <SummaryCard label="Server" value={selectedProfile?.name ?? 'None'} detail={selectedProfile?.baseUrl ?? 'No server selected'} />
-        <SummaryCard label="Watch folders" value={String(snapshot.watchRoots.length)} detail="Configured folder monitors" />
-        <SummaryCard label="Needs action" value={String(needsAttentionCount)} detail="Files waiting on your input or retry" />
-        <SummaryCard label="Working" value={String(automaticQueueCount)} detail="Files moving through the queue automatically" />
-        <SummaryCard label="On server" value={String(waitingOnServerCount)} detail="Uploads already sent and waiting on server work" />
-        <SummaryCard label="Completed" value={String(completedCount)} detail="Finished uploads in local history" />
-        <SummaryCard label="Cards" value={String(cards.length)} detail={`Source: ${cardSource ?? 'Unknown'}`} />
+        <Card withBorder className="desktop-card">
+          <Stack gap={4}>
+            <Text className="desktop-micro-label">Cards</Text>
+            <Text fw={700}>{cards.length}</Text>
+            <Text size="xs" c="dimmed">
+              Source: {cardSource ?? 'Unknown'}
+            </Text>
+          </Stack>
+        </Card>
+        <Card withBorder className="desktop-card">
+          <Stack gap={4}>
+            <Text className="desktop-micro-label">Queue state</Text>
+            <Text fw={700}>{waitingOnServerCount + localUploadCount}</Text>
+            <Text size="xs" c="dimmed">
+              Automatic work still in motion
+            </Text>
+          </Stack>
+        </Card>
       </SimpleGrid>
     </Stack>
   );
 };
 
 export const UploadQueuePage = (): JSX.Element => {
+  const location = useLocation();
   const {
     snapshot,
     selectedProfile,
@@ -375,6 +599,26 @@ export const UploadQueuePage = (): JSX.Element => {
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
     [snapshot.cachedFormats]
   );
+  const deepLinkQueueState = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const selectedJobIdFromQuery = params.get('job') ?? '';
+    const selectedJobIdsFromQuery = (params.get('jobs') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    return {
+      filter: parseQueueFilter(params.get('filter')),
+      selectedJobId: selectedJobIdFromQuery,
+      selectedQueueJobIds: selectedJobIdsFromQuery.length > 0 ? selectedJobIdsFromQuery : selectedJobIdFromQuery ? [selectedJobIdFromQuery] : []
+    };
+  }, [location.search]);
+
+  useEffect(() => {
+    setFilter(deepLinkQueueState.filter);
+    setSelectedJobId(deepLinkQueueState.selectedJobId);
+    setSelectedQueueJobIds(deepLinkQueueState.selectedQueueJobIds);
+  }, [deepLinkQueueState]);
 
   const filteredJobs = useMemo(() => {
     switch (filter) {

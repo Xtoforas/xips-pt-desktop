@@ -219,6 +219,81 @@ a {
   border: 1px solid #2a3744;
 }
 
+.desktop-today-hero {
+  background:
+    radial-gradient(circle at 15% 0%, rgba(47, 128, 237, 0.18), transparent 28%),
+    linear-gradient(180deg, #171b21 0%, #12171d 100%);
+  border: 1px solid #2a3744;
+}
+
+.desktop-today-summary {
+  max-width: 78ch;
+}
+
+.desktop-today-strip {
+  background:
+    linear-gradient(180deg, rgba(17, 22, 29, 0.98) 0%, rgba(18, 24, 32, 0.98) 100%);
+  border: 1px solid #27303a;
+}
+
+.desktop-today-strip-item {
+  min-height: 100%;
+  background: #11161d;
+  border: 1px solid #24303a;
+}
+
+.desktop-today-strip-item.complete {
+  background:
+    linear-gradient(180deg, rgba(17, 28, 23, 0.96) 0%, rgba(14, 22, 19, 0.98) 100%);
+  border-color: #1f4e3d;
+}
+
+.desktop-today-strip-action {
+  justify-self: start;
+}
+
+.desktop-today-section {
+  background: #14181d;
+}
+
+.desktop-today-blocker-card {
+  background:
+    linear-gradient(180deg, rgba(17, 22, 29, 0.98) 0%, rgba(15, 20, 26, 0.98) 100%);
+  border: 1px solid #27303a;
+}
+
+.desktop-today-mini-list {
+  display: grid;
+  gap: 10px;
+}
+
+.desktop-today-mini-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #11161d;
+  border: 1px solid #24303a;
+}
+
+.desktop-today-completions {
+  display: grid;
+  gap: 10px;
+}
+
+.desktop-today-completion-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #11161d;
+  border: 1px solid #24303a;
+}
+
 .desktop-page-title {
   margin: 0;
   font-size: clamp(1.3rem, 2.8vw, 2rem);
@@ -350,5 +425,10 @@ a {
 
   .desktop-oobe-grid {
     grid-template-columns: 1fr;
+  }
+
+  .desktop-today-mini-row,
+  .desktop-today-completion-row {
+    flex-direction: column;
   }
 }
