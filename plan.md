@@ -2,6 +2,16 @@
 
 Previous implementation planning work has been archived to [docs/implementation-plan-archive.md](docs/implementation-plan-archive.md).
 
+Detailed phase plans live in:
+
+- [Phase 1: Information Architecture and Shell](docs/redesign-sprint/phase-1-information-architecture-and-shell.md)
+- [Phase 2: Onboarding Redesign](docs/redesign-sprint/phase-2-onboarding-redesign.md)
+- [Phase 3: Today Page Redesign](docs/redesign-sprint/phase-3-today-page-redesign.md)
+- [Phase 4: Queue Workspace Redesign](docs/redesign-sprint/phase-4-queue-workspace-redesign.md)
+- [Phase 5: Automation Workflow Redesign](docs/redesign-sprint/phase-5-automation-workflow-redesign.md)
+- [Phase 6: Settings and Diagnostics Cleanup](docs/redesign-sprint/phase-6-settings-and-diagnostics-cleanup.md)
+- [Phase 7: Visual System Refresh](docs/redesign-sprint/phase-7-visual-system-refresh.md)
+
 ## Sprint goal
 
 Refactor the desktop app from a general-purpose admin dashboard into a clearer operator workflow that answers one question quickly on every screen: what needs me right now?
@@ -28,63 +38,17 @@ Use a "control room" interaction model:
 
 ## Sprint scope
 
-### 1. Information architecture and shell
+### Phase status
 
-- [ ] Replace `Overview` with a new `Today` page focused on readiness, blockers, active uploads, and recent completions.
-- [ ] Update the primary navigation to reflect the new top-level workflow: `Today`, `Queue`, `Automation`, `Settings`, `Diagnostics`.
-- [ ] Remove `Formats` as a top-level destination and fold its operational purpose into `Automation`.
-- [ ] Demote `Diagnostics` visually so it reads as support tooling rather than a first-line workflow page.
+- [ ] Phase 1: Information architecture and shell
+- [ ] Phase 2: Onboarding redesign
+- [ ] Phase 3: Today page redesign
+- [ ] Phase 4: Queue workspace redesign
+- [ ] Phase 5: Automation workflow redesign
+- [ ] Phase 6: Settings and diagnostics cleanup
+- [ ] Phase 7: Visual system refresh
 
-### 2. Onboarding redesign
-
-- [ ] Replace the current hard onboarding gate with a persistent setup checklist that keeps the app shell visible.
-- [ ] Present first-run setup as a clear sequence: server, health check, sign-in, watch folder, automation rule.
-- [ ] Show setup progress and current state in plain language, not just technical status badges.
-- [ ] Keep setup actions accessible from `Today` until the app is operational.
-- [ ] Add guidance that explains what becomes available after sign-in and after watch-folder setup.
-- [ ] Make incomplete setup states deep-link to the correct destination and action surface.
-
-### 3. Today page redesign
-
-- [ ] Replace the current metric-card-first overview with a prioritized landing page.
-- [ ] Add a top readiness strip for server, auth, watch-folder coverage, and automation-rule status.
-- [ ] Add a prominent `Needs attention` section with one card per blocked file and direct CTA buttons.
-- [ ] Add an `In progress` section for work that is advancing automatically.
-- [ ] Add a compact `Recently completed` section instead of another dense queue table.
-- [ ] Make every blocker CTA deep-link to the queue in the right filtered and selected state.
-
-### 4. Queue workspace redesign
-
-- [ ] Split the queue into explicit views for `Needs Action`, `Working`, and `Done`.
-- [ ] Default to `Needs Action` whenever blocked jobs exist.
-- [ ] Replace the below-the-fold detail experience with a sticky side inspector or equivalent always-visible action panel.
-- [ ] Make `awaiting_format_assignment` rows open directly into assignment controls without scroll hunting.
-- [ ] Make `failed_retryable` rows show the error summary and the retry action in the primary action area.
-- [ ] Make `auth_blocked` rows show re-auth guidance and explain that the queue will resume automatically after successful auth.
-- [ ] Keep dense operational scanning for advanced users without burying the fix surface.
-
-### 5. Automation workflow redesign
-
-- [ ] Merge `Watch Folders` and `Formats` into a single `Automation` page.
-- [ ] Present automation setup as a guided flow: watch folder, rule, format match, validation.
-- [ ] Keep direct access to saved watch roots and rules for experienced users.
-- [ ] Reuse the existing auto-assignment explanation logic to explain why a file did not match automatically.
-- [ ] Make the relationship between a watch folder, a filename rule, and a format visually obvious.
-
-### 6. Settings and diagnostics cleanup
-
-- [ ] Move routine operational controls out of `Settings` when they belong on `Today` or `Automation`.
-- [ ] Keep server profile and desktop behavior controls in `Settings`.
-- [ ] Simplify `Diagnostics` visually while preserving current troubleshooting depth.
-- [ ] Preserve access to diagnostic export and app-data actions.
-
-### 7. Visual system refresh
-
-- [ ] Refresh the shell and page hierarchy to support the redesigned workflow.
-- [ ] Introduce a stronger status-color system for healthy, caution, blocked, and background-processing states.
-- [ ] Reduce repeated all-caps metadata styling where plain-language labels improve clarity.
-- [ ] Use a more distinctive heading treatment while keeping dense technical data readable.
-- [ ] Improve spacing, grouping, and contrast so blocker actions stand out immediately.
+Phase details, deliverables, dependencies, and validation notes are tracked in the linked subdocuments above.
 
 ## Implementation order
 
