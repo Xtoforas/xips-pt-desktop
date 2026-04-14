@@ -32,6 +32,8 @@ By the end of this sprint, the app should:
 - [x] Make automation rules optional in first-run readiness and allow dismissing that reminder.
 - [x] Let Needs Action rows be ignored and reviewed later in a dedicated queue tab.
 - [x] Tighten repeated hero and inspector copy so the workflow pages read more compactly.
+- [x] Collapse completed-readiness UI, surface the sidebar checklist sooner, and remove duplicate page-level queue badges.
+- [x] Improve shell and queue responsiveness so the desktop app remains usable below full-screen widths.
 
 ## Design direction
 

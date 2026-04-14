@@ -149,21 +149,6 @@ export const DesktopSidebar = (): JSX.Element => {
           <p>Operator workflow control room</p>
         </div>
       </div>
-      <div className="desktop-nav">
-        {navItems.map((item) => (
-          <div key={item.to}>
-            {item.support ? <div className="desktop-nav-support-label">Support tools</div> : null}
-            <NavLink
-              className={`desktop-nav-link${location.pathname === item.to ? ' active' : ''}${
-                item.support ? ' desktop-nav-link-support' : ''
-              }`}
-              to={item.to}
-            >
-              {item.label}
-            </NavLink>
-          </div>
-        ))}
-      </div>
       <Card withBorder className="desktop-status-card desktop-onboarding-card">
         <Stack gap="xs">
           <Group justify="space-between" align="flex-start">
@@ -176,14 +161,12 @@ export const DesktopSidebar = (): JSX.Element => {
             </Badge>
           </Group>
           <Text size="xs" c="dimmed">
-            {nextStep
-              ? `Next: ${nextStep.label.toLowerCase()}`
-              : 'Setup complete. The app is ready for normal operation.'}
+            {nextStep ? `Next: ${nextStep.label.toLowerCase()}` : 'Setup complete. The app is ready for normal operation.'}
           </Text>
           <Stack gap={6}>
             {onboardingSteps.map((step) => (
-              <div key={step.key} className="desktop-onboarding-step">
-                <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
+              <div key={step.key} className={`desktop-onboarding-step${step === nextStep ? ' next' : ''}`}>
+                <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
                   <div>
                     <Text size="sm" fw={600}>
                       {step.label}
@@ -196,7 +179,7 @@ export const DesktopSidebar = (): JSX.Element => {
                     {step.complete ? 'Ready' : 'Next'}
                   </Badge>
                 </Group>
-                {!step.complete ? (
+                {step === nextStep ? (
                   <Group gap="xs" wrap="wrap" className="desktop-onboarding-actions">
                     <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-onboarding-action">
                       {step.actionLabel}
@@ -221,18 +204,24 @@ export const DesktopSidebar = (): JSX.Element => {
               </div>
             ))}
           </Stack>
-          {nextStep ? (
-            <Button component={Link} to={nextStep.href} size="xs">
-              {nextStep.actionLabel}
-            </Button>
-          ) : (
-            <Alert color="teal" variant="light">
-              Signed in, watched folders configured, and automation rules ready.
-            </Alert>
-          )}
         </Stack>
       </Card>
-      <Card withBorder className="desktop-status-card">
+      <div className="desktop-nav">
+        {navItems.map((item) => (
+          <div key={item.to}>
+            {item.support ? <div className="desktop-nav-support-label">Support tools</div> : null}
+            <NavLink
+              className={`desktop-nav-link${location.pathname === item.to ? ' active' : ''}${
+                item.support ? ' desktop-nav-link-support' : ''
+              }`}
+              to={item.to}
+            >
+              {item.label}
+            </NavLink>
+          </div>
+        ))}
+      </div>
+      <Card withBorder className="desktop-status-card desktop-server-status-card">
         <Stack gap={6}>
           <Text className="desktop-micro-label">Server status</Text>
           <Group justify="space-between">
@@ -305,7 +294,7 @@ export const DesktopTopbar = (): JSX.Element => {
           </Badge>
         ) : null}
       </Group>
-      <Group gap="sm">
+      <Group gap="sm" wrap="wrap" className="desktop-topbar-actions">
         {!selectedProfile ? (
           <Alert className="desktop-topbar-alert" color="blue" variant="light" title="Setup in progress">
             Use the checklist to add a server, check health, sign in, and finish watch-folder setup.

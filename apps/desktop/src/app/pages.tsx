@@ -327,99 +327,104 @@ export const TodayPage = (): JSX.Element => {
     <Stack gap="lg">
       <Card withBorder className="desktop-card desktop-today-hero">
         <Stack gap="md">
-          <Group justify="space-between" align="flex-start" wrap="wrap">
-            <div>
-              <Text className="desktop-micro-label">Today</Text>
-              <h2 className="desktop-page-title">What needs you right now</h2>
-              <p className="desktop-page-subtitle">
-                Readiness, blockers, automatic progress, and recent finishes all live on one operating surface.
-              </p>
-            </div>
-            <Group gap="xs" wrap="wrap">
-              <Badge color={needsAttentionCount > 0 ? 'orange' : 'teal'} variant="light">
-                {needsAttentionCount} needing action
-              </Badge>
-              <Badge color={automaticQueueCount > 0 ? 'blue' : 'gray'} variant="light">
-                {automaticQueueCount} working
-              </Badge>
-              <Badge color={completedCount > 0 ? 'teal' : 'gray'} variant="light">
-                {completedCount} completed
-              </Badge>
-            </Group>
-          </Group>
-          <Text size="sm" c="dimmed" className="desktop-today-summary">
-            The queue keeps moving when it can. When it cannot, these cards point at the exact next step.
-          </Text>
+          <div>
+            <Text className="desktop-micro-label">Today</Text>
+            <h2 className="desktop-page-title">What needs you right now</h2>
+            <p className="desktop-page-subtitle">Blockers, automatic progress, and recent finishes all live on one operating surface.</p>
+          </div>
           {nextStep ? (
             <Alert color="blue" variant="light" title={`Next readiness step: ${nextStep.label}`}>
               {nextStep.detail}
             </Alert>
           ) : (
-            <Alert color="teal" variant="light" title="Operational readiness complete">
-              The desktop app is fully set up for normal operation.
+            <Alert color="teal" variant="light">
+              Operational readiness is complete.
             </Alert>
           )}
         </Stack>
       </Card>
-      <Card withBorder className="desktop-card desktop-today-strip">
-        <Stack gap="sm">
-          <Group justify="space-between" align="center" wrap="wrap">
-            <div>
-              <Text className="desktop-micro-label">Readiness strip</Text>
-              <Text fw={700}>Setup and operational state</Text>
-            </div>
-            <Text size="sm" c="dimmed">
-              {selectedProfile ? `${selectedProfile.name} is the active server profile.` : 'No server profile selected yet.'}
-            </Text>
-          </Group>
-          <SimpleGrid cols={{ base: 1, md: 2, xl: 5 }} spacing="sm">
-            {readinessItems.map((step, index) => (
-              <Card key={step.key} withBorder className={`desktop-card desktop-today-strip-item${step.complete ? ' complete' : ''}`}>
-                <Stack gap={6}>
-                  <Group justify="space-between" align="flex-start" wrap="nowrap">
-                    <div>
-                      <Text size="sm" fw={700}>
-                        {index + 1}. {step.label}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {step.status}
-                      </Text>
-                    </div>
-                    <Badge color={step.complete ? 'teal' : step === nextStep ? 'orange' : 'gray'} variant="light">
-                      {step.complete ? 'Ready' : 'Pending'}
-                    </Badge>
-                  </Group>
-                  <Text size="xs" c="dimmed">
-                    {step.detail}
-                  </Text>
-                  {!step.complete ? (
-                    <Group gap="xs" wrap="wrap">
-                      <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-today-strip-action">
-                        {step.actionLabel}
-                      </Button>
-                      {step.dismissible ? (
-                        <Button
-                          size="compact-xs"
-                          variant="subtle"
-                          color="gray"
-                          onClick={() => {
-                            void updatePreferences({
-                              ...snapshot.preferences,
-                              dismissAutomationRuleReadiness: true
-                            });
-                          }}
-                        >
-                          Dismiss
-                        </Button>
-                      ) : null}
+      {nextStep ? (
+        <Card withBorder className="desktop-card desktop-today-strip">
+          <Stack gap="sm">
+            <Group justify="space-between" align="center" wrap="wrap">
+              <div>
+                <Text className="desktop-micro-label">Readiness strip</Text>
+                <Text fw={700}>Finish setup</Text>
+              </div>
+              <Text size="sm" c="dimmed">
+                {selectedProfile ? `${selectedProfile.name} is the active server profile.` : 'No server profile selected yet.'}
+              </Text>
+            </Group>
+            <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="sm">
+              {readinessItems.map((step, index) => (
+                <Card key={step.key} withBorder className={`desktop-card desktop-today-strip-item${step.complete ? ' complete' : ''}`}>
+                  <Stack gap={6}>
+                    <Group justify="space-between" align="flex-start" wrap="nowrap">
+                      <div>
+                        <Text size="sm" fw={700}>
+                          {index + 1}. {step.label}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {step.status}
+                        </Text>
+                      </div>
+                      <Badge color={step.complete ? 'teal' : step === nextStep ? 'orange' : 'gray'} variant="light">
+                        {step.complete ? 'Ready' : 'Pending'}
+                      </Badge>
                     </Group>
-                  ) : null}
-                </Stack>
-              </Card>
-            ))}
-          </SimpleGrid>
-        </Stack>
-      </Card>
+                    <Text size="xs" c="dimmed">
+                      {step === nextStep ? step.detail : step.complete ? 'Ready for normal operation.' : 'Still needs setup.'}
+                    </Text>
+                    {!step.complete ? (
+                      <Group gap="xs" wrap="wrap">
+                        <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-today-strip-action">
+                          {step.actionLabel}
+                        </Button>
+                        {step.dismissible ? (
+                          <Button
+                            size="compact-xs"
+                            variant="subtle"
+                            color="gray"
+                            onClick={() => {
+                              void updatePreferences({
+                                ...snapshot.preferences,
+                                dismissAutomationRuleReadiness: true
+                              });
+                            }}
+                          >
+                            Dismiss
+                          </Button>
+                        ) : null}
+                      </Group>
+                    ) : null}
+                  </Stack>
+                </Card>
+              ))}
+            </SimpleGrid>
+          </Stack>
+        </Card>
+      ) : (
+        <Card withBorder className="desktop-card desktop-today-readiness-compact">
+          <Stack gap="sm">
+            <Group justify="space-between" align="center" wrap="wrap">
+              <div>
+                <Text className="desktop-micro-label">Readiness</Text>
+                <Text fw={700}>Operationally ready</Text>
+              </div>
+              <Text size="sm" c="dimmed">
+                {selectedProfile ? `${selectedProfile.name} is active.` : 'No server profile selected yet.'}
+              </Text>
+            </Group>
+            <Group gap="xs" wrap="wrap">
+              {readinessItems.map((step) => (
+                <Badge key={step.key} color={step.complete ? 'teal' : 'orange'} variant="light">
+                  {step.label}
+                </Badge>
+              ))}
+            </Group>
+          </Stack>
+        </Card>
+      )}
       <Card withBorder className="desktop-card desktop-today-section">
         <Stack gap="md">
           <Group justify="space-between" align="center" wrap="wrap">
@@ -1032,37 +1037,11 @@ export const UploadQueuePage = (): JSX.Element => {
         <h2 className="desktop-page-title">Upload Queue</h2>
         <p className="desktop-page-subtitle">Resolve blockers, track active work, and park ignored rows outside the main action lane.</p>
       </div>
-      <Card withBorder className="desktop-card desktop-queue-hero">
-        <Stack gap="xs">
-          <Group justify="space-between" align="flex-start" wrap="wrap">
-            <div>
-              <Text fw={700}>Action first, dense scan second</Text>
-            </div>
-            <Group gap="xs" wrap="wrap">
-              <Badge color="orange" variant="light">
-                {queueCounts.needs_action} needs action
-              </Badge>
-              <Badge color="gray" variant="light">
-                {queueCounts.ignored} ignored
-              </Badge>
-              <Badge color="blue" variant="light">
-                {queueCounts.working} working
-              </Badge>
-              <Badge color="teal" variant="light">
-                {queueCounts.done} done
-              </Badge>
-            </Group>
-          </Group>
-          <Text size="sm" c="dimmed">
-            {queueWorkspaceViewDetail[queueView]}
-          </Text>
-          {queueView !== 'needs_action' && queueCounts.needs_action > 0 ? (
-            <Alert color="orange" variant="light">
-              There are {queueCounts.needs_action} blocked job{queueCounts.needs_action === 1 ? '' : 's'} in Needs Action.
-            </Alert>
-          ) : null}
-        </Stack>
-      </Card>
+      {queueView !== 'needs_action' && queueCounts.needs_action > 0 ? (
+        <Alert color="orange" variant="light">
+          There are {queueCounts.needs_action} blocked job{queueCounts.needs_action === 1 ? '' : 's'} in Needs Action.
+        </Alert>
+      ) : null}
       <Group gap="xs" wrap="wrap" className="desktop-queue-view-switcher">
         {(Object.keys(queueWorkspaceViewLabel) as QueueWorkspaceView[]).map((view) => (
           <Button
@@ -1085,7 +1064,12 @@ export const UploadQueuePage = (): JSX.Element => {
           <Card withBorder className="desktop-card">
             <Stack gap="sm">
               <Group justify="space-between" align="center" wrap="wrap">
-                <Text fw={700}>{queueWorkspaceViewLabel[queueView]}</Text>
+                <div>
+                  <Text fw={700}>{queueWorkspaceViewLabel[queueView]}</Text>
+                  <Text size="sm" c="dimmed">
+                    {queueWorkspaceViewDetail[queueView]}
+                  </Text>
+                </div>
                 <Group gap="xs" align="center" wrap="wrap">
                   {selectedQueueJobIds.length > 0 ? (
                     <Text size="sm" c="dimmed">
