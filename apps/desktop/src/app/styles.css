@@ -327,6 +327,18 @@ a {
   background: #11161d;
 }
 
+.desktop-automation-hero {
+  background:
+    radial-gradient(circle at top right, rgba(47, 128, 237, 0.14), transparent 30%),
+    linear-gradient(180deg, #171b21 0%, #12171d 100%);
+  border: 1px solid #2a3744;
+}
+
+.desktop-automation-sequence,
+.desktop-automation-relation {
+  align-items: center;
+}
+
 .desktop-page-title {
   margin: 0;
   font-size: clamp(1.3rem, 2.8vw, 2rem);
