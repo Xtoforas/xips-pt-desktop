@@ -1,6 +1,6 @@
 import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import type { LocalUploadJob } from '@xips/api-contract';
 import { useDesktop } from './DesktopContext';
 import {
@@ -130,26 +130,67 @@ const explainFilenameAutoAssignment = (
   return `The filename contains ${candidates.join(', ')}, but none of those IDs match a cached tournament prefix on this desktop.`;
 };
 
-type QueueFilter = 'all' | 'queued' | 'uploaded';
+type QueueWorkspaceView = 'needs_action' | 'working' | 'done';
 
 type TodayBlockerState = 'awaiting_format_assignment' | 'failed_retryable' | 'auth_blocked';
 
-const queueLinkForJob = (jobId: string, filter: QueueFilter = 'queued'): string => {
+const queueWorkspaceViewLabel: Record<QueueWorkspaceView, string> = {
+  needs_action: 'Needs Action',
+  working: 'Working',
+  done: 'Done'
+};
+
+const queueWorkspaceViewDetail: Record<QueueWorkspaceView, string> = {
+  needs_action: 'Blocked jobs that need a user decision.',
+  working: 'Automatic or server-side work that is still progressing.',
+  done: 'Finished, skipped, or terminal rows.'
+};
+
+const queueWorkspaceViewColor: Record<QueueWorkspaceView, string> = {
+  needs_action: 'orange',
+  working: 'blue',
+  done: 'teal'
+};
+
+const queueLinkForJob = (jobId: string, view: QueueWorkspaceView = 'needs_action'): string => {
   const params = new URLSearchParams();
-  if (filter !== 'all') {
-    params.set('filter', filter);
-  }
+  params.set('view', view);
   params.set('job', jobId);
   const query = params.toString();
   return query ? `/queue?${query}` : '/queue';
 };
 
-const parseQueueFilter = (value: string | null): QueueFilter => {
-  if (value === 'queued' || value === 'uploaded') {
+const parseQueueWorkspaceView = (value: string | null): QueueWorkspaceView | null => {
+  if (value === 'needs_action' || value === 'working' || value === 'done') {
     return value;
   }
-  return 'all';
+  return null;
 };
+
+const parseLegacyQueueWorkspaceView = (
+  value: string | null,
+  selectedJob: LocalUploadJob | null
+): QueueWorkspaceView | null => {
+  if (value === 'uploaded') {
+    return 'done';
+  }
+  if (value === 'queued') {
+    return selectedJob && uploadJobNeedsAttention(selectedJob) ? 'needs_action' : 'working';
+  }
+  return null;
+};
+
+const queueWorkspaceViewForJob = (job: LocalUploadJob): QueueWorkspaceView => {
+  if (uploadJobNeedsAttention(job)) {
+    return 'needs_action';
+  }
+  if (uploadJobWorkingAutomatically(job)) {
+    return 'working';
+  }
+  return 'done';
+};
+
+const isQueueJobDone = (job: LocalUploadJob): boolean => queueWorkspaceViewForJob(job) === 'done';
 
 const blockerPriority: Record<TodayBlockerState, number> = {
   auth_blocked: 0,
@@ -365,7 +406,7 @@ export const TodayPage = (): JSX.Element => {
             <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="sm">
               {blockerJobs.map((job) => {
                 const blockerState = job.localState as TodayBlockerState;
-                const queueLink = queueLinkForJob(job.id, 'queued');
+                const queueLink = queueLinkForJob(job.id, 'needs_action');
                 return (
                   <Card key={job.id} withBorder className="desktop-card desktop-today-blocker-card">
                     <Stack gap="sm">
@@ -570,6 +611,7 @@ export const TodayPage = (): JSX.Element => {
 
 export const UploadQueuePage = (): JSX.Element => {
   const location = useLocation();
+  const navigate = useNavigate();
   const {
     snapshot,
     selectedProfile,
@@ -581,7 +623,7 @@ export const UploadQueuePage = (): JSX.Element => {
     openUploadFileLocation,
     openAuthWindow
   } = useDesktop();
-  const [filter, setFilter] = useState<'all' | 'queued' | 'uploaded'>('all');
+  const [queueView, setQueueView] = useState<QueueWorkspaceView>('working');
   const [selectedJobId, setSelectedJobId] = useState('');
   const [selectedQueueJobIds, setSelectedQueueJobIds] = useState<string[]>([]);
   const [selectedFormatId, setSelectedFormatId] = useState('');
@@ -599,44 +641,44 @@ export const UploadQueuePage = (): JSX.Element => {
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
     [snapshot.cachedFormats]
   );
-  const deepLinkQueueState = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    const selectedJobIdFromQuery = params.get('job') ?? '';
-    const selectedJobIdsFromQuery = (params.get('jobs') ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
-
-    return {
-      filter: parseQueueFilter(params.get('filter')),
-      selectedJobId: selectedJobIdFromQuery,
-      selectedQueueJobIds: selectedJobIdsFromQuery.length > 0 ? selectedJobIdsFromQuery : selectedJobIdFromQuery ? [selectedJobIdFromQuery] : []
-    };
-  }, [location.search]);
-
-  useEffect(() => {
-    setFilter(deepLinkQueueState.filter);
-    setSelectedJobId(deepLinkQueueState.selectedJobId);
-    setSelectedQueueJobIds(deepLinkQueueState.selectedQueueJobIds);
-  }, [deepLinkQueueState]);
-
-  const filteredJobs = useMemo(() => {
-    switch (filter) {
-      case 'queued':
-        return snapshot.uploadJobs.filter(
-          (job) =>
-            !['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState) &&
-            (job.localPresence === 'present' || Boolean(job.uploadId))
-        );
-      case 'uploaded':
-        return snapshot.uploadJobs.filter((job) => ['complete', 'duplicate_skipped_local', 'failed_terminal'].includes(job.localState));
-      default:
-        return snapshot.uploadJobs;
-    }
-  }, [filter, snapshot.uploadJobs]);
+  const sortedJobs = useMemo(
+    () =>
+      [...snapshot.uploadJobs].sort(
+        (left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)
+      ),
+    [snapshot.uploadJobs]
+  );
+  const needsActionJobs = useMemo(
+    () => sortedJobs.filter(uploadJobNeedsAttention),
+    [sortedJobs]
+  );
+  const workingJobs = useMemo(
+    () => sortedJobs.filter((job) => uploadJobWorkingAutomatically(job) && !uploadJobNeedsAttention(job)),
+    [sortedJobs]
+  );
+  const doneJobs = useMemo(
+    () => sortedJobs.filter(isQueueJobDone),
+    [sortedJobs]
+  );
+  const queueJobsByView = useMemo(
+    () => ({
+      needs_action: needsActionJobs,
+      working: workingJobs,
+      done: doneJobs
+    }),
+    [doneJobs, needsActionJobs, workingJobs]
+  );
+  const queueCounts = useMemo(
+    () => ({
+      needs_action: needsActionJobs.length,
+      working: workingJobs.length,
+      done: doneJobs.length
+    }),
+    [doneJobs.length, needsActionJobs.length, workingJobs.length]
+  );
   const selectedQueueJobs = useMemo(
-    () => filteredJobs.filter((job) => selectedQueueJobIds.includes(job.id)),
-    [filteredJobs, selectedQueueJobIds]
+    () => queueJobsByView[queueView].filter((job) => selectedQueueJobIds.includes(job.id)),
+    [queueJobsByView, queueView, selectedQueueJobIds]
   );
   const dismissibleSelectedJobs = useMemo(
     () =>
@@ -649,8 +691,8 @@ export const UploadQueuePage = (): JSX.Element => {
   );
 
   const selectedJob = useMemo(
-    () => filteredJobs.find((job) => job.id === selectedJobId) ?? snapshot.uploadJobs.find((job) => job.id === selectedJobId) ?? null,
-    [filteredJobs, selectedJobId, snapshot.uploadJobs]
+    () => sortedJobs.find((job) => job.id === selectedJobId) ?? null,
+    [selectedJobId, sortedJobs]
   );
 
   const selectedAttempts = useMemo(
@@ -733,6 +775,80 @@ export const UploadQueuePage = (): JSX.Element => {
       ),
     [selectedJob?.fileKind, selectedJob?.teamCount, selectedJobFormat]
   );
+  const selectedJobView = selectedJob ? queueWorkspaceViewForJob(selectedJob) : null;
+  const selectedJobDetail = selectedJob
+    ? selectedJob.localState === 'awaiting_format_assignment'
+      ? 'Awaiting format assignment'
+      : selectedJob.localState === 'failed_retryable'
+        ? 'Needs a retry after a transient failure'
+        : selectedJob.localState === 'auth_blocked'
+          ? 'Blocked until the account signs in again'
+          : selectedJobView === 'done'
+            ? 'Finished or terminal queue row'
+            : 'Automatic progress is still underway'
+    : '';
+  const currentViewJobs = queueJobsByView[queueView];
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const selectedJobIdFromQuery = params.get('job') ?? '';
+    const selectedJobIdsFromQuery = (params.get('jobs') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const selectedJobFromQuery = selectedJobIdFromQuery
+      ? sortedJobs.find((job) => job.id === selectedJobIdFromQuery) ?? null
+      : null;
+    const parsedView =
+      parseQueueWorkspaceView(params.get('view')) ??
+      parseLegacyQueueWorkspaceView(params.get('filter'), selectedJobFromQuery);
+    const defaultView = selectedJobFromQuery
+      ? queueWorkspaceViewForJob(selectedJobFromQuery)
+      : needsActionJobs.length > 0
+        ? 'needs_action'
+        : workingJobs.length > 0
+          ? 'working'
+          : 'done';
+
+    setQueueView(parsedView ?? defaultView);
+    setSelectedJobId(selectedJobIdFromQuery);
+    setSelectedQueueJobIds(selectedJobIdsFromQuery.length > 0 ? selectedJobIdsFromQuery : selectedJobIdFromQuery ? [selectedJobIdFromQuery] : []);
+  }, [location.search, needsActionJobs.length, sortedJobs, workingJobs.length]);
+
+  useEffect(() => {
+    if (currentViewJobs.length === 0) {
+      if (selectedJobId) {
+        setSelectedJobId('');
+      }
+      return;
+    }
+
+    if (!currentViewJobs.some((job) => job.id === selectedJobId)) {
+      setSelectedJobId(currentViewJobs[0]?.id ?? '');
+    }
+  }, [currentViewJobs, selectedJobId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    params.delete('filter');
+    params.set('view', queueView);
+    if (selectedJobId) {
+      params.set('job', selectedJobId);
+    } else {
+      params.delete('job');
+    }
+
+    const nextSearch = params.toString();
+    if (nextSearch !== location.search.slice(1)) {
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch ? `?${nextSearch}` : ''
+        },
+        { replace: true }
+      );
+    }
+  }, [location.pathname, location.search, navigate, queueView, selectedJobId]);
 
   const submitInlineTournamentAssignment = async (jobId: string): Promise<void> => {
     const tournamentId = inlineTournamentId.trim();
@@ -769,9 +885,9 @@ export const UploadQueuePage = (): JSX.Element => {
   }, [editingFilenameJobId]);
 
   useEffect(() => {
-    const visibleJobIds = new Set(filteredJobs.map((job) => job.id));
+    const visibleJobIds = new Set(currentViewJobs.map((job) => job.id));
     setSelectedQueueJobIds((current) => current.filter((jobId) => visibleJobIds.has(jobId)));
-  }, [filteredJobs]);
+  }, [currentViewJobs]);
 
   const dismissSelectedJobs = async (): Promise<void> => {
     if (dismissibleSelectedJobs.length === 0 || bulkDismissInFlight) {
@@ -797,219 +913,462 @@ export const UploadQueuePage = (): JSX.Element => {
     }
   };
 
+  const selectedJobActionLabel =
+    selectedJob?.localState === 'awaiting_format_assignment'
+      ? 'Assign format'
+      : selectedJob?.localState === 'failed_retryable'
+        ? 'Retry now'
+        : selectedJob?.localState === 'auth_blocked'
+          ? 'Re-authenticate'
+          : 'Inspect row';
+  const selectedJobStateColor =
+    selectedJob?.localState === 'awaiting_format_assignment'
+      ? 'orange'
+      : selectedJob?.localState === 'failed_retryable'
+        ? 'yellow'
+        : selectedJob?.localState === 'auth_blocked'
+          ? 'red'
+          : selectedJobView === 'done'
+            ? 'teal'
+            : 'blue';
+
   return (
     <Stack gap="lg">
       <div>
         <h2 className="desktop-page-title">Upload Queue</h2>
-        <p className="desktop-page-subtitle">Dense operational queue with local and server lifecycle state.</p>
+        <p className="desktop-page-subtitle">Needs Action, Working, and Done views with a sticky inspector for row-level actions.</p>
       </div>
-      <Alert color="blue" title="How to read this page">
-        <strong>Needs action</strong>
-        {' '}
-        means the app is blocked on format assignment, sign-in, or a retryable error.
-        {' '}
-        Queued and server states usually mean the app is still working on its own.
-      </Alert>
-      <Group gap="xs">
-        <Button size="xs" variant={filter === 'all' ? 'filled' : 'light'} onClick={() => setFilter('all')}>
-          All
-        </Button>
-        <Button size="xs" variant={filter === 'queued' ? 'filled' : 'light'} onClick={() => setFilter('queued')}>
-          Queued
-        </Button>
-        <Button size="xs" variant={filter === 'uploaded' ? 'filled' : 'light'} onClick={() => setFilter('uploaded')}>
-          Uploaded
-        </Button>
-      </Group>
-      <Stack gap="lg">
-        <Card withBorder className="desktop-card">
-          <Stack gap="sm">
-            <Group justify="space-between" align="center">
-              <Text fw={700}>Queue</Text>
-              <Group gap="xs" align="center">
-                {selectedQueueJobIds.length > 0 ? (
-                  <Text size="sm" c="dimmed">
-                    {dismissibleSelectedJobs.length} of {selectedQueueJobIds.length} selected can be dismissed.
-                  </Text>
-                ) : null}
-                <Button
-                  size="xs"
-                  variant="light"
-                  color="red"
-                  disabled={dismissibleSelectedJobs.length === 0 || bulkDismissInFlight}
-                  loading={bulkDismissInFlight}
-                  onClick={() => {
-                    void dismissSelectedJobs();
-                  }}
-                >
-                  Dismiss selected
-                </Button>
-              </Group>
+      <Card withBorder className="desktop-card desktop-queue-hero">
+        <Stack gap="xs">
+          <Group justify="space-between" align="flex-start" wrap="wrap">
+            <div>
+              <Text className="desktop-micro-label">Queue workspace</Text>
+              <Text fw={700}>Action first, dense scan second</Text>
+              <Text size="sm" c="dimmed">
+                Needs Action opens automatically when blockers exist. The inspector stays visible so fixes never fall below the fold.
+              </Text>
+            </div>
+            <Group gap="xs" wrap="wrap">
+              <Badge color="orange" variant="light">
+                {queueCounts.needs_action} needs action
+              </Badge>
+              <Badge color="blue" variant="light">
+                {queueCounts.working} working
+              </Badge>
+              <Badge color="teal" variant="light">
+                {queueCounts.done} done
+              </Badge>
             </Group>
-            <QueueTable
-              jobs={filteredJobs}
-              formatLabels={formatLabelById}
-              selectedJobId={selectedJobId}
-              selectedJobIds={selectedQueueJobIds}
-              onSelect={(job) => {
-                setSelectedJobId(job.id);
-              }}
-              onToggleJobSelection={(job, checked) => {
-                setSelectedQueueJobIds((current) => {
-                  if (checked) {
-                    return current.includes(job.id) ? current : [...current, job.id];
-                  }
-                  return current.filter((jobId) => jobId !== job.id);
-                });
-              }}
-              onToggleAllSelection={(checked) => {
-                setSelectedQueueJobIds(checked ? filteredJobs.map((job) => job.id) : []);
-              }}
-              renderFilename={(job) => {
-                const canInlineAssign = job.localState === 'awaiting_format_assignment' && job.fileKind === 'stats_export';
-                const teamCountWarning = getIncompleteTeamCountWarning(
-                  job.fileKind,
-                  job.teamCount,
-                  job.formatId ? formatById[job.formatId] : null
-                );
-                if (editingFilenameJobId === job.id) {
-                  return (
-                    <TextInput
-                      size="xs"
-                      autoFocus
-                      value={inlineTournamentId}
-                      placeholder="5 to 7 digits"
-                      error={inlineTournamentAssignmentError || undefined}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                      }}
-                      onChange={(event) => {
-                        setInlineTournamentId(event.currentTarget.value.replace(/[^0-9]/gu, '').slice(0, 7));
-                      }}
-                      onBlur={() => {
-                        setEditingFilenameJobId('');
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          void submitInlineTournamentAssignment(job.id);
-                        }
-                        if (event.key === 'Escape') {
-                          event.preventDefault();
-                          setEditingFilenameJobId('');
-                        }
-                      }}
-                    />
-                  );
-                }
-                return (
-                  <Group gap="xs" wrap="nowrap">
-                    <button
-                      type="button"
-                      className="desktop-link-button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedJobId(job.id);
-                      }}
-                      onDoubleClick={(event) => {
-                        if (!canInlineAssign) {
-                          return;
-                        }
-                        event.stopPropagation();
-                        setSelectedJobId(job.id);
-                        setEditingFilenameJobId(job.id);
-                        setInlineTournamentId('');
-                      }}
-                      title={canInlineAssign ? 'Double-click to enter a 5 to 7 digit tournament ID.' : job.filename}
-                    >
-                      {job.filename}
-                    </button>
-                    {teamCountWarning ? (
-                      <Badge color="yellow" variant="light">
-                        {teamCountWarning.badgeLabel}
-                      </Badge>
-                    ) : null}
-                  </Group>
-                );
-              }}
-              actions={(job) => (
-                <Group gap="xs">
+          </Group>
+          <Text size="sm" c="dimmed">
+            {queueWorkspaceViewDetail[queueView]}
+          </Text>
+          {queueView !== 'needs_action' && queueCounts.needs_action > 0 ? (
+            <Alert color="orange" variant="light">
+              There are {queueCounts.needs_action} blocked job{queueCounts.needs_action === 1 ? '' : 's'} in Needs Action.
+            </Alert>
+          ) : null}
+        </Stack>
+      </Card>
+      <Group gap="xs" wrap="wrap" className="desktop-queue-view-switcher">
+        {(Object.keys(queueWorkspaceViewLabel) as QueueWorkspaceView[]).map((view) => (
+          <Button
+            key={view}
+            size="xs"
+            variant={queueView === view ? 'filled' : 'light'}
+            color={queueWorkspaceViewColor[view]}
+            onClick={() => {
+              const nextJobId = queueJobsByView[view][0]?.id ?? '';
+              setQueueView(view);
+              setSelectedJobId(nextJobId);
+            }}
+          >
+            {queueWorkspaceViewLabel[view]} ({queueCounts[view]})
+          </Button>
+        ))}
+      </Group>
+      <div className="desktop-queue-layout">
+        <Stack gap="lg" className="desktop-queue-main">
+          <Card withBorder className="desktop-card">
+            <Stack gap="sm">
+              <Group justify="space-between" align="center" wrap="wrap">
+                <Text fw={700}>{queueWorkspaceViewLabel[queueView]}</Text>
+                <Group gap="xs" align="center" wrap="wrap">
+                  {selectedQueueJobIds.length > 0 ? (
+                    <Text size="sm" c="dimmed">
+                      {dismissibleSelectedJobs.length} of {selectedQueueJobIds.length} selected can be dismissed.
+                    </Text>
+                  ) : null}
                   <Button
-                    size="compact-xs"
-                    variant="subtle"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void openUploadFileLocation(job.id);
+                    size="xs"
+                    variant="light"
+                    color="red"
+                    disabled={dismissibleSelectedJobs.length === 0 || bulkDismissInFlight}
+                    loading={bulkDismissInFlight}
+                    onClick={() => {
+                      void dismissSelectedJobs();
                     }}
                   >
-                    Reveal
+                    Dismiss selected
                   </Button>
-                  {job.localState === 'failed_retryable' ? (
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void retryUploadJob(job.id);
-                      }}
-                    >
-                      Retry
-                    </Button>
-                  ) : null}
-                  {job.localState === 'auth_blocked' && selectedProfile ? (
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void openAuthWindow(selectedProfile.id);
-                      }}
-                    >
-                      Re-auth
-                    </Button>
-                  ) : null}
-                  {job.localState === 'duplicate_skipped_local' ? (
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void dismissDuplicateUploadJob(job.id);
-                      }}
-                    >
-                      Dismiss
-                    </Button>
-                  ) : null}
-                  {job.localState === 'awaiting_format_assignment' ? (
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      color="red"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void removeAwaitingUploadJob(job.id);
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  ) : null}
                 </Group>
-              )}
-            />
-          </Stack>
-        </Card>
-        <Card withBorder className="desktop-card">
-          <Stack gap="sm">
-            <Text fw={700}>Selected job details</Text>
+              </Group>
+              <QueueTable
+                jobs={currentViewJobs}
+                formatLabels={formatLabelById}
+                selectedJobId={selectedJobId}
+                selectedJobIds={selectedQueueJobIds}
+                onSelect={(job) => {
+                  setQueueView(queueWorkspaceViewForJob(job));
+                  setSelectedJobId(job.id);
+                }}
+                onToggleJobSelection={(job, checked) => {
+                  setSelectedQueueJobIds((current) => {
+                    if (checked) {
+                      return current.includes(job.id) ? current : [...current, job.id];
+                    }
+                    return current.filter((jobId) => jobId !== job.id);
+                  });
+                }}
+                onToggleAllSelection={(checked) => {
+                  setSelectedQueueJobIds(checked ? currentViewJobs.map((job) => job.id) : []);
+                }}
+                renderFilename={(job) => {
+                  const canInlineAssign = job.localState === 'awaiting_format_assignment' && job.fileKind === 'stats_export';
+                  const teamCountWarning = getIncompleteTeamCountWarning(
+                    job.fileKind,
+                    job.teamCount,
+                    job.formatId ? formatById[job.formatId] : null
+                  );
+                  if (editingFilenameJobId === job.id) {
+                    return (
+                      <TextInput
+                        size="xs"
+                        autoFocus
+                        value={inlineTournamentId}
+                        placeholder="5 to 7 digits"
+                        error={inlineTournamentAssignmentError || undefined}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                        onChange={(event) => {
+                          setInlineTournamentId(event.currentTarget.value.replace(/[^0-9]/gu, '').slice(0, 7));
+                        }}
+                        onBlur={() => {
+                          setEditingFilenameJobId('');
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void submitInlineTournamentAssignment(job.id);
+                          }
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            setEditingFilenameJobId('');
+                          }
+                        }}
+                      />
+                    );
+                  }
+                  return (
+                    <Group gap="xs" wrap="nowrap">
+                      <button
+                        type="button"
+                        className="desktop-link-button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedJobId(job.id);
+                        }}
+                        onDoubleClick={(event) => {
+                          if (!canInlineAssign) {
+                            return;
+                          }
+                          event.stopPropagation();
+                          setSelectedJobId(job.id);
+                          setEditingFilenameJobId(job.id);
+                          setInlineTournamentId('');
+                        }}
+                        title={canInlineAssign ? 'Double-click to enter a 5 to 7 digit tournament ID.' : job.filename}
+                      >
+                        {job.filename}
+                      </button>
+                      {teamCountWarning ? (
+                        <Badge color="yellow" variant="light">
+                          {teamCountWarning.badgeLabel}
+                        </Badge>
+                      ) : null}
+                    </Group>
+                  );
+                }}
+                actions={(job) => (
+                  <Group gap="xs">
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void openUploadFileLocation(job.id);
+                      }}
+                    >
+                      Reveal
+                    </Button>
+                    {job.localState === 'awaiting_format_assignment' ? (
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        color="orange"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setQueueView('needs_action');
+                          setSelectedJobId(job.id);
+                        }}
+                      >
+                        Assign
+                      </Button>
+                    ) : null}
+                    {job.localState === 'failed_retryable' ? (
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        color="yellow"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void retryUploadJob(job.id);
+                        }}
+                      >
+                        Retry
+                      </Button>
+                    ) : null}
+                    {job.localState === 'auth_blocked' && selectedProfile ? (
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        color="red"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void openAuthWindow(selectedProfile.id);
+                        }}
+                      >
+                        Re-auth
+                      </Button>
+                    ) : null}
+                    {job.localState === 'duplicate_skipped_local' ? (
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void dismissDuplicateUploadJob(job.id);
+                        }}
+                      >
+                        Dismiss
+                      </Button>
+                    ) : null}
+                    {job.localState === 'awaiting_format_assignment' ? (
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        color="red"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void removeAwaitingUploadJob(job.id);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    ) : null}
+                  </Group>
+                )}
+              />
+            </Stack>
+          </Card>
+        </Stack>
+        <Card withBorder className="desktop-card desktop-queue-inspector">
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-start" wrap="wrap">
+              <div>
+                <Text className="desktop-micro-label">Inspector</Text>
+                <Text fw={700}>{selectedJob ? selectedJob.filename : 'No row selected'}</Text>
+                <Text size="sm" c="dimmed">
+                  {selectedJob ? selectedJobDetail : 'Select a row to inspect its blocked-state actions and queue metadata.'}
+                </Text>
+              </div>
+              {selectedJob ? (
+                <Badge color={selectedJobStateColor} variant="light">
+                  {selectedJobActionLabel}
+                </Badge>
+              ) : null}
+            </Group>
             {!selectedJob ? (
-              <Alert color="gray">Select a queue row to inspect its file path, checksum, and lifecycle details.</Alert>
+              <Alert color="gray">Choose a queue row to inspect its actions, file path, checksum, and lifecycle details.</Alert>
             ) : (
               <>
-                {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' && selectedJobAutoAssignmentReason ? (
-                  <Alert color="blue" title="Why this was not auto-assigned">
-                    {selectedJobAutoAssignmentReason}
-                  </Alert>
-                ) : null}
+                <Card withBorder className="desktop-subcard">
+                  <Stack gap="sm">
+                    <Group justify="space-between" align="flex-start" wrap="wrap">
+                      <div>
+                        <Text fw={600}>Primary action</Text>
+                        <Text size="sm" c="dimmed">
+                          The controls below stay visible while you scan the queue list.
+                        </Text>
+                      </div>
+                      <Group gap="xs" wrap="wrap">
+                        <Button
+                          size="xs"
+                          variant="light"
+                          onClick={() => {
+                            void openUploadFileLocation(selectedJob.id);
+                          }}
+                        >
+                          Reveal file
+                        </Button>
+                        {selectedJob.localState === 'failed_retryable' ? (
+                          <Button
+                            size="xs"
+                            color="yellow"
+                            onClick={() => {
+                              void retryUploadJob(selectedJob.id);
+                            }}
+                          >
+                            Retry now
+                          </Button>
+                        ) : null}
+                        {selectedJob.localState === 'auth_blocked' && selectedProfile ? (
+                          <Button
+                            size="xs"
+                            color="red"
+                            onClick={() => {
+                              void openAuthWindow(selectedProfile.id);
+                            }}
+                          >
+                            Re-authenticate
+                          </Button>
+                        ) : null}
+                        {selectedJob.localState === 'awaiting_format_assignment' ? (
+                          <Button
+                            size="xs"
+                            color="red"
+                            variant="light"
+                            onClick={() => {
+                              void removeAwaitingUploadJob(selectedJob.id);
+                            }}
+                          >
+                            Remove from queue
+                          </Button>
+                        ) : null}
+                        {selectedJob.localState === 'duplicate_skipped_local' ? (
+                          <Button
+                            size="xs"
+                            variant="light"
+                            onClick={() => {
+                              void dismissDuplicateUploadJob(selectedJob.id);
+                            }}
+                          >
+                            Dismiss duplicate
+                          </Button>
+                        ) : null}
+                      </Group>
+                    </Group>
+                    {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' && selectedJobAutoAssignmentReason ? (
+                      <Alert color="blue" title="Why this was not auto-assigned">
+                        {selectedJobAutoAssignmentReason}
+                      </Alert>
+                    ) : null}
+                    {selectedJob.localState === 'failed_retryable' ? (
+                      <Alert color="yellow" title="Retryable failure">
+                        {selectedJob.error || 'A transient error paused this upload. Retry from the queue or after the service recovers.'}
+                      </Alert>
+                    ) : null}
+                    {selectedJob.localState === 'auth_blocked' ? (
+                      <Alert color="red" title="Sign-in required">
+                        The selected account needs to sign in again. After successful auth, the queue resumes automatically.
+                      </Alert>
+                    ) : null}
+                    {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
+                      <Card withBorder className="desktop-subcard desktop-queue-resolution">
+                        <Stack gap="sm">
+                          <Text fw={600}>Assign tournament export</Text>
+                          <TextInput
+                            label="Tournament ID"
+                            description="Enter the full 5 to 7 digit tournament ID. The desktop app maps it to the matching format prefix automatically."
+                            placeholder="12345"
+                            value={selectedTournamentId}
+                            onChange={(event) => {
+                              setSelectedTournamentId(event.currentTarget.value.replace(/[^0-9]/gu, '').slice(0, 7));
+                            }}
+                          />
+                          {matchedTournamentFormat ? (
+                            <Alert color="teal">
+                              Maps to {matchedTournamentFormat.name} using prefix {matchedTournamentFormat.tournamentIdPrefix}
+                              {' '}
+                              ({matchedTournamentFormat.tournamentIdPrefix.length + 4} digits total).
+                              {matchedTournamentFormat.teamsPerTournament > 0 ? ` ${matchedTournamentFormat.teamsPerTournament} teams.` : ''}
+                            </Alert>
+                          ) : tournamentAssignmentError ? (
+                            <Alert color="yellow">{tournamentAssignmentError}</Alert>
+                          ) : null}
+                          <Group justify="flex-end">
+                            <Button
+                              size="xs"
+                              disabled={!matchedTournamentFormat || selectedTournamentId.trim().length < 5}
+                              onClick={() => {
+                                const detectedFile = snapshot.detectedFiles.find(
+                                  (file) => file.path === selectedJob.path && file.checksum === selectedJob.checksum
+                                ) ?? null;
+                                if (!detectedFile) {
+                                  return;
+                                }
+                                void assignDetectedFileTournament({
+                                  detectedFileId: detectedFile.id,
+                                  tournamentId: selectedTournamentId.trim()
+                                }).then(() => {
+                                  setSelectedTournamentId('');
+                                  setSelectedFormatId('');
+                                });
+                              }}
+                            >
+                              Assign by tournament ID
+                            </Button>
+                          </Group>
+                          <Text size="sm" c="dimmed">
+                            Fallback: assign the format directly if the tournament ID is not in the filename yet or if multiple formats share a prefix.
+                          </Text>
+                          <select value={selectedFormatId} onChange={(event) => setSelectedFormatId(event.currentTarget.value)}>
+                            <option value="">Choose a format</option>
+                            {compatibleDirectFormats.map((format) => (
+                              <option key={format.id} value={format.id}>
+                                {format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}
+                                {format.teamsPerTournament > 0 ? ` - ${format.teamsPerTournament} teams` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <Group justify="flex-end">
+                            <Button
+                              size="xs"
+                              disabled={!selectedFormatId}
+                              onClick={() => {
+                                const detectedFile = snapshot.detectedFiles.find(
+                                  (file) => file.path === selectedJob.path && file.checksum === selectedJob.checksum
+                                ) ?? null;
+                                if (!detectedFile) {
+                                  return;
+                                }
+                                void assignDetectedFileFormat({
+                                  detectedFileId: detectedFile.id,
+                                  formatId: selectedFormatId
+                                }).then(() => {
+                                  setSelectedFormatId('');
+                                });
+                              }}
+                            >
+                              Assign format
+                            </Button>
+                          </Group>
+                        </Stack>
+                      </Card>
+                    ) : null}
+                  </Stack>
+                </Card>
                 {selectedJobTeamCountWarning ? (
                   <Alert color="yellow" title="Team count looks short">
                     {selectedJobTeamCountWarning.message}
@@ -1049,20 +1408,6 @@ export const UploadQueuePage = (): JSX.Element => {
                     </tbody>
                   </table>
                 </div>
-                {selectedJob.localState === 'awaiting_format_assignment' ? (
-                  <Group justify="flex-end">
-                    <Button
-                      size="xs"
-                      variant="light"
-                      color="red"
-                      onClick={() => {
-                        void removeAwaitingUploadJob(selectedJob.id);
-                      }}
-                    >
-                      Remove from queue
-                    </Button>
-                  </Group>
-                ) : null}
                 <Card withBorder className="desktop-subcard">
                   <Stack gap="xs">
                     <Text fw={600}>Attempt history</Text>
@@ -1094,94 +1439,11 @@ export const UploadQueuePage = (): JSX.Element => {
                     )}
                   </Stack>
                 </Card>
-                {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
-                  <Card withBorder className="desktop-subcard">
-                    <Stack gap="sm">
-                      <Text fw={600}>Assign tournament export</Text>
-                      <TextInput
-                        label="Tournament ID"
-                        description="Enter the full 5 to 7 digit tournament ID. The desktop app will map it to the matching format prefix automatically."
-                        placeholder="12345"
-                        value={selectedTournamentId}
-                        onChange={(event) => {
-                          setSelectedTournamentId(event.currentTarget.value.replace(/[^0-9]/gu, '').slice(0, 7));
-                        }}
-                      />
-                      {matchedTournamentFormat ? (
-                        <Alert color="teal">
-                          Maps to {matchedTournamentFormat.name} using prefix {matchedTournamentFormat.tournamentIdPrefix}
-                          {' '}
-                          ({matchedTournamentFormat.tournamentIdPrefix.length + 4} digits total).
-                          {matchedTournamentFormat.teamsPerTournament > 0 ? ` ${matchedTournamentFormat.teamsPerTournament} teams.` : ''}
-                        </Alert>
-                      ) : tournamentAssignmentError ? (
-                        <Alert color="yellow">{tournamentAssignmentError}</Alert>
-                      ) : null}
-                      <Group justify="flex-end">
-                        <Button
-                          size="xs"
-                          disabled={!matchedTournamentFormat || selectedTournamentId.trim().length < 5}
-                          onClick={() => {
-                            const detectedFile = snapshot.detectedFiles.find(
-                              (file) => file.path === selectedJob.path && file.checksum === selectedJob.checksum
-                            ) ?? null;
-                            if (!detectedFile) {
-                              return;
-                            }
-                            void assignDetectedFileTournament({
-                              detectedFileId: detectedFile.id,
-                              tournamentId: selectedTournamentId.trim()
-                            }).then(() => {
-                              setSelectedTournamentId('');
-                              setSelectedFormatId('');
-                            });
-                          }}
-                        >
-                          Assign by tournament ID
-                        </Button>
-                      </Group>
-                      <Text size="sm" c="dimmed">
-                        Fallback: assign the format directly if the tournament ID is not in the filename yet or if multiple formats share a prefix.
-                      </Text>
-                      <select value={selectedFormatId} onChange={(event) => setSelectedFormatId(event.currentTarget.value)}>
-                        <option value="">Choose a format</option>
-                        {compatibleDirectFormats.map((format) => (
-                          <option key={format.id} value={format.id}>
-                            {format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}
-                            {format.teamsPerTournament > 0 ? ` - ${format.teamsPerTournament} teams` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <Group justify="flex-end">
-                        <Button
-                          size="xs"
-                          disabled={!selectedFormatId}
-                          onClick={() => {
-                            const detectedFile = snapshot.detectedFiles.find(
-                              (file) => file.path === selectedJob.path && file.checksum === selectedJob.checksum
-                            ) ?? null;
-                            if (!detectedFile) {
-                              return;
-                            }
-                            void assignDetectedFileFormat({
-                              detectedFileId: detectedFile.id,
-                              formatId: selectedFormatId
-                            }).then(() => {
-                              setSelectedFormatId('');
-                            });
-                          }}
-                        >
-                          Assign format
-                        </Button>
-                      </Group>
-                    </Stack>
-                  </Card>
-                ) : null}
               </>
             )}
           </Stack>
         </Card>
-      </Stack>
+      </div>
     </Stack>
   );
 };

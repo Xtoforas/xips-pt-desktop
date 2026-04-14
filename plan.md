@@ -43,7 +43,7 @@ Use a "control room" interaction model:
 - [x] Phase 1: Information architecture and shell
 - [x] Phase 2: Onboarding redesign
 - [x] Phase 3: Today page redesign
-- [ ] Phase 4: Queue workspace redesign
+- [x] Phase 4: Queue workspace redesign
 - [ ] Phase 5: Automation workflow redesign
 - [ ] Phase 6: Settings and diagnostics cleanup
 - [ ] Phase 7: Visual system refresh
