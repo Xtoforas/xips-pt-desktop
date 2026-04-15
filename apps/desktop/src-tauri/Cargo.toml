@@ -1,6 +1,6 @@
 [package]
 name = "xips-pt-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "Desktop companion for xips-pt"
 authors = ["OpenAI Codex"]
 edition = "2021"

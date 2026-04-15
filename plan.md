@@ -29,6 +29,7 @@ By the end of this sprint, the app should:
 
 ## Recent follow-ups
 
+- [x] Bump the desktop app and shared workspace package version to `0.1.1`.
 - [x] Make automation rules optional in first-run readiness and allow dismissing that reminder.
 - [x] Let Needs Action rows be ignored and reviewed later in a dedicated queue tab.
 - [x] Tighten repeated hero and inspector copy so the workflow pages read more compactly.
