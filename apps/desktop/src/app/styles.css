@@ -230,6 +230,15 @@ a {
   box-shadow: 0 10px 30px rgba(4, 8, 12, 0.18);
 }
 
+.desktop-update-prompt {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 400;
+  width: 320px;
+  box-shadow: 0 14px 36px rgba(4, 8, 12, 0.45);
+}
+
 .desktop-subcard {
   background: linear-gradient(180deg, #11161d 0%, #0f1419 100%);
   border: 1px solid #2a3440;

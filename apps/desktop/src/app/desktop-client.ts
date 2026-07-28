@@ -126,7 +126,7 @@ const mockSnapshot = (): DesktopSnapshot => ({
   cachedFormats: []
 });
 
-const isTauri = (): boolean => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ === 'object';
+export const isTauri = (): boolean => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ === 'object';
 
 const browserClient: DesktopClient = {
   async getSnapshot() {

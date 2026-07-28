@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { DesktopProvider } from './DesktopContext';
 import { DesktopSidebar, DesktopTopbar } from './components';
+import { UpdatePrompt } from './UpdatePrompt';
 import {
   AutomationPage,
   DiagnosticsPage,
@@ -39,6 +40,7 @@ const DesktopShell = (): JSX.Element => {
           </Routes>
         </main>
       </div>
+      <UpdatePrompt />
     </div>
   );
 };

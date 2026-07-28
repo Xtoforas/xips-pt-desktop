@@ -93,8 +93,17 @@ jobs:
         run: npm run build
 
       - name: Build desktop bundles
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         working-directory: apps/desktop
         run: npx tauri build --bundles ${{ matrix.bundles }}
+
+      - name: Build signed desktop bundles
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --bundles ${{ matrix.bundles }} --config src-tauri/tauri.release.conf.json
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v4
@@ -102,3 +111,99 @@ jobs:
           name: xips-pt-desktop-${{ matrix.platform }}-${{ github.ref_name }}
           path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: package
+    if: ${{ !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bundles
+
+      - name: Collect release assets and build updater manifest
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'EOF'
+          import datetime
+          import json
+          import os
+          import pathlib
+          import shutil
+          import sys
+          import urllib.parse
+
+          tag = os.environ["TAG"]
+          repo = os.environ["REPO"]
+          version = tag.removeprefix("v")
+
+          assets = pathlib.Path("assets")
+          assets.mkdir(exist_ok=True)
+
+          suffixes = (".exe", ".msi", ".dmg", ".AppImage", ".deb", ".rpm", ".app.tar.gz", ".sig")
+          released = {}
+          for path in pathlib.Path("bundles").rglob("*"):
+              if not path.is_file() or not path.name.endswith(suffixes):
+                  continue
+              if ".app/" in path.as_posix():
+                  continue
+              # GitHub rewrites spaces in asset names; rename up front so
+              # latest.json URLs match the uploaded assets exactly.
+              name = path.name.replace(" ", ".")
+              if name in released:
+                  sys.exit(f"duplicate release asset name: {name}")
+              shutil.copy2(path, assets / name)
+              released[name] = assets / name
+
+          def entry(name):
+              signature = released.get(f"{name}.sig")
+              if signature is None:
+                  sys.exit(f"missing updater signature for {name}")
+              return {
+                  "signature": signature.read_text().strip(),
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{urllib.parse.quote(name)}",
+              }
+
+          def first(suffix):
+              matches = sorted(name for name in released if name.endswith(suffix))
+              return matches[0] if matches else None
+
+          platforms = {}
+          if name := first("-setup.exe"):
+              platforms["windows-x86_64"] = entry(name)
+          if name := first(".AppImage"):
+              platforms["linux-x86_64"] = entry(name)
+          if name := first(".app.tar.gz"):
+              # macos-latest runners are Apple Silicon.
+              platforms["darwin-aarch64"] = entry(name)
+
+          if "windows-x86_64" not in platforms:
+              sys.exit("no signed Windows NSIS bundle found; refusing to publish release")
+
+          manifest = {
+              "version": version,
+              "notes": f"xips-pt desktop {tag}",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": platforms,
+          }
+          (assets / "latest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          print(json.dumps(manifest, indent=2))
+          EOF
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" --repo "$REPO" --clobber assets/*
+          else
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --generate-notes assets/*
+          fi

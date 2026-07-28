@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "xips-pt desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "identifier": "com.xips.desktop",
   "build": {
     "beforeDevCommand": "npm run dev -- --host 0.0.0.0 --port 1420",
@@ -33,5 +33,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIwMEEyQzAyRjgwOUIxNTYKUldSV3NRbjRBaXdLSURyV0tuaHlzL3VzakwvdEJVMFdqUFUwZFY3SG43VDdvb3Q4bDhTMlAwL3AK",
+      "endpoints": [
+        "https://github.com/Xtoforas/xips-pt-desktop/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

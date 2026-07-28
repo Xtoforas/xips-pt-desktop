@@ -2567,6 +2567,8 @@ mod tests {
                 .is_empty()
         );
 
+        // Windows cannot delete the directory while the connection holds the db file open.
+        drop(connection);
         if let Some(parent) = db_path.parent() {
             if parent.exists() {
                 fs::remove_dir_all(parent).expect("temporary directory should be removed");
