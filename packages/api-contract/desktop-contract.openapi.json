@@ -1,0 +1,775 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "xips-pt Desktop API Contract",
+    "version": "1.0.0",
+    "description": "Source-of-truth contract for the endpoints consumed by the xips-pt desktop client. Response shapes are derived from the handler implementations in apps/api/src/server.ts. The server rewrites /api/v1/* to /api/* internally; this document pins what v1 means. Any change to these shapes requires a version bump here and a matching update to the desktop repo copy (packages/api-contract/desktop-contract.openapi.json)."
+  },
+  "servers": [
+    { "url": "https://xips-pt.example", "description": "Deployment base URL; paths below are absolute from this base." }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Service health with queue depth and failed-job counts.",
+        "responses": {
+          "200": {
+            "description": "Service is reachable. ok is always true on HTTP 200; the body is always JSON (never plain text).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" },
+                "example": {
+                  "ok": true,
+                  "service": "api",
+                  "runtime": { "appEnv": "prod", "appBaseUrl": "https://xips-pt.example" },
+                  "queueDepth": 0,
+                  "failedJobs": 0,
+                  "timestamp": "2026-07-28T00:00:00.000Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "Current session user (cookie session or desktop bearer token).",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Authenticated session.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MeResponse" },
+                "example": {
+                  "ok": true,
+                  "user": { "userId": "discord-123", "discordId": "123", "displayName": "Player", "role": "viewer" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/AuthenticationRequired" }
+        }
+      }
+    },
+    "/api/v1/auth/desktop/exchange": {
+      "post": {
+        "operationId": "desktopExchange",
+        "summary": "Exchange a browser cookie session for a desktop bearer token. Requires a cookie session; a bearer session is rejected with 400 cookie_session_required.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DesktopExchangeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Token issued.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DesktopExchangeResponse" },
+                "example": {
+                  "ok": true,
+                  "accessToken": "xipsdt_example",
+                  "tokenType": "Bearer",
+                  "expiresAt": "2026-08-28T00:00:00.000Z",
+                  "user": { "userId": "discord-123", "discordId": "123", "displayName": "Player", "role": "viewer" }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthenticationRequired" }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "Revoke the presented desktop bearer token. 400 bearer_token_required without a token; 404 token_not_found when already revoked or unknown.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Token revoked.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LogoutResponse" },
+                "example": { "ok": true }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/my/uploads": {
+      "post": {
+        "operationId": "createUpload",
+        "summary": "Upload a CSV export. sourceFilename must end in .csv; rawContent max 15,000,000 chars.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UploadCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Upload accepted (status may be skipped for duplicates).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadCreateResponse" },
+                "example": {
+                  "ok": true,
+                  "uploadId": "upload-1",
+                  "status": "queued",
+                  "skipped": false,
+                  "checksum": "abc123",
+                  "sourceFormat": "xips",
+                  "role": "viewer",
+                  "uploadBatchId": "",
+                  "batchEnqueuedCount": 0
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthenticationRequired" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/api/v1/my/uploads/check-duplicate": {
+      "post": {
+        "operationId": "checkDuplicateUpload",
+        "summary": "Preflight duplicate check by checksum before uploading.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DuplicateCheckRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Duplicate verdict. uploadId and reason are empty strings when duplicate is false.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DuplicateCheckResponse" },
+                "example": { "ok": true, "duplicate": false, "uploadId": "", "reason": "" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthenticationRequired" }
+        }
+      }
+    },
+    "/api/v1/my/uploads/batch/complete": {
+      "post": {
+        "operationId": "completeUploadBatch",
+        "summary": "Release a deferred upload batch for processing. 400 upload_batch_id_invalid when the id is missing or malformed.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BatchCompleteRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Batch released.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BatchCompleteResponse" },
+                "example": { "ok": true, "uploadBatchId": "batch-1", "uploadCount": 2, "enqueuedCount": 2 }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthenticationRequired" }
+        }
+      }
+    },
+    "/api/v1/my/uploads/{uploadId}": {
+      "get": {
+        "operationId": "getUploadDetail",
+        "summary": "Fetch one of the caller's uploads by id.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "uploadId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload row. lifecyclePhase is always present (normalized server-side).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UploadDetailResponse" },
+                "example": {
+                  "ok": true,
+                  "row": {
+                    "id": "upload-1",
+                    "userId": "discord-123",
+                    "mode": "tournament",
+                    "gameVersion": "ootp27",
+                    "fileKind": "stats_export",
+                    "sourceFormat": "xips",
+                    "status": "ready",
+                    "error": "",
+                    "importedAt": "2026-07-28T00:00:00.000Z",
+                    "contentHash": "abc123",
+                    "headerFingerprint": "fp1",
+                    "schemaVersion": "1",
+                    "rowCount": 100,
+                    "parsedAt": "2026-07-28T00:00:00.000Z",
+                    "completedAt": "2026-07-28T00:01:00.000Z",
+                    "lifecyclePhase": "complete",
+                    "contextJson": { "formatId": "fmt-1", "sourceFormat": "xips" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/AuthenticationRequired" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/cards": {
+      "get": {
+        "operationId": "getCards",
+        "summary": "Card catalog for a game version, optionally filtered by format restrictions. Paged fields appear only when the page or tab query parameter is sent; the desktop client never sends them.",
+        "security": [{ "bearerAuth": [] }, {}],
+        "parameters": [
+          { "name": "gameVersion", "in": "query", "schema": { "$ref": "#/components/schemas/GameVersion" } },
+          { "name": "formatId", "in": "query", "schema": { "type": "string" }, "description": "Format id or 'all'. Unknown format ids yield empty rows." },
+          { "name": "cardIds", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated card ids." },
+          { "name": "includeVariants", "in": "query", "schema": { "type": "string" } },
+          { "name": "variantLevels", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated variant levels." },
+          { "name": "snapshotId", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective card catalog (admin catalog merged with the caller's own uploads when authenticated).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CardsResponse" },
+                "example": {
+                  "ok": true,
+                  "source": "admin",
+                  "rows": [
+                    {
+                      "gameVersion": "ootp27",
+                      "cardId": 101,
+                      "variantLevel": 0,
+                      "sourceUploadId": "upload-1",
+                      "ownerUserId": "discord-123",
+                      "isAdminSource": true,
+                      "playerName": "Example Player",
+                      "position": "SP",
+                      "tier": 3,
+                      "overall": 78,
+                      "salary": 1200,
+                      "cardTypes": [1],
+                      "battingJson": {},
+                      "pitchingJson": {},
+                      "fieldingJson": {},
+                      "marketJson": {},
+                      "sourceVersion": "v1",
+                      "validFrom": "2026-07-01T00:00:00.000Z",
+                      "validTo": "",
+                      "isCurrent": true,
+                      "updatedAt": "2026-07-28T00:00:00.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/my/agg": {
+      "get": {
+        "operationId": "getMyAgg",
+        "summary": "Caller-scoped aggregates. IMPORTANT: without a non-empty formatId query parameter the server short-circuits and always returns empty cards/teams arrays.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "gameVersion", "in": "query", "schema": { "$ref": "#/components/schemas/GameVersion" } },
+          { "name": "formatId", "in": "query", "schema": { "type": "string" }, "description": "Required for non-empty results. 'all' is treated as unscoped." },
+          { "name": "teamInstanceId", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-card and per-team aggregates for the caller's uploads.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MyAggResponse" },
+                "example": { "ok": true, "cards": [], "teams": [] }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/AuthenticationRequired" }
+        }
+      }
+    },
+    "/api/v1/formats": {
+      "get": {
+        "operationId": "getFormats",
+        "summary": "Tournament formats for a game version. Public; cached up to 300s.",
+        "parameters": [
+          { "name": "gameVersion", "in": "query", "schema": { "$ref": "#/components/schemas/GameVersion" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Normalized tournament format rows.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FormatsResponse" },
+                "example": {
+                  "ok": true,
+                  "rows": [
+                    {
+                      "id": "fmt-1",
+                      "name": "Q-Bronze-Bo5-T16",
+                      "gameVersion": "ootp27",
+                      "formatType": "Quick",
+                      "tournamentIdPrefix": "123",
+                      "teamCount": 16,
+                      "runEnvironment": "2026",
+                      "parkKey": "Heinsohn Ballpark 2026",
+                      "mode": "Best of 5",
+                      "capValue": null,
+                      "variantLimitValue": 10,
+                      "ovrMin": 40,
+                      "ovrMax": 69,
+                      "isSlotsTournament": true,
+                      "slotCounts": { "P": 2, "D": 3, "G": 4, "S": 5, "B": 6 },
+                      "eraRestrictions": [],
+                      "cardTypeRestrictions": [],
+                      "createdByUserId": "discord-1",
+                      "createdAt": "2026-07-01T00:00:00.000Z",
+                      "updatedAt": "2026-07-01T00:00:00.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Desktop access token issued by /api/v1/auth/desktop/exchange."
+      }
+    },
+    "responses": {
+      "AuthenticationRequired": {
+        "description": "No valid session. error is authentication_required.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "ok": false, "error": "authentication_required" }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Validation failure. error carries a machine-readable code; details may carry field-level context.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "ok": false, "error": "raw_content_required" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found (upload_not_found, token_not_found).",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "ok": false, "error": "upload_not_found" }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "rawContent exceeded 15,000,000 characters.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "ok": false, "error": "payload_too_large" }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Per-IP rate limit exceeded.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": { "ok": false, "error": "rate_limited" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "GameVersion": {
+        "type": "string",
+        "enum": ["ootp27"],
+        "description": "Supported game versions. The server defaults to ootp27 when the parameter is omitted."
+      },
+      "UserRole": {
+        "type": "string",
+        "enum": ["viewer", "supporter", "vip", "admin"],
+        "description": "The only role values the server emits. Legacy inputs (regular, premium) are normalized to viewer before responses are built."
+      },
+      "UploadMode": { "type": "string", "enum": ["tournament", "league", "draft"] },
+      "FileKind": { "type": "string", "enum": ["stats_export", "card_catalog"] },
+      "UploadSourceFormat": { "type": "string", "enum": ["xips", "databot"] },
+      "UploadStatus": {
+        "type": "string",
+        "enum": ["received", "queued", "processing", "ready", "skipped", "failed"]
+      },
+      "UploadLifecyclePhase": {
+        "type": "string",
+        "enum": ["queued", "processing", "refresh_pending", "refreshing", "complete", "failed", "skipped_duplicate"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["ok", "error"],
+        "properties": {
+          "ok": { "const": false },
+          "error": { "type": "string" },
+          "details": { "type": "object" }
+        }
+      },
+      "SessionUser": {
+        "type": "object",
+        "required": ["userId", "discordId", "displayName", "role"],
+        "properties": {
+          "userId": { "type": "string" },
+          "discordId": { "type": "string" },
+          "displayName": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/UserRole" }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["ok", "service", "runtime", "queueDepth", "failedJobs", "timestamp"],
+        "properties": {
+          "ok": { "const": true },
+          "service": { "const": "api" },
+          "runtime": {
+            "type": "object",
+            "required": ["appEnv", "appBaseUrl"],
+            "properties": {
+              "appEnv": { "type": "string" },
+              "appBaseUrl": { "type": "string" }
+            }
+          },
+          "queueDepth": { "type": "integer" },
+          "failedJobs": { "type": "integer" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "MeResponse": {
+        "type": "object",
+        "required": ["ok", "user"],
+        "properties": {
+          "ok": { "const": true },
+          "user": { "$ref": "#/components/schemas/SessionUser" }
+        }
+      },
+      "DesktopExchangeRequest": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "description": "Device label; falls back to deviceName, then 'desktop'." },
+          "deviceName": { "type": "string" }
+        }
+      },
+      "DesktopExchangeResponse": {
+        "type": "object",
+        "required": ["ok", "accessToken", "tokenType", "expiresAt", "user"],
+        "properties": {
+          "ok": { "const": true },
+          "accessToken": { "type": "string" },
+          "tokenType": { "const": "Bearer" },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "user": { "$ref": "#/components/schemas/SessionUser" }
+        }
+      },
+      "LogoutResponse": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": { "const": true }
+        }
+      },
+      "UploadCreateRequest": {
+        "type": "object",
+        "required": ["sourceFilename", "rawContent"],
+        "properties": {
+          "sourceFilename": { "type": "string", "description": "Must end with .csv (case-insensitive)." },
+          "rawContent": { "type": "string", "maxLength": 15000000 },
+          "mode": { "$ref": "#/components/schemas/UploadMode" },
+          "fileKind": { "$ref": "#/components/schemas/FileKind" },
+          "gameVersion": { "$ref": "#/components/schemas/GameVersion" },
+          "formatId": { "type": "string", "description": "Required for stats_export uploads in tournament mode." },
+          "tournamentId": { "type": "string" },
+          "uploadBatchId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$" },
+          "deferProcessing": { "type": "boolean", "description": "Requires uploadBatchId." },
+          "uploadBatchComplete": { "type": "boolean" },
+          "leagueYear": { "type": "string" },
+          "leagueNumber": { "type": "string" },
+          "restrictionsHash": { "type": "string" },
+          "envBucket": { "type": "string" },
+          "parkBucket": { "type": "string" }
+        }
+      },
+      "UploadCreateResponse": {
+        "type": "object",
+        "required": ["ok", "uploadId", "status", "skipped", "checksum", "sourceFormat", "role", "uploadBatchId", "batchEnqueuedCount"],
+        "properties": {
+          "ok": { "const": true },
+          "uploadId": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/UploadStatus" },
+          "skipped": { "type": "boolean" },
+          "checksum": { "type": "string" },
+          "sourceFormat": { "$ref": "#/components/schemas/UploadSourceFormat" },
+          "role": { "$ref": "#/components/schemas/UserRole" },
+          "uploadBatchId": { "type": "string", "description": "Empty string when the request carried no batch id." },
+          "batchEnqueuedCount": { "type": "integer" }
+        }
+      },
+      "DuplicateCheckRequest": {
+        "type": "object",
+        "required": ["checksum", "fileKind"],
+        "properties": {
+          "checksum": { "type": "string" },
+          "fileKind": { "$ref": "#/components/schemas/FileKind" },
+          "mode": { "$ref": "#/components/schemas/UploadMode" },
+          "formatId": { "type": "string" },
+          "sourceFilename": { "type": "string" },
+          "tournamentId": { "type": "string" },
+          "gameVersion": { "$ref": "#/components/schemas/GameVersion" }
+        }
+      },
+      "DuplicateCheckResponse": {
+        "type": "object",
+        "required": ["ok", "duplicate", "uploadId", "reason"],
+        "properties": {
+          "ok": { "const": true },
+          "duplicate": { "type": "boolean" },
+          "uploadId": { "type": "string", "description": "Empty string when duplicate is false." },
+          "reason": { "type": "string", "description": "Empty string when duplicate is false." }
+        }
+      },
+      "BatchCompleteRequest": {
+        "type": "object",
+        "required": ["uploadBatchId"],
+        "properties": {
+          "uploadBatchId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$" }
+        }
+      },
+      "BatchCompleteResponse": {
+        "type": "object",
+        "required": ["ok", "uploadBatchId", "uploadCount", "enqueuedCount"],
+        "properties": {
+          "ok": { "const": true },
+          "uploadBatchId": { "type": "string" },
+          "uploadCount": { "type": "integer" },
+          "enqueuedCount": { "type": "integer" }
+        }
+      },
+      "UploadRecord": {
+        "type": "object",
+        "required": ["id", "userId", "mode", "gameVersion", "fileKind", "sourceFormat", "status", "error", "importedAt", "contentHash", "headerFingerprint", "schemaVersion", "rowCount", "lifecyclePhase", "contextJson"],
+        "properties": {
+          "id": { "type": "string" },
+          "userId": { "type": "string" },
+          "mode": { "$ref": "#/components/schemas/UploadMode" },
+          "gameVersion": { "$ref": "#/components/schemas/GameVersion" },
+          "fileKind": { "$ref": "#/components/schemas/FileKind" },
+          "sourceFormat": { "$ref": "#/components/schemas/UploadSourceFormat" },
+          "status": { "$ref": "#/components/schemas/UploadStatus" },
+          "error": { "type": "string" },
+          "importedAt": { "type": "string" },
+          "contentHash": { "type": "string" },
+          "headerFingerprint": { "type": "string" },
+          "schemaVersion": { "type": "string" },
+          "rowCount": { "type": "integer" },
+          "queuedAt": { "type": "string" },
+          "processingAt": { "type": "string" },
+          "parsedAt": { "type": "string" },
+          "refreshingAt": { "type": "string" },
+          "completedAt": { "type": "string" },
+          "failedAt": { "type": "string" },
+          "lifecyclePhase": { "$ref": "#/components/schemas/UploadLifecyclePhase" },
+          "duplicateOfUploadId": { "type": "string" },
+          "contextJson": { "type": "object" }
+        }
+      },
+      "UploadDetailResponse": {
+        "type": "object",
+        "required": ["ok", "row"],
+        "properties": {
+          "ok": { "const": true },
+          "row": { "$ref": "#/components/schemas/UploadRecord" }
+        }
+      },
+      "CardCatalogRecord": {
+        "type": "object",
+        "required": ["gameVersion", "cardId", "variantLevel", "sourceUploadId", "ownerUserId", "isAdminSource", "playerName", "position", "tier", "overall", "salary", "cardTypes", "battingJson", "pitchingJson", "fieldingJson", "marketJson", "sourceVersion", "validFrom", "validTo", "isCurrent", "updatedAt"],
+        "properties": {
+          "gameVersion": { "$ref": "#/components/schemas/GameVersion" },
+          "cardId": { "type": "integer" },
+          "variantLevel": { "type": "number" },
+          "cardSubType": { "type": ["string", "number"] },
+          "sourceUploadId": { "type": "string" },
+          "ownerUserId": { "type": "string" },
+          "isAdminSource": { "type": "boolean" },
+          "variantSource": { "type": "string", "enum": ["uploaded", "auto_generated", "admin_generated"] },
+          "playerName": { "type": "string" },
+          "position": { "type": "string" },
+          "bats": { "type": "string" },
+          "throws": { "type": "string" },
+          "owned": { "type": "number" },
+          "tier": { "type": "number" },
+          "overall": { "type": "number" },
+          "salary": { "type": "number" },
+          "cardTypes": { "type": "array", "items": { "type": "number" } },
+          "battingJson": { "type": "object" },
+          "pitchingJson": { "type": "object" },
+          "fieldingJson": { "type": "object" },
+          "marketJson": { "type": "object" },
+          "sourceVersion": { "type": "string" },
+          "validFrom": { "type": "string" },
+          "validTo": { "type": "string" },
+          "isCurrent": { "type": "boolean" },
+          "updatedAt": { "type": "string" }
+        }
+      },
+      "CardsResponse": {
+        "type": "object",
+        "required": ["ok", "source", "rows"],
+        "properties": {
+          "ok": { "const": true },
+          "source": {
+            "type": "string",
+            "enum": ["self", "admin", "merged", "none"],
+            "description": "Which catalog served the rows: the caller's own uploads (self), the admin catalog (admin), a merge of both (merged), or nothing available (none)."
+          },
+          "rows": { "type": "array", "items": { "$ref": "#/components/schemas/CardCatalogRecord" } },
+          "totalRows": { "type": "integer", "description": "Present only in paged responses (page/tab query params)." },
+          "page": { "type": "integer" },
+          "pageSize": { "type": "integer" },
+          "pitcherCount": { "type": "integer" },
+          "batterCount": { "type": "integer" }
+        }
+      },
+      "MyAggCardRow": {
+        "type": "object",
+        "required": ["uploadId", "gameVersion", "formatId", "cardId", "variantLevel", "position", "pa", "bf", "ip", "obsMetricsJson", "updatedAt"],
+        "properties": {
+          "uploadId": { "type": "string" },
+          "gameVersion": { "$ref": "#/components/schemas/GameVersion" },
+          "formatId": { "type": "string" },
+          "teamInstanceId": { "type": "string" },
+          "cardId": { "type": "integer" },
+          "observedRole": { "type": "string", "enum": ["all", "sp", "rp"] },
+          "throws": { "type": "string" },
+          "variantLevel": { "type": "number" },
+          "position": { "type": "string" },
+          "pa": { "type": "number" },
+          "bf": { "type": "number" },
+          "ip": { "type": "number" },
+          "obsMetricsJson": { "type": "object" },
+          "updatedAt": { "type": "string" }
+        }
+      },
+      "MyAggTeamRow": {
+        "type": "object",
+        "required": ["uploadId", "teamInstanceId", "teamMetricsJson", "updatedAt", "teamName", "gameVersion", "formatId"],
+        "properties": {
+          "uploadId": { "type": "string" },
+          "teamInstanceId": { "type": "string" },
+          "teamMetricsJson": { "type": "object" },
+          "updatedAt": { "type": "string" },
+          "teamName": { "type": "string" },
+          "gameVersion": { "$ref": "#/components/schemas/GameVersion" },
+          "formatId": { "type": "string" }
+        }
+      },
+      "MyAggResponse": {
+        "type": "object",
+        "required": ["ok", "cards", "teams"],
+        "properties": {
+          "ok": { "const": true },
+          "cards": { "type": "array", "items": { "$ref": "#/components/schemas/MyAggCardRow" } },
+          "teams": { "type": "array", "items": { "$ref": "#/components/schemas/MyAggTeamRow" } }
+        }
+      },
+      "SlotCounts": {
+        "type": "object",
+        "required": ["P", "D", "G", "S", "B"],
+        "properties": {
+          "P": { "type": "integer" },
+          "D": { "type": "integer" },
+          "G": { "type": "integer" },
+          "S": { "type": "integer" },
+          "B": { "type": "integer" }
+        }
+      },
+      "TournamentFormatRow": {
+        "type": "object",
+        "required": ["id", "name", "gameVersion", "formatType", "tournamentIdPrefix", "teamCount", "runEnvironment", "parkKey", "mode", "capValue", "variantLimitValue", "ovrMin", "ovrMax", "isSlotsTournament", "slotCounts", "eraRestrictions", "cardTypeRestrictions", "createdByUserId", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "gameVersion": { "$ref": "#/components/schemas/GameVersion" },
+          "formatType": { "type": "string", "enum": ["Quick", "Daily", "Weekly", "Special"] },
+          "tournamentIdPrefix": { "type": "string" },
+          "teamCount": { "type": "integer", "description": "Server field name is teamCount (a number), never teamsPerTournament." },
+          "runEnvironment": { "type": "string" },
+          "parkKey": { "type": "string" },
+          "mode": { "type": "string" },
+          "capValue": { "type": ["integer", "null"] },
+          "variantLimitValue": { "type": ["integer", "null"] },
+          "ovrMin": { "type": ["integer", "null"] },
+          "ovrMax": { "type": ["integer", "null"] },
+          "isSlotsTournament": { "type": "boolean" },
+          "slotCounts": { "$ref": "#/components/schemas/SlotCounts" },
+          "eraRestrictions": { "type": "array", "items": { "type": "string" } },
+          "cardTypeRestrictions": { "type": "array", "items": { "type": "string" } },
+          "createdByUserId": { "type": "string" },
+          "createdAt": { "type": "string" },
+          "updatedAt": { "type": "string" }
+        }
+      },
+      "FormatsResponse": {
+        "type": "object",
+        "required": ["ok", "rows"],
+        "properties": {
+          "ok": { "const": true },
+          "rows": { "type": "array", "items": { "$ref": "#/components/schemas/TournamentFormatRow" } }
+        }
+      }
+    }
+  }
+}

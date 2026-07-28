@@ -17,6 +17,7 @@ type SaveServerProfileInput = {
   id?: string;
   name: string;
   baseUrl: string;
+  gameVersion?: string;
 };
 
 type AddWatchRootInput = {
@@ -86,6 +87,7 @@ const mockProfiles: LocalServerProfile[] = [
     id: 'local',
     name: 'Local xips-pt',
     baseUrl: 'http://localhost:8080',
+    gameVersion: 'ootp27',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }

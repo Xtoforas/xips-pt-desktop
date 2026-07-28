@@ -2673,6 +2673,8 @@ export const SettingsPage = (): JSX.Element => {
                     </Text>
                     <Text size="xs" c="dimmed">
                       {snapshot.selectedProfileId === profile.id ? 'Selected server' : 'Saved server'}
+                      {' · '}
+                      {profile.gameVersion || 'ootp27'}
                     </Text>
                   </div>
                   <Group gap="xs">

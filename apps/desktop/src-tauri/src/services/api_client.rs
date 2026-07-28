@@ -57,13 +57,17 @@ pub async fn check_health(base_url: &str) -> Result<ServiceHealth, String> {
     parse_health_response(response).await
 }
 
-pub async fn fetch_formats(base_url: &str) -> Result<Vec<TournamentFormat>, String> {
+pub async fn fetch_formats(
+    base_url: &str,
+    game_version: &str,
+) -> Result<Vec<TournamentFormat>, String> {
     let response = send_json::<FormatsResponse>(
         &Client::new(),
         Method::GET,
         &format!(
-            "{}/api/v1/formats?gameVersion=ootp27",
-            base_url.trim_end_matches('/')
+            "{}/api/v1/formats?gameVersion={}",
+            base_url.trim_end_matches('/'),
+            game_version
         ),
         None,
         None,
@@ -106,6 +110,7 @@ pub async fn create_upload(
     file_kind: &str,
     format_id: &str,
     tournament_id: &str,
+    game_version: &str,
     upload_batch_id: Option<&str>,
     defer_processing: bool,
 ) -> Result<ApiResponse<UploadCreateResponse>, ApiError> {
@@ -113,7 +118,7 @@ pub async fn create_upload(
       "sourceFilename": source_filename,
       "mode": "tournament",
       "fileKind": file_kind,
-      "gameVersion": "ootp27",
+      "gameVersion": game_version,
       "rawContent": raw_content
     });
     if defer_processing {
@@ -164,11 +169,12 @@ pub async fn check_duplicate(
     checksum: &str,
     file_kind: &str,
     format_id: &str,
+    game_version: &str,
 ) -> Result<ApiResponse<DuplicateCheckResponse>, ApiError> {
     let mut body = json!({
       "checksum": checksum,
       "fileKind": file_kind,
-      "gameVersion": "ootp27"
+      "gameVersion": game_version
     });
     if file_kind == "stats_export" {
         body["formatId"] = Value::String(format_id.to_string());
@@ -209,6 +215,7 @@ pub async fn fetch_cards(
     base_url: &str,
     access_token: &str,
     format_id: &str,
+    game_version: &str,
 ) -> Result<ApiResponse<CardsResponse>, ApiError> {
     let suffix = if format_id.is_empty() {
         String::new()
@@ -219,8 +226,9 @@ pub async fn fetch_cards(
         &Client::new(),
         Method::GET,
         &format!(
-            "{}/api/v1/cards?gameVersion=ootp27{}",
+            "{}/api/v1/cards?gameVersion={}{}",
             base_url.trim_end_matches('/'),
+            game_version,
             suffix
         ),
         Some(access_token),

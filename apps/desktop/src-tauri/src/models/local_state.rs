@@ -13,12 +13,18 @@ pub struct SessionUser {
     pub role: String,
 }
 
+fn default_game_version() -> String {
+    crate::models::DEFAULT_GAME_VERSION.to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalServerProfile {
     pub id: String,
     pub name: String,
     #[serde(rename = "baseUrl")]
     pub base_url: String,
+    #[serde(rename = "gameVersion", default = "default_game_version")]
+    pub game_version: String,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "updatedAt")]
@@ -228,6 +234,8 @@ pub struct SaveServerProfileInput {
     pub name: String,
     #[serde(rename = "baseUrl")]
     pub base_url: String,
+    #[serde(rename = "gameVersion", default)]
+    pub game_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

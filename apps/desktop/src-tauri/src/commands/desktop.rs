@@ -115,8 +115,9 @@ pub async fn desktop_fetch_formats(
     state: State<'_, AppState>,
 ) -> Result<Vec<TournamentFormat>, String> {
     let base_url = storage::load_profile_base_url(&state.db_path, &profile_id)?;
+    let game_version = storage::load_profile_game_version(&state.db_path, &profile_id)?;
     let url = path_to_url(base_url)?;
-    let result = api_client::fetch_formats(&url).await;
+    let result = api_client::fetch_formats(&url, &game_version).await;
     match &result {
         Ok(formats) => {
             storage::cache_formats(&state.db_path, formats)?;
@@ -148,8 +149,9 @@ pub async fn desktop_fetch_cards(
     state: State<'_, AppState>,
 ) -> Result<CardsResponse, String> {
     let base_url = path_to_url(storage::load_profile_base_url(&state.db_path, &profile_id)?)?;
+    let game_version = storage::load_profile_game_version(&state.db_path, &profile_id)?;
     let access_token = storage::load_access_token_for_profile(&state.db_path, &profile_id)?;
-    match api_client::fetch_cards(&base_url, &access_token, &format_id).await {
+    match api_client::fetch_cards(&base_url, &access_token, &format_id, &game_version).await {
         Ok(response) => {
             storage::write_diagnostic_event(
                 &state.db_path,
@@ -605,6 +607,7 @@ pub(crate) async fn process_upload_queue_for_profile(
     profile_id: &str,
 ) -> Result<DesktopSnapshot, String> {
     let base_url = path_to_url(storage::load_profile_base_url(db_path, profile_id)?)?;
+    let game_version = storage::load_profile_game_version(db_path, profile_id)?;
     let access_token =
         storage::load_access_token_for_profile(db_path, profile_id).map_err(|_| {
             let _ = storage::mark_all_profile_jobs_auth_blocked(db_path, profile_id);
@@ -689,6 +692,7 @@ pub(crate) async fn process_upload_queue_for_profile(
             &job.checksum,
             &job.file_kind,
             &job.format_id,
+            &game_version,
         )
         .await
         {
@@ -792,6 +796,7 @@ pub(crate) async fn process_upload_queue_for_profile(
             &job.file_kind,
             &job.format_id,
             &job.tournament_id,
+            &game_version,
             upload_batch_id.as_deref(),
             upload_batch_id.is_some(),
         )

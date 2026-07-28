@@ -14,12 +14,9 @@ export type UploadLifecyclePhase = z.infer<typeof lifecyclePhaseSchema>;
 
 export const roleSchema = z.enum([
   'viewer',
-  'contributor',
   'supporter',
   'vip',
-  'admin',
-  'regular',
-  'premium'
+  'admin'
 ]);
 export type UserRole = z.infer<typeof roleSchema>;
 
@@ -35,6 +32,12 @@ export type SessionUser = z.infer<typeof sessionUserSchema>;
 export const serviceHealthSchema = z.object({
   ok: z.boolean(),
   service: z.string().optional(),
+  runtime: z
+    .object({
+      appEnv: z.string(),
+      appBaseUrl: z.string()
+    })
+    .optional(),
   queueDepth: z.number().optional(),
   failedJobs: z.number().optional(),
   timestamp: z.string().optional()
@@ -160,7 +163,11 @@ export const uploadCreateResponseSchema = z.object({
   uploadId: z.string(),
   status: z.string(),
   skipped: z.boolean(),
-  checksum: z.string()
+  checksum: z.string(),
+  sourceFormat: z.enum(['xips', 'databot']).default('xips'),
+  role: roleSchema.default('viewer'),
+  uploadBatchId: z.string().default(''),
+  batchEnqueuedCount: z.number().default(0)
 });
 
 export type UploadCreateResponse = z.infer<typeof uploadCreateResponseSchema>;
@@ -187,7 +194,7 @@ const jsonValueSchema: z.ZodType<
 
 export const cardsResponseSchema = z.object({
   ok: z.boolean(),
-  source: z.enum(['user', 'admin']).optional(),
+  source: z.enum(['self', 'admin', 'merged', 'none']).optional(),
   rows: z.array(
     z.object({
       cardId: z.number(),
@@ -230,6 +237,7 @@ export type LocalServerProfile = {
   id: string;
   name: string;
   baseUrl: string;
+  gameVersion: string;
   createdAt: string;
   updatedAt: string;
 };

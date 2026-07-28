@@ -1036,6 +1036,7 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
   const [editingId, setEditingId] = useState('');
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
+  const [gameVersion, setGameVersion] = useState('ootp27');
 
   return (
     <Card withBorder className="desktop-card" id={id}>
@@ -1055,10 +1056,17 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
             const profile = snapshot.profiles.find((item) => item.id === nextId) ?? null;
             setName(profile?.name ?? '');
             setBaseUrl(profile?.baseUrl ?? '');
+            setGameVersion(profile?.gameVersion ?? 'ootp27');
           }}
         />
         <TextInput label="Profile name" value={name} onChange={(event) => setName(event.currentTarget.value)} />
         <TextInput label="Base URL" value={baseUrl} onChange={(event) => setBaseUrl(event.currentTarget.value)} />
+        <TextInput
+          label="Game version"
+          description="OOTP game version this server tracks, e.g. ootp27. Leave as ootp27 unless the server says otherwise."
+          value={gameVersion}
+          onChange={(event) => setGameVersion(event.currentTarget.value)}
+        />
         <Group justify="flex-end">
           <Button
             onClick={() => {
@@ -1068,11 +1076,13 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
               void saveServerProfile({
                 id: editingId || undefined,
                 name: name.trim(),
-                baseUrl: baseUrl.trim()
+                baseUrl: baseUrl.trim(),
+                gameVersion: gameVersion.trim() || 'ootp27'
               }).then(() => {
                 setEditingId('');
                 setName('');
                 setBaseUrl('');
+                setGameVersion('ootp27');
               });
             }}
           >

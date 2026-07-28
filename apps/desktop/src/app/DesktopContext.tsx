@@ -23,6 +23,7 @@ type SaveServerProfileInput = {
   id?: string;
   name: string;
   baseUrl: string;
+  gameVersion?: string;
 };
 
 type AddWatchRootInput = {

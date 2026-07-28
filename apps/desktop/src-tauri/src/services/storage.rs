@@ -107,6 +107,12 @@ fn migrate(connection: &Connection) -> SqlResult<()> {
     ensure_upload_job_column(connection, "completed_at", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "failed_at", "TEXT NOT NULL DEFAULT ''")?;
     ensure_upload_job_column(connection, "upload_batch_id", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_table_column(
+        connection,
+        "server_profiles",
+        "game_version",
+        "TEXT NOT NULL DEFAULT 'ootp27'",
+    )?;
     repair_cached_format_payloads(connection)?;
     Ok(())
 }
@@ -163,20 +169,23 @@ pub fn save_server_profile(
         )
         .ok();
     let created_at = existing_created_at.unwrap_or_else(|| now.clone());
+    let game_version = normalize_game_version(input.game_version.as_deref());
     connection
         .execute(
             "
-      INSERT INTO server_profiles (profile_id, profile_name, base_url, created_at, updated_at)
-      VALUES (?1, ?2, ?3, ?4, ?5)
+      INSERT INTO server_profiles (profile_id, profile_name, base_url, game_version, created_at, updated_at)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
       ON CONFLICT(profile_id) DO UPDATE SET
         profile_name = excluded.profile_name,
         base_url = excluded.base_url,
+        game_version = excluded.game_version,
         updated_at = excluded.updated_at
       ",
             params![
                 profile_id,
                 input.name.trim(),
                 normalize_base_url(&input.base_url),
+                game_version,
                 created_at,
                 now
             ],
@@ -1115,6 +1124,27 @@ pub fn load_profile_base_url(db_path: &Path, profile_id: &str) -> Result<PathBuf
     Ok(PathBuf::from(base_url))
 }
 
+pub fn load_profile_game_version(db_path: &Path, profile_id: &str) -> Result<String, String> {
+    let connection = open_db(db_path)?;
+    let game_version = connection
+        .query_row(
+            "SELECT game_version FROM server_profiles WHERE profile_id = ?1",
+            params![profile_id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(normalize_game_version(Some(&game_version)))
+}
+
+fn normalize_game_version(value: Option<&str>) -> String {
+    let trimmed = value.unwrap_or_default().trim();
+    if trimmed.is_empty() {
+        crate::models::DEFAULT_GAME_VERSION.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 fn derive_new_upload_local_state(file_kind: &str, format_id: &str) -> String {
     if file_kind == "stats_export" && format_id.is_empty() {
         String::from("awaiting_format_assignment")
@@ -1743,7 +1773,7 @@ fn load_profiles(connection: &Connection) -> Result<Vec<LocalServerProfile>, Str
     let mut statement = connection
         .prepare(
             "
-      SELECT profile_id, profile_name, base_url, created_at, updated_at
+      SELECT profile_id, profile_name, base_url, game_version, created_at, updated_at
       FROM server_profiles
       ORDER BY updated_at DESC, profile_name ASC
       ",
@@ -1755,8 +1785,9 @@ fn load_profiles(connection: &Connection) -> Result<Vec<LocalServerProfile>, Str
                 id: row.get(0)?,
                 name: row.get(1)?,
                 base_url: row.get(2)?,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
+                game_version: normalize_game_version(Some(&row.get::<_, String>(3)?)),
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -2189,9 +2220,10 @@ fn ensure_upload_job_column(
 mod tests {
     use super::{
         assign_detected_file_format, cache_formats, clear_upload_batch_id_for_profile_batch,
-        ensure_db, list_pending_upload_batch_ids_for_profile, load_snapshot,
-        match_format_for_tournament_id, save_scan_results,
+        ensure_db, list_pending_upload_batch_ids_for_profile, load_profile_game_version,
+        load_snapshot, match_format_for_tournament_id, save_scan_results, save_server_profile,
     };
+    use crate::models::local_state::SaveServerProfileInput;
     use crate::models::api::TournamentFormat;
     use crate::services::scanner::ScanResult;
     use std::fs;
@@ -2232,6 +2264,54 @@ mod tests {
         let path = root.join(filename);
         fs::write(&path, contents).expect("fixture file should be written");
         path
+    }
+
+    #[test]
+    fn server_profile_game_version_defaults_and_round_trips() {
+        let db_path = temp_db_path("profile-game-version");
+        ensure_db(&db_path).expect("db should initialize");
+
+        let snapshot = save_server_profile(
+            &db_path,
+            SaveServerProfileInput {
+                id: Some(String::from("profile-default")),
+                name: String::from("Default"),
+                base_url: String::from("https://example.test"),
+                game_version: None,
+            },
+        )
+        .expect("profile without game version should save");
+        let default_profile = snapshot
+            .profiles
+            .iter()
+            .find(|profile| profile.id == "profile-default")
+            .expect("saved profile should be listed");
+        assert_eq!(default_profile.game_version, "ootp27");
+        assert_eq!(
+            load_profile_game_version(&db_path, "profile-default").expect("lookup should succeed"),
+            "ootp27"
+        );
+
+        let snapshot = save_server_profile(
+            &db_path,
+            SaveServerProfileInput {
+                id: Some(String::from("profile-28")),
+                name: String::from("Next"),
+                base_url: String::from("https://example.test"),
+                game_version: Some(String::from(" ootp28 ")),
+            },
+        )
+        .expect("profile with explicit game version should save");
+        let next_profile = snapshot
+            .profiles
+            .iter()
+            .find(|profile| profile.id == "profile-28")
+            .expect("saved profile should be listed");
+        assert_eq!(next_profile.game_version, "ootp28");
+        assert_eq!(
+            load_profile_game_version(&db_path, "profile-28").expect("lookup should succeed"),
+            "ootp28"
+        );
     }
 
     fn scan_result(path: &Path, source_modified_at: &str) -> ScanResult {
