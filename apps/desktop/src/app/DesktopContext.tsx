@@ -71,8 +71,8 @@ type DesktopContextValue = {
   refreshFormats: () => Promise<void>;
   refreshCards: (formatId: string) => Promise<void>;
   refreshMyAgg: (profileId: string) => Promise<void>;
+  redeemAuthCode: (profileId: string, code: string) => Promise<void>;
   openAuthWindow: (profileId: string) => Promise<void>;
-  completeAuth: (profileId: string) => Promise<void>;
   refreshMe: (profileId: string) => Promise<void>;
   logout: (profileId: string) => Promise<void>;
   addWatchRoot: (input: AddWatchRootInput) => Promise<void>;
@@ -134,7 +134,6 @@ const DesktopContext = createContext<DesktopContextValue | null>(null);
 export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element => {
   const [snapshot, setSnapshot] = useState<DesktopSnapshot>(emptySnapshot);
   const [loading, setLoading] = useState(true);
-  const [pendingAuthProfileId, setPendingAuthProfileId] = useState('');
   const [authFlowState, setAuthFlowState] = useState<'idle' | 'waiting' | 'failed'>('idle');
   const [authFlowError, setAuthFlowError] = useState('');
   const [health, setHealth] = useState<ServiceHealth | null>(null);
@@ -325,45 +324,6 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     };
   }, [snapshot.authProfileId, snapshot.authUser, snapshot.selectedProfileId]);
 
-  useEffect(() => {
-    if (!pendingAuthProfileId) {
-      return;
-    }
-    if (snapshot.authProfileId === pendingAuthProfileId && snapshot.authUser) {
-      setPendingAuthProfileId('');
-      setAuthFlowState('idle');
-      setAuthFlowError('');
-      return;
-    }
-    const intervalId = window.setInterval(() => {
-      void desktopClient.completeAuth(pendingAuthProfileId).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes('auth_window_not_ready')) {
-          return;
-        }
-        if (message.includes('auth_window_not_open')) {
-          void desktopClient.getSnapshot().then((next) => {
-            setSnapshot(next);
-            if (next.authProfileId === pendingAuthProfileId && next.authUser) {
-              setPendingAuthProfileId('');
-              setAuthFlowState('idle');
-              setAuthFlowError('');
-              return;
-            }
-            setPendingAuthProfileId('');
-            setAuthFlowState('failed');
-            setAuthFlowError('The sign-in window closed before desktop auth completed.');
-          });
-          return;
-        }
-        setPendingAuthProfileId('');
-        setAuthFlowState('failed');
-        setAuthFlowError(message);
-      });
-    }, 1200);
-    return () => window.clearInterval(intervalId);
-  }, [pendingAuthProfileId, snapshot.authProfileId, snapshot.authUser]);
-
   const saveServerProfile = useCallback(async (input: SaveServerProfileInput): Promise<void> => {
     await desktopClient.saveServerProfile(input);
   }, []);
@@ -421,22 +381,30 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, []);
 
   const openAuthWindow = useCallback(async (profileId: string): Promise<void> => {
-    setPendingAuthProfileId(profileId);
     setAuthFlowState('waiting');
     setAuthFlowError('');
     try {
       await desktopClient.openAuthWindow(profileId);
     } catch (error) {
-      setPendingAuthProfileId('');
       setAuthFlowState('failed');
       setAuthFlowError(error instanceof Error ? error.message : 'Failed to open the sign-in window.');
       throw error;
     }
   }, []);
 
-  const completeAuth = useCallback(async (profileId: string): Promise<void> => {
-    await desktopClient.completeAuth(profileId);
-  }, []);
+  const redeemAuthCode = useCallback(async (profileId: string, code: string): Promise<void> => {
+    setAuthFlowState('waiting');
+    setAuthFlowError('');
+    try {
+      await desktopClient.redeemAuthCode(profileId, code);
+      await refreshSnapshot();
+      setAuthFlowState('idle');
+    } catch (error) {
+      setAuthFlowState('failed');
+      setAuthFlowError(error instanceof Error ? error.message : 'Failed to redeem the sign-in code.');
+      throw error;
+    }
+  }, [refreshSnapshot]);
 
   const refreshMe = useCallback(async (profileId: string): Promise<void> => {
     await desktopClient.refreshMe(profileId);
@@ -552,7 +520,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       refreshCards,
       refreshMyAgg,
       openAuthWindow,
-      completeAuth,
+      redeemAuthCode,
       refreshMe,
       logout,
       addWatchRoot,
@@ -597,7 +565,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       refreshCards,
       refreshMyAgg,
       openAuthWindow,
-      completeAuth,
+      redeemAuthCode,
       refreshMe,
       logout,
       addWatchRoot,

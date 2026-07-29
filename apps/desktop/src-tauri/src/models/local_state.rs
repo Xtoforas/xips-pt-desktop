@@ -302,22 +302,8 @@ pub struct AddDiagnosticEventInput {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct CompleteAuthExchangeInput {
+pub struct RedeemAuthCodeInput {
     #[serde(rename = "profileId")]
     pub profile_id: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct FinishAuthExchangeInput {
-    #[serde(rename = "profileId")]
-    pub profile_id: String,
-    pub payload: crate::models::api::DesktopExchangeResponse,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct FailAuthExchangeInput {
-    #[serde(rename = "profileId")]
-    pub profile_id: String,
-    pub message: String,
-    pub detail: String,
+    pub code: String,
 }

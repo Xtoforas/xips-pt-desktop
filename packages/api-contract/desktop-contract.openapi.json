@@ -88,6 +88,70 @@
         }
       }
     },
+    "/api/v1/auth/desktop/code": {
+      "post": {
+        "operationId": "desktopIssueCode",
+        "summary": "Issue a single-use, short-lived (<=2 minutes) code that can be redeemed for a desktop bearer token. Requires a cookie session; a bearer session is rejected with 400 cookie_session_required.",
+        "responses": {
+          "201": {
+            "description": "Code issued.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DesktopCodeResponse" },
+                "example": {
+                  "ok": true,
+                  "code": "ABCD2345",
+                  "expiresAt": "2026-07-28T00:02:00.000Z"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthenticationRequired" }
+        }
+      }
+    },
+    "/api/v1/auth/desktop/redeem": {
+      "post": {
+        "operationId": "desktopRedeemCode",
+        "summary": "Redeem a code issued by desktopIssueCode for a desktop bearer token. No session required. The code is single-use and is consumed atomically on success.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DesktopRedeemRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Token issued.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DesktopExchangeResponse" },
+                "example": {
+                  "ok": true,
+                  "accessToken": "xipsdt_example",
+                  "tokenType": "Bearer",
+                  "expiresAt": "2026-08-28T00:00:00.000Z",
+                  "user": { "userId": "discord-123", "discordId": "123", "displayName": "Player", "role": "viewer" }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing code, or code invalid/expired/already redeemed. error is code_required or code_invalid_or_expired.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": { "ok": false, "error": "code_invalid_or_expired" }
+              }
+            }
+          },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
     "/api/v1/auth/logout": {
       "post": {
         "operationId": "logout",
@@ -512,6 +576,23 @@
           "tokenType": { "const": "Bearer" },
           "expiresAt": { "type": "string", "format": "date-time" },
           "user": { "$ref": "#/components/schemas/SessionUser" }
+        }
+      },
+      "DesktopCodeResponse": {
+        "type": "object",
+        "required": ["ok", "code", "expiresAt"],
+        "properties": {
+          "ok": { "const": true },
+          "code": { "type": "string", "description": "Single-use code, valid for at most 2 minutes." },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "DesktopRedeemRequest": {
+        "type": "object",
+        "required": ["code"],
+        "properties": {
+          "code": { "type": "string" },
+          "label": { "type": "string", "description": "Device label for the issued token; defaults to 'desktop'." }
         }
       },
       "LogoutResponse": {

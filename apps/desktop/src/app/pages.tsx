@@ -2559,9 +2559,11 @@ export const SettingsPage = (): JSX.Element => {
     selectedProfile,
     health,
     authFlowState,
+    authFlowError,
     deleteServerProfile,
     refreshHealth,
     openAuthWindow,
+    redeemAuthCode,
     refreshMe,
     selectServerProfile,
     updatePreferences
@@ -2574,6 +2576,19 @@ export const SettingsPage = (): JSX.Element => {
   );
   const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
   const settingsHash = location.hash || '#server-profile';
+  const [authCode, setAuthCode] = useState('');
+
+  const handleRedeemCode = async (): Promise<void> => {
+    if (!selectedProfile || !authCode.trim()) {
+      return;
+    }
+    try {
+      await redeemAuthCode(selectedProfile.id, authCode.trim());
+      setAuthCode('');
+    } catch {
+      // authFlowError already reflects the failure for display below.
+    }
+  };
 
   return (
     <Stack gap="lg">
@@ -2639,6 +2654,35 @@ export const SettingsPage = (): JSX.Element => {
               Open sign-in
             </Button>
           </Group>
+          {!isAuthenticated ? (
+            <>
+              <Text size="sm" c="dimmed">
+                After signing in in the popup, paste the short code it shows here to finish connecting this device.
+              </Text>
+              <Group align="flex-end" wrap="wrap">
+                <TextInput
+                  label="Sign-in code"
+                  placeholder="ABCD2345"
+                  value={authCode}
+                  disabled={!selectedProfile}
+                  onChange={(event) => setAuthCode(event.currentTarget.value.toUpperCase())}
+                />
+                <Button
+                  size="sm"
+                  disabled={!selectedProfile || !authCode.trim()}
+                  loading={authFlowState === 'waiting'}
+                  onClick={() => void handleRedeemCode()}
+                >
+                  Redeem code
+                </Button>
+              </Group>
+              {authFlowError ? (
+                <Alert color="red" title="Sign-in problem">
+                  {authFlowError}
+                </Alert>
+              ) : null}
+            </>
+          ) : null}
         </Stack>
       </Card>
       <Card withBorder className="desktop-card desktop-support-card">

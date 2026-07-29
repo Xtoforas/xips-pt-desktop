@@ -233,6 +233,14 @@ export const desktopExchangeResponseSchema = z.object({
 
 export type DesktopExchangeResponse = z.infer<typeof desktopExchangeResponseSchema>;
 
+export const desktopCodeResponseSchema = z.object({
+  ok: z.boolean(),
+  code: z.string(),
+  expiresAt: z.string()
+});
+
+export type DesktopCodeResponse = z.infer<typeof desktopCodeResponseSchema>;
+
 export type LocalServerProfile = {
   id: string;
   name: string;

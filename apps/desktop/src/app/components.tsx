@@ -96,7 +96,7 @@ export const buildOnboardingSteps = ({
           : 'Sign-in still needed',
       detail: isAuthenticated
         ? 'Once signed in, the queue can use your account and the card views can switch to live personal data.'
-        : 'Sign in after the server responds so the app can finish token exchange and unlock queue actions.',
+        : 'Open sign-in, then paste the short code it shows on the Settings page to finish connecting this device.',
       href: '/settings#server-health',
       actionLabel: 'Open sign-in',
       complete: isAuthenticated

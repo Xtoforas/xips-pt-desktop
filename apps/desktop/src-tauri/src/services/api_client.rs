@@ -3,8 +3,8 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
 use crate::models::api::{
-    CardsResponse, DuplicateCheckResponse, FormatsResponse, MeResponse, MyAggResponse,
-    ServiceHealth, TournamentFormat, UploadCreateResponse, UploadDetailResponse,
+    CardsResponse, DesktopExchangeResponse, DuplicateCheckResponse, FormatsResponse, MeResponse,
+    MyAggResponse, ServiceHealth, TournamentFormat, UploadCreateResponse, UploadDetailResponse,
 };
 
 pub struct ApiResponse<T> {
@@ -87,6 +87,24 @@ pub async fn fetch_me(
         &format!("{}/api/v1/me", base_url.trim_end_matches('/')),
         Some(access_token),
         None,
+    )
+    .await
+}
+
+pub async fn redeem_desktop_code(
+    base_url: &str,
+    code: &str,
+    label: &str,
+) -> Result<ApiResponse<DesktopExchangeResponse>, ApiError> {
+    send_json::<DesktopExchangeResponse>(
+        &Client::new(),
+        Method::POST,
+        &format!(
+            "{}/api/v1/auth/desktop/redeem",
+            base_url.trim_end_matches('/')
+        ),
+        None,
+        Some(json!({ "code": code, "label": label })),
     )
     .await
 }

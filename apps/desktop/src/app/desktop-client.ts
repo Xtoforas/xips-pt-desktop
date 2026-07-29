@@ -55,7 +55,7 @@ type DesktopClient = {
   fetchCards: (profileId: string, formatId: string) => Promise<CardsResponse>;
   fetchMyAgg: (profileId: string) => Promise<MyAggResponse>;
   openAuthWindow: (profileId: string) => Promise<void>;
-  completeAuth: (profileId: string) => Promise<void>;
+  redeemAuthCode: (profileId: string, code: string) => Promise<void>;
   refreshMe: (profileId: string) => Promise<void>;
   logout: (profileId: string) => Promise<void>;
   addWatchRoot: (input: AddWatchRootInput) => Promise<void>;
@@ -164,7 +164,7 @@ const browserClient: DesktopClient = {
     };
   },
   async openAuthWindow() {},
-  async completeAuth() {},
+  async redeemAuthCode() {},
   async refreshMe() {},
   async logout() {},
   async addWatchRoot() {},
@@ -205,7 +205,7 @@ const tauriClient: DesktopClient = {
   fetchCards: (profileId, formatId) => invoke<CardsResponse>('desktop_fetch_cards', { profileId, formatId }),
   fetchMyAgg: (profileId) => invoke<MyAggResponse>('desktop_fetch_my_agg', { profileId }),
   openAuthWindow: (profileId) => invoke<void>('desktop_open_auth_window', { profileId }),
-  completeAuth: (profileId) => invoke<void>('desktop_complete_auth', { input: { profileId } }),
+  redeemAuthCode: (profileId, code) => invoke<void>('desktop_redeem_auth_code', { input: { profileId, code } }),
   refreshMe: (profileId) => invoke<void>('desktop_refresh_me', { profileId }),
   logout: (profileId) => invoke<void>('desktop_logout', { profileId }),
   addWatchRoot: (input) => invoke<void>('desktop_add_watch_root', { input }),

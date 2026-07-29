@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   cardsResponseSchema,
+  desktopCodeResponseSchema,
   desktopExchangeResponseSchema,
   duplicateCheckResponseSchema,
   formatsResponseSchema,
@@ -91,6 +92,20 @@ describe('desktop zod schemas against the xips-pt OpenAPI contract', () => {
     expect(
       desktopExchangeResponseSchema.safeParse(
         exampleFor('/api/v1/auth/desktop/exchange', 'post', '201')
+      ).success
+    ).toBe(true);
+  });
+
+  it('parses the documented desktop code example', () => {
+    expect(
+      desktopCodeResponseSchema.safeParse(exampleFor('/api/v1/auth/desktop/code', 'post', '201')).success
+    ).toBe(true);
+  });
+
+  it('parses the documented desktop redeem example', () => {
+    expect(
+      desktopExchangeResponseSchema.safeParse(
+        exampleFor('/api/v1/auth/desktop/redeem', 'post', '201')
       ).success
     ).toBe(true);
   });

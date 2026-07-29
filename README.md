@@ -17,13 +17,21 @@ Once installed, the app checks for updates on launch and shows a prompt when a n
 ## What It Does
 
 - connects to a configured `xips-pt` server
-- signs in through the current desktop exchange flow
+- signs in with a short pairing code: Discord OAuth opens in a browser window, then you paste the code it displays into the app
 - watches CSV folders on the native side
 - detects `stats_export` and `card_catalog` files
 - assigns tournament formats to stats exports
 - preflights duplicate uploads
 - uploads files and polls server lifecycle state
 - shows queue state, retries, diagnostics, and recent history
+
+## Sign-in Flow
+
+1. The app opens a browser window pointed at the server's Discord OAuth login with a desktop flow flag.
+2. After Discord OAuth completes, the server shows a completion page with a short-lived, single-use pairing code.
+3. Paste the code into the desktop app's sign-in screen; the app calls the server's redeem endpoint via a Rust command, stores the returned access token locally, and refreshes the session snapshot.
+
+The app never scrapes cookies or injects JavaScript into the auth window — the auth window only displays server-rendered pages, and all token exchange happens through the pairing code.
 
 ## Stack
 

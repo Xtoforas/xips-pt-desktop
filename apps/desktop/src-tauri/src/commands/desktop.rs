@@ -13,9 +13,8 @@ use crate::models::api::{
 };
 use crate::models::local_state::{
     AddDiagnosticEventInput, AddWatchRootInput, AssignDetectedFileFormatInput,
-    AssignDetectedFileTournamentInput, CompleteAuthExchangeInput, DesktopSnapshot,
-    FailAuthExchangeInput, FinishAuthExchangeInput, SaveFormatRuleInput, SaveServerProfileInput,
-    UpdatePreferencesInput,
+    AssignDetectedFileTournamentInput, DesktopSnapshot, RedeemAuthCodeInput,
+    SaveFormatRuleInput, SaveServerProfileInput, UpdatePreferencesInput,
 };
 use crate::services::{api_client, file_watcher, scanner, storage};
 
@@ -251,8 +250,8 @@ pub async fn desktop_open_auth_window(
 }
 
 #[tauri::command]
-pub async fn desktop_complete_auth(
-    input: CompleteAuthExchangeInput,
+pub async fn desktop_redeem_auth_code(
+    input: RedeemAuthCodeInput,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -260,106 +259,41 @@ pub async fn desktop_complete_auth(
         &state.db_path,
         &input.profile_id,
     )?)?;
-    let expected_url = Url::parse(&base_url).map_err(|error| error.to_string())?;
-    let window = app
-        .get_webview_window(AUTH_WINDOW_LABEL)
-        .ok_or_else(|| String::from("auth_window_not_open"))?;
-    let current_url = window.url().map_err(|error| error.to_string())?;
-    if current_url.domain() != expected_url.domain() {
-        return Err(String::from("auth_window_not_ready"));
+    match api_client::redeem_desktop_code(&base_url, &input.code, "xips-pt-desktop").await {
+        Ok(response) => {
+            let user = api_client::into_session_user(&response.payload.user);
+            storage::save_auth_session(
+                &state.db_path,
+                &input.profile_id,
+                &user,
+                &response.payload.access_token,
+                &response.payload.expires_at,
+            )?;
+            if let Some(window) = app.get_webview_window(AUTH_WINDOW_LABEL) {
+                let _ = window.close();
+            }
+            storage::write_diagnostic_event(
+                &state.db_path,
+                "info",
+                "auth",
+                "Desktop auth code redeemed",
+                &format!("profile_id={},user_id={}", input.profile_id, user.user_id),
+            )?;
+            app.emit(SNAPSHOT_EVENT, true)
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        Err(error) => {
+            storage::write_diagnostic_event(
+                &state.db_path,
+                "error",
+                "auth",
+                "Desktop auth code redemption failed",
+                &format!("profile_id={},error={}", input.profile_id, error),
+            )?;
+            Err(error.code)
+        }
     }
-
-    let exchange_url = serde_json::to_string(&format!("{}/api/v1/auth/desktop/exchange", base_url))
-        .map_err(|error| error.to_string())?;
-    let profile_id = serde_json::to_string(&input.profile_id).map_err(|error| error.to_string())?;
-    let script = format!(
-        r#"
-      (async () => {{
-        try {{
-          const response = await fetch({exchange_url}, {{
-            method: 'POST',
-            credentials: 'include',
-            headers: {{ 'content-type': 'application/json' }},
-            body: JSON.stringify({{ label: 'xips-pt-desktop' }})
-          }});
-          const payload = await response.json().catch(() => ({{}}));
-          if (!response.ok) {{
-            await window.__TAURI_INTERNALS__.invoke('desktop_fail_auth_exchange', {{
-              input: {{
-                profileId: {profile_id},
-                message: String(payload.error || 'desktop_exchange_failed'),
-                detail: JSON.stringify(payload)
-              }}
-            }});
-            return;
-          }}
-          await window.__TAURI_INTERNALS__.invoke('desktop_finish_auth_exchange', {{
-            input: {{
-              profileId: {profile_id},
-              payload
-            }}
-          }});
-        }} catch (error) {{
-          await window.__TAURI_INTERNALS__.invoke('desktop_fail_auth_exchange', {{
-            input: {{
-              profileId: {profile_id},
-              message: 'desktop_exchange_failed',
-              detail: String(error)
-            }}
-          }});
-        }}
-      }})();
-    "#,
-    );
-    window.eval(script).map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn desktop_finish_auth_exchange(
-    input: FinishAuthExchangeInput,
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let user = api_client::into_session_user(&input.payload.user);
-    let _ = storage::save_auth_session(
-        &state.db_path,
-        &input.profile_id,
-        &user,
-        &input.payload.access_token,
-        &input.payload.expires_at,
-    )?;
-    if let Some(window) = app.get_webview_window(AUTH_WINDOW_LABEL) {
-        let _ = window.close();
-    }
-    app.emit(SNAPSHOT_EVENT, true)
-        .map_err(|error| error.to_string())?;
-    storage::write_diagnostic_event(
-        &state.db_path,
-        "info",
-        "auth",
-        "Desktop auth exchange completed",
-        &format!("profile_id={},user_id={}", input.profile_id, user.user_id),
-    )?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn desktop_fail_auth_exchange(
-    input: FailAuthExchangeInput,
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    storage::write_diagnostic_event(
-        &state.db_path,
-        "error",
-        "auth",
-        &input.message,
-        &format!("profile_id={},detail={}", input.profile_id, input.detail),
-    )?;
-    app.emit(SNAPSHOT_EVENT, true)
-        .map_err(|error| error.to_string())?;
-    Ok(())
 }
 
 #[tauri::command]
