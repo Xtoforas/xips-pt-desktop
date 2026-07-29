@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren
 } from 'react';
@@ -120,6 +121,14 @@ const emptySnapshot: DesktopSnapshot = {
   cachedFormats: []
 };
 
+const MIN_POLLING_INTERVAL_SECONDS = 5;
+// Health checks intentionally run less often than the background dispatcher: 6x the
+// configured interval (~30s at the default 5s setting). No documented rationale found in
+// git history; preserving existing effective cadence.
+const HEALTH_POLL_INTERVAL_MULTIPLIER = 6;
+// refreshMe runs even less often: 12x the configured interval (~60s at the default 5s setting).
+const REFRESH_ME_POLL_INTERVAL_MULTIPLIER = 12;
+
 const DesktopContext = createContext<DesktopContextValue | null>(null);
 
 export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element => {
@@ -140,14 +149,34 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   const selectedProfileId = selectedProfile?.id ?? '';
   const selectedProfileBaseUrl = selectedProfile?.baseUrl ?? '';
 
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshQueuedRef = useRef(false);
+
   const refreshSnapshot = useCallback(async (): Promise<void> => {
-    setLoading(true);
-    try {
-      const next = await desktopClient.getSnapshot();
-      setSnapshot(next);
-    } finally {
-      setLoading(false);
+    if (refreshInFlightRef.current) {
+      refreshQueuedRef.current = true;
+      return refreshInFlightRef.current;
     }
+    const fetchAndApply = async (): Promise<void> => {
+      setLoading(true);
+      try {
+        const next = await desktopClient.getSnapshot();
+        setSnapshot(next);
+      } finally {
+        setLoading(false);
+      }
+    };
+    const run = async (): Promise<void> => {
+      do {
+        refreshQueuedRef.current = false;
+        await fetchAndApply();
+      } while (refreshQueuedRef.current);
+    };
+    const promise = run().finally(() => {
+      refreshInFlightRef.current = null;
+    });
+    refreshInFlightRef.current = promise;
+    return promise;
   }, []);
 
   useEffect(() => {
@@ -207,7 +236,12 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
         });
     };
     run();
-    const intervalId = window.setInterval(run, Math.max(snapshot.preferences.pollingIntervalSeconds, 5) * 6000);
+    const intervalId = window.setInterval(
+      run,
+      Math.max(snapshot.preferences.pollingIntervalSeconds, MIN_POLLING_INTERVAL_SECONDS) *
+        HEALTH_POLL_INTERVAL_MULTIPLIER *
+        1000
+    );
     return () => {
       active = false;
       window.clearInterval(intervalId);
@@ -219,17 +253,16 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     if (!selectedProfile || snapshot.authProfileId !== selectedProfile.id || !snapshot.authUser) {
       return;
     }
-    let active = true;
     const run = (): void => {
-      void desktopClient.refreshMe(selectedProfile.id).then((next) => {
-        if (active) {
-          setSnapshot(next);
-        }
-      });
+      void desktopClient.refreshMe(selectedProfile.id);
     };
-    const intervalId = window.setInterval(run, Math.max(snapshot.preferences.pollingIntervalSeconds, 5) * 12000);
+    const intervalId = window.setInterval(
+      run,
+      Math.max(snapshot.preferences.pollingIntervalSeconds, MIN_POLLING_INTERVAL_SECONDS) *
+        REFRESH_ME_POLL_INTERVAL_MULTIPLIER *
+        1000
+    );
     return () => {
-      active = false;
       window.clearInterval(intervalId);
     };
   }, [
@@ -332,18 +365,15 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, [pendingAuthProfileId, snapshot.authProfileId, snapshot.authUser]);
 
   const saveServerProfile = useCallback(async (input: SaveServerProfileInput): Promise<void> => {
-    const next = await desktopClient.saveServerProfile(input);
-    setSnapshot(next);
+    await desktopClient.saveServerProfile(input);
   }, []);
 
   const deleteServerProfile = useCallback(async (profileId: string): Promise<void> => {
-    const next = await desktopClient.deleteServerProfile(profileId);
-    setSnapshot(next);
+    await desktopClient.deleteServerProfile(profileId);
   }, []);
 
   const selectServerProfile = useCallback(async (profileId: string): Promise<void> => {
-    const next = await desktopClient.selectServerProfile(profileId);
-    setSnapshot(next);
+    await desktopClient.selectServerProfile(profileId);
     setHealth(null);
   }, []);
 
@@ -409,93 +439,75 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, []);
 
   const refreshMe = useCallback(async (profileId: string): Promise<void> => {
-    const next = await desktopClient.refreshMe(profileId);
-    setSnapshot(next);
+    await desktopClient.refreshMe(profileId);
   }, []);
 
   const logout = useCallback(async (profileId: string): Promise<void> => {
-    const next = await desktopClient.logout(profileId);
-    setSnapshot(next);
+    await desktopClient.logout(profileId);
   }, []);
 
   const addWatchRoot = useCallback(async (input: AddWatchRootInput): Promise<void> => {
-    const next = await desktopClient.addWatchRoot(input);
-    setSnapshot(next);
+    await desktopClient.addWatchRoot(input);
   }, []);
 
   const saveFormatRule = useCallback(async (input: SaveFormatRuleInput): Promise<void> => {
-    const next = await desktopClient.saveFormatRule(input);
-    setSnapshot(next);
+    await desktopClient.saveFormatRule(input);
   }, []);
 
   const deleteFormatRule = useCallback(async (formatRuleId: string): Promise<void> => {
-    const next = await desktopClient.deleteFormatRule(formatRuleId);
-    setSnapshot(next);
+    await desktopClient.deleteFormatRule(formatRuleId);
   }, []);
 
   const scanWatchRoots = useCallback(async (profileId: string): Promise<void> => {
-    const next = await desktopClient.scanWatchRoots(profileId);
-    setSnapshot(next);
+    await desktopClient.scanWatchRoots(profileId);
   }, []);
 
   const assignDetectedFileFormat = useCallback(async (input: AssignDetectedFileFormatInput): Promise<void> => {
-    const next = await desktopClient.assignDetectedFileFormat(input);
-    setSnapshot(next);
+    await desktopClient.assignDetectedFileFormat(input);
   }, []);
 
   const assignDetectedFileTournament = useCallback(async (input: AssignDetectedFileTournamentInput): Promise<void> => {
-    const next = await desktopClient.assignDetectedFileTournament(input);
-    setSnapshot(next);
+    await desktopClient.assignDetectedFileTournament(input);
   }, []);
 
   const deleteWatchRoot = useCallback(async (watchRootId: string): Promise<void> => {
-    const next = await desktopClient.deleteWatchRoot(watchRootId);
-    setSnapshot(next);
+    await desktopClient.deleteWatchRoot(watchRootId);
   }, []);
 
   const toggleWatchRoot = useCallback(async (watchRootId: string, paused: boolean): Promise<void> => {
-    const next = await desktopClient.toggleWatchRoot(watchRootId, paused);
-    setSnapshot(next);
+    await desktopClient.toggleWatchRoot(watchRootId, paused);
   }, []);
 
   const processUploadQueue = useCallback(async (profileId: string): Promise<void> => {
-    const next = await desktopClient.processUploadQueue(profileId);
-    setSnapshot(next);
+    await desktopClient.processUploadQueue(profileId);
   }, []);
 
   const pollActiveUploads = useCallback(async (profileId: string): Promise<void> => {
-    const next = await desktopClient.pollActiveUploads(profileId);
-    setSnapshot(next);
+    await desktopClient.pollActiveUploads(profileId);
   }, []);
 
   const retryUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    const next = await desktopClient.retryUploadJob(uploadJobId);
-    setSnapshot(next);
+    await desktopClient.retryUploadJob(uploadJobId);
   }, []);
 
   const dismissDuplicateUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    const next = await desktopClient.dismissDuplicateUploadJob(uploadJobId);
-    setSnapshot(next);
+    await desktopClient.dismissDuplicateUploadJob(uploadJobId);
   }, []);
 
   const dismissWorkingUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    const next = await desktopClient.dismissWorkingUploadJob(uploadJobId);
-    setSnapshot(next);
+    await desktopClient.dismissWorkingUploadJob(uploadJobId);
   }, []);
 
   const ignoreUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    const next = await desktopClient.ignoreUploadJob(uploadJobId);
-    setSnapshot(next);
+    await desktopClient.ignoreUploadJob(uploadJobId);
   }, []);
 
   const restoreIgnoredUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    const next = await desktopClient.restoreIgnoredUploadJob(uploadJobId);
-    setSnapshot(next);
+    await desktopClient.restoreIgnoredUploadJob(uploadJobId);
   }, []);
 
   const removeAwaitingUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    const next = await desktopClient.removeAwaitingUploadJob(uploadJobId);
-    setSnapshot(next);
+    await desktopClient.removeAwaitingUploadJob(uploadJobId);
   }, []);
 
   const openUploadFileLocation = useCallback(async (uploadJobId: string): Promise<void> => {
@@ -503,14 +515,12 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, []);
 
   const updatePreferences = useCallback(async (preferences: DesktopPreferences): Promise<void> => {
-    const next = await desktopClient.updatePreferences(preferences);
-    setSnapshot(next);
+    await desktopClient.updatePreferences(preferences);
   }, []);
 
   const addDiagnosticEvent = useCallback(
     async (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>): Promise<void> => {
-      const next = await desktopClient.addDiagnosticEvent(event);
-      setSnapshot(next);
+      await desktopClient.addDiagnosticEvent(event);
     },
     []
   );

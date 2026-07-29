@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react-swc';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,5 +16,8 @@ export default defineConfig({
     port: 1420,
     strictPort: true
   },
-  clearScreen: false
+  clearScreen: false,
+  test: {
+    environment: 'jsdom'
+  }
 });

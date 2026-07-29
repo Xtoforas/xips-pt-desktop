@@ -30,9 +30,10 @@ pub fn desktop_get_snapshot(state: State<'_, AppState>) -> Result<DesktopSnapsho
 #[tauri::command]
 pub fn desktop_save_server_profile(
     input: SaveServerProfileInput,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::save_server_profile(&state.db_path, input.clone())?;
+) -> Result<(), String> {
+    storage::save_server_profile(&state.db_path, input.clone())?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -40,15 +41,17 @@ pub fn desktop_save_server_profile(
         "Saved server profile",
         &format!("profile_name={},base_url={}", input.name, input.base_url),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_delete_server_profile(
     profile_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::delete_server_profile(&state.db_path, &profile_id)?;
+) -> Result<(), String> {
+    storage::delete_server_profile(&state.db_path, &profile_id)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "warn",
@@ -56,15 +59,17 @@ pub fn desktop_delete_server_profile(
         "Deleted server profile",
         &format!("profile_id={}", profile_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_select_server_profile(
     profile_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::select_server_profile(&state.db_path, &profile_id)?;
+) -> Result<(), String> {
+    storage::select_server_profile(&state.db_path, &profile_id)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -72,7 +77,8 @@ pub fn desktop_select_server_profile(
         "Selected server profile",
         &format!("profile_id={}", profile_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
@@ -359,14 +365,15 @@ pub fn desktop_fail_auth_exchange(
 #[tauri::command]
 pub async fn desktop_refresh_me(
     profile_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
+) -> Result<(), String> {
     let base_url = path_to_url(storage::load_profile_base_url(&state.db_path, &profile_id)?)?;
     let access_token = storage::load_access_token_for_profile(&state.db_path, &profile_id)?;
     match api_client::fetch_me(&base_url, &access_token).await {
         Ok(response) => {
             let user = api_client::into_session_user(&response.payload.user);
-            let snapshot = storage::save_auth_session(
+            storage::save_auth_session(
                 &state.db_path,
                 &profile_id,
                 &user,
@@ -383,29 +390,28 @@ pub async fn desktop_refresh_me(
                     profile_id, response.request_id
                 ),
             )?;
-            Ok(snapshot)
         }
-        Err(error) => handle_auth_api_error(
-            &state.db_path,
-            &profile_id,
-            "Auth validation failed",
-            &error,
-        ),
+        Err(error) => {
+            handle_auth_api_error(&state.db_path, &profile_id, "Auth validation failed", &error)?;
+        }
     }
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn desktop_logout(
     profile_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
+) -> Result<(), String> {
     let base_url = path_to_url(storage::load_profile_base_url(&state.db_path, &profile_id)?)?;
     let access_token =
         storage::load_access_token_for_profile(&state.db_path, &profile_id).unwrap_or_default();
     if !access_token.is_empty() {
         let _ = api_client::logout(&base_url, &access_token).await;
     }
-    let snapshot = storage::clear_auth_session(&state.db_path)?;
+    storage::clear_auth_session(&state.db_path)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -413,7 +419,8 @@ pub async fn desktop_logout(
         "Logged out desktop bearer token",
         &format!("profile_id={}", profile_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
@@ -421,8 +428,8 @@ pub fn desktop_add_watch_root(
     input: AddWatchRootInput,
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::add_watch_root(&state.db_path, input.clone())?;
+) -> Result<(), String> {
+    storage::add_watch_root(&state.db_path, input.clone())?;
     file_watcher::restart(&app, &state)?;
     storage::write_diagnostic_event(
         &state.db_path,
@@ -431,15 +438,17 @@ pub fn desktop_add_watch_root(
         "Added watch root",
         &format!("profile_id={},path={}", input.profile_id, input.path),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_save_format_rule(
     input: SaveFormatRuleInput,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::save_format_rule(&state.db_path, input.clone())?;
+) -> Result<(), String> {
+    storage::save_format_rule(&state.db_path, input.clone())?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -450,15 +459,17 @@ pub fn desktop_save_format_rule(
             input.profile_id, input.watch_root_id, input.match_type, input.pattern, input.format_id
         ),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_delete_format_rule(
     format_rule_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::delete_format_rule(&state.db_path, &format_rule_id)?;
+) -> Result<(), String> {
+    storage::delete_format_rule(&state.db_path, &format_rule_id)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "warn",
@@ -466,7 +477,8 @@ pub fn desktop_delete_format_rule(
         "Deleted format rule",
         &format!("format_rule_id={}", format_rule_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
@@ -474,8 +486,8 @@ pub fn desktop_delete_watch_root(
     watch_root_id: String,
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::delete_watch_root(&state.db_path, &watch_root_id)?;
+) -> Result<(), String> {
+    storage::delete_watch_root(&state.db_path, &watch_root_id)?;
     file_watcher::restart(&app, &state)?;
     storage::write_diagnostic_event(
         &state.db_path,
@@ -484,7 +496,8 @@ pub fn desktop_delete_watch_root(
         "Deleted watch root",
         &format!("watch_root_id={}", watch_root_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
@@ -493,8 +506,8 @@ pub fn desktop_toggle_watch_root(
     paused: bool,
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::toggle_watch_root(&state.db_path, &watch_root_id, paused)?;
+) -> Result<(), String> {
+    storage::toggle_watch_root(&state.db_path, &watch_root_id, paused)?;
     file_watcher::restart(&app, &state)?;
     storage::write_diagnostic_event(
         &state.db_path,
@@ -503,15 +516,17 @@ pub fn desktop_toggle_watch_root(
         "Toggled watch root",
         &format!("watch_root_id={},paused={}", watch_root_id, paused),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_update_preferences(
     input: UpdatePreferencesInput,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::update_preferences(&state.db_path, input.clone())?;
+) -> Result<(), String> {
+    storage::update_preferences(&state.db_path, input.clone())?;
     storage::write_diagnostic_event(
     &state.db_path,
     "info",
@@ -525,18 +540,20 @@ pub fn desktop_update_preferences(
       input.diagnostics_retention_days
     ),
   )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_scan_watch_roots(
     profile_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
+) -> Result<(), String> {
     let watch_roots = storage::list_watch_roots_for_profile(&state.db_path, &profile_id)?;
     let format_rules = storage::list_format_rule_matches_for_profile(&state.db_path, &profile_id)?;
     let scanned = scanner::scan_watch_roots(&watch_roots, &format_rules)?;
-    let snapshot = storage::save_scan_results(&state.db_path, &profile_id, &scanned)?;
+    storage::save_scan_results(&state.db_path, &profile_id, &scanned)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -544,15 +561,17 @@ pub fn desktop_scan_watch_roots(
         "Scanned watch roots",
         &format!("profile_id={},detected_files={}", profile_id, scanned.len()),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_assign_detected_file_format(
     input: AssignDetectedFileFormatInput,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::assign_detected_file_format(
+) -> Result<(), String> {
+    storage::assign_detected_file_format(
         &state.db_path,
         &input.detected_file_id,
         &input.format_id,
@@ -567,15 +586,17 @@ pub fn desktop_assign_detected_file_format(
             input.detected_file_id, input.format_id
         ),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_assign_detected_file_tournament(
     input: AssignDetectedFileTournamentInput,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::assign_detected_file_tournament(
+) -> Result<(), String> {
+    storage::assign_detected_file_tournament(
         &state.db_path,
         &input.detected_file_id,
         &input.tournament_id,
@@ -590,16 +611,20 @@ pub fn desktop_assign_detected_file_tournament(
             input.detected_file_id, input.tournament_id
         ),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn desktop_process_upload_queue(
     profile_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
+) -> Result<(), String> {
     let _queue_guard = state.queue_lock.lock().await;
-    process_upload_queue_for_profile(&state.db_path, &profile_id).await
+    process_upload_queue_for_profile(&state.db_path, &profile_id).await?;
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 pub(crate) async fn process_upload_queue_for_profile(
@@ -914,10 +939,13 @@ pub(crate) async fn process_upload_queue_for_profile(
 #[tauri::command]
 pub async fn desktop_poll_active_uploads(
     profile_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
+) -> Result<(), String> {
     let _queue_guard = state.queue_lock.lock().await;
-    poll_active_uploads_for_profile(&state.db_path, &profile_id).await
+    poll_active_uploads_for_profile(&state.db_path, &profile_id).await?;
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 fn storage_api_error(detail: String) -> api_client::ApiError {
@@ -971,9 +999,10 @@ async fn flush_pending_upload_batches(
 #[tauri::command]
 pub fn desktop_retry_upload_job(
     upload_job_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::retry_upload_job(&state.db_path, &upload_job_id)?;
+) -> Result<(), String> {
+    storage::retry_upload_job(&state.db_path, &upload_job_id)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -981,15 +1010,17 @@ pub fn desktop_retry_upload_job(
         "Queued local retry",
         &format!("upload_job_id={}", upload_job_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_dismiss_duplicate_upload_job(
     upload_job_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::dismiss_duplicate_upload_job(&state.db_path, &upload_job_id)?;
+) -> Result<(), String> {
+    storage::dismiss_duplicate_upload_job(&state.db_path, &upload_job_id)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -997,15 +1028,17 @@ pub fn desktop_dismiss_duplicate_upload_job(
         "Dismissed duplicate upload row",
         &format!("upload_job_id={}", upload_job_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_ignore_upload_job(
     upload_job_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::ignore_upload_job(&state.db_path, &upload_job_id)?;
+) -> Result<(), String> {
+    storage::ignore_upload_job(&state.db_path, &upload_job_id)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -1013,15 +1046,17 @@ pub fn desktop_ignore_upload_job(
         "Ignored queue row",
         &format!("upload_job_id={}", upload_job_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_restore_ignored_upload_job(
     upload_job_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::restore_ignored_upload_job(&state.db_path, &upload_job_id)?;
+) -> Result<(), String> {
+    storage::restore_ignored_upload_job(&state.db_path, &upload_job_id)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -1029,15 +1064,17 @@ pub fn desktop_restore_ignored_upload_job(
         "Restored ignored queue row",
         &format!("upload_job_id={}", upload_job_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_remove_awaiting_upload_job(
     upload_job_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::remove_awaiting_upload_job(&state.db_path, &upload_job_id)?;
+) -> Result<(), String> {
+    storage::remove_awaiting_upload_job(&state.db_path, &upload_job_id)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -1045,15 +1082,17 @@ pub fn desktop_remove_awaiting_upload_job(
         "Removed awaiting format row",
         &format!("upload_job_id={}", upload_job_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn desktop_dismiss_working_upload_job(
     upload_job_id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    let snapshot = storage::dismiss_working_upload_job(&state.db_path, &upload_job_id)?;
+) -> Result<(), String> {
+    storage::dismiss_working_upload_job(&state.db_path, &upload_job_id)?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
@@ -1061,7 +1100,8 @@ pub fn desktop_dismiss_working_upload_job(
         "Dismissed working queue row",
         &format!("upload_job_id={}", upload_job_id),
     )?;
-    Ok(snapshot)
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1089,9 +1129,12 @@ pub fn desktop_open_upload_file_location(
 #[tauri::command]
 pub fn desktop_add_diagnostic_event(
     event: AddDiagnosticEventInput,
+    app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DesktopSnapshot, String> {
-    storage::add_diagnostic_event(&state.db_path, event)
+) -> Result<(), String> {
+    storage::add_diagnostic_event(&state.db_path, event)?;
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(())
 }
 
 #[tauri::command]
