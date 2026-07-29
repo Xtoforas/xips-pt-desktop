@@ -222,7 +222,7 @@ pub async fn desktop_open_auth_window(
 ) -> Result<(), String> {
     let base_url = storage::load_profile_base_url(&state.db_path, &profile_id)?;
     let login_url = Url::parse(&format!(
-        "{}/api/auth/login/discord",
+        "{}/api/auth/login/discord?flow=desktop",
         path_to_url(base_url)?
     ))
     .map_err(|error| error.to_string())?;
