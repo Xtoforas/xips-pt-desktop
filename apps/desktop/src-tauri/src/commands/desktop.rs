@@ -220,12 +220,35 @@ pub async fn desktop_open_auth_window(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let base_url = storage::load_profile_base_url(&state.db_path, &profile_id)?;
-    let login_url = Url::parse(&format!(
-        "{}/api/auth/login/discord?flow=desktop",
-        path_to_url(base_url)?
-    ))
+    let base_url = path_to_url(storage::load_profile_base_url(&state.db_path, &profile_id)?)?;
+    let callback_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|error| error.to_string())?;
+    let callback_port = callback_listener
+        .local_addr()
+        .map_err(|error| error.to_string())?
+        .port();
+    let callback_token = uuid::Uuid::new_v4().to_string();
+
+    let login_url = Url::parse_with_params(
+        &format!("{}/api/auth/login/discord", base_url),
+        &[
+            ("flow", "desktop"),
+            ("callback_port", callback_port.to_string().as_str()),
+            ("callback_token", callback_token.as_str()),
+        ],
+    )
     .map_err(|error| error.to_string())?;
+
+    spawn_auth_callback_listener(
+        app.clone(),
+        state.db_path.clone(),
+        profile_id.clone(),
+        base_url,
+        callback_listener,
+        callback_token,
+    );
+
     if let Some(window) = app.get_webview_window(AUTH_WINDOW_LABEL) {
         window
             .navigate(login_url)
@@ -247,6 +270,153 @@ pub async fn desktop_open_auth_window(
         &format!("profile_id={}", profile_id),
     )?;
     Ok(())
+}
+
+const AUTH_CALLBACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Waits for the browser's top-level navigation hand-off after the server
+/// completes the Discord OAuth exchange, then redeems the pairing code
+/// automatically so sign-in requires no manual copy/paste or refocus.
+fn spawn_auth_callback_listener(
+    app: AppHandle,
+    db_path: PathBuf,
+    profile_id: String,
+    base_url: String,
+    listener: tokio::net::TcpListener,
+    expected_token: String,
+) {
+    tauri::async_runtime::spawn(async move {
+        let deadline = tokio::time::Instant::now() + AUTH_CALLBACK_TIMEOUT;
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                // Nobody completed the browser sign-in within the window; give up quietly.
+                return;
+            }
+            let mut socket = match tokio::time::timeout(remaining, listener.accept()).await {
+                Ok(Ok((socket, _))) => socket,
+                Ok(Err(error)) => {
+                    let _ = storage::write_diagnostic_event(
+                        &db_path,
+                        "error",
+                        "auth",
+                        "Desktop auth callback listener failed",
+                        &format!("profile_id={},error={}", profile_id, error),
+                    );
+                    return;
+                }
+                Err(_) => return,
+            };
+
+            let request_line = match read_request_line(&mut socket).await {
+                Ok(line) => line,
+                Err(_) => continue,
+            };
+
+            let (code, token) = parse_callback_request(&request_line);
+            let handoff_ok = code.is_some() && token.as_deref() == Some(expected_token.as_str());
+            if !handoff_ok {
+                // Stray requests (e.g. a browser favicon probe) shouldn't consume the real hand-off.
+                let _ = write_http_response(&mut socket, 404, "Not found").await;
+                continue;
+            }
+            let _ = write_http_response(
+                &mut socket,
+                200,
+                "Sign-in complete. You can close this tab and return to xips-pt.",
+            )
+            .await;
+
+            let code = code.expect("checked by handoff_ok");
+            match api_client::redeem_desktop_code(&base_url, &code, "xips-pt-desktop").await {
+                Ok(response) => {
+                    let user = api_client::into_session_user(&response.payload.user);
+                    if let Err(error) = storage::save_auth_session(
+                        &db_path,
+                        &profile_id,
+                        &user,
+                        &response.payload.access_token,
+                        &response.payload.expires_at,
+                    ) {
+                        let _ = storage::write_diagnostic_event(
+                            &db_path,
+                            "error",
+                            "auth",
+                            "Failed to save desktop auth session",
+                            &format!("profile_id={},error={}", profile_id, error),
+                        );
+                        return;
+                    }
+                    if let Some(window) = app.get_webview_window(AUTH_WINDOW_LABEL) {
+                        let _ = window.close();
+                    }
+                    let _ = storage::write_diagnostic_event(
+                        &db_path,
+                        "info",
+                        "auth",
+                        "Desktop auth code redeemed automatically",
+                        &format!("profile_id={},user_id={}", profile_id, user.user_id),
+                    );
+                    let _ = app.emit(SNAPSHOT_EVENT, true);
+                }
+                Err(error) => {
+                    let _ = storage::write_diagnostic_event(
+                        &db_path,
+                        "error",
+                        "auth",
+                        "Automatic desktop auth code redemption failed",
+                        &format!("profile_id={},error={}", profile_id, error),
+                    );
+                }
+            }
+            return;
+        }
+    });
+}
+
+async fn read_request_line(socket: &mut tokio::net::TcpStream) -> std::io::Result<String> {
+    use tokio::io::AsyncBufReadExt;
+    let mut reader = tokio::io::BufReader::new(socket);
+    let mut line = String::new();
+    reader.read_line(&mut line).await?;
+    Ok(line)
+}
+
+async fn write_http_response(
+    socket: &mut tokio::net::TcpStream,
+    status: u16,
+    body: &str,
+) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let status_text = if status == 200 { "OK" } else { "Not Found" };
+    let response = format!(
+        "HTTP/1.1 {status} {status_text}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    socket.write_all(response.as_bytes()).await?;
+    socket.flush().await
+}
+
+fn parse_callback_request(request_line: &str) -> (Option<String>, Option<String>) {
+    let target = match request_line.split_whitespace().nth(1) {
+        Some(value) => value,
+        None => return (None, None),
+    };
+    let parsed = match Url::parse(&format!("http://127.0.0.1{}", target)) {
+        Ok(url) => url,
+        Err(_) => return (None, None),
+    };
+    let mut code = None;
+    let mut token = None;
+    for (key, value) in parsed.query_pairs() {
+        match key.as_ref() {
+            "code" => code = Some(value.into_owned()),
+            "token" => token = Some(value.into_owned()),
+            _ => {}
+        }
+    }
+    (code, token)
 }
 
 #[tauri::command]
