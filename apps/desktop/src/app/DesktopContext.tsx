@@ -18,7 +18,8 @@ import type {
   ServiceHealth,
   TournamentFormat
 } from '@xips/api-contract';
-import { desktopClient } from './desktop-client';
+import { readText } from '@tauri-apps/plugin-clipboard-manager';
+import { desktopClient, isTauri } from './desktop-client';
 
 type SaveServerProfileInput = {
   id?: string;
@@ -129,6 +130,20 @@ const HEALTH_POLL_INTERVAL_MULTIPLIER = 6;
 // refreshMe runs even less often: 12x the configured interval (~60s at the default 5s setting).
 const REFRESH_ME_POLL_INTERVAL_MULTIPLIER = 12;
 
+const PAIRING_CODE_PATTERN = /^[A-Z0-9]{6,12}$/;
+
+// Tauri's invoke() rejects with the raw value the Rust command's Err variant serialized
+// to (a plain string for Result<_, String> commands), not an Error instance.
+export function describeError(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+  return fallback;
+}
+
 const DesktopContext = createContext<DesktopContextValue | null>(null);
 
 export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element => {
@@ -150,6 +165,11 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
 
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const refreshQueuedRef = useRef(false);
+
+  // Baseline is snapshotted whenever a sign-in window opens, so leftover clipboard
+  // content from earlier attempts is never mistaken for the code from this one.
+  const clipboardBaselineRef = useRef<string | null>(null);
+  const watchingClipboardRef = useRef(false);
 
   const refreshSnapshot = useCallback(async (): Promise<void> => {
     if (refreshInFlightRef.current) {
@@ -383,11 +403,20 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   const openAuthWindow = useCallback(async (profileId: string): Promise<void> => {
     setAuthFlowState('waiting');
     setAuthFlowError('');
+    if (isTauri()) {
+      try {
+        clipboardBaselineRef.current = ((await readText()) ?? '').trim().toUpperCase();
+      } catch {
+        clipboardBaselineRef.current = null;
+      }
+      watchingClipboardRef.current = true;
+    }
     try {
       await desktopClient.openAuthWindow(profileId);
+      setAuthFlowState('idle');
     } catch (error) {
       setAuthFlowState('failed');
-      setAuthFlowError(error instanceof Error ? error.message : 'Failed to open the sign-in window.');
+      setAuthFlowError(describeError(error, 'Failed to open the sign-in window.'));
       throw error;
     }
   }, []);
@@ -401,10 +430,45 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       setAuthFlowState('idle');
     } catch (error) {
       setAuthFlowState('failed');
-      setAuthFlowError(error instanceof Error ? error.message : 'Failed to redeem the sign-in code.');
+      setAuthFlowError(describeError(error, 'Failed to redeem the sign-in code.'));
       throw error;
     }
   }, [refreshSnapshot]);
+
+  const isAuthenticatedForSelectedProfile =
+    snapshot.authUser !== null && snapshot.authProfileId === selectedProfileId;
+
+  useEffect(() => {
+    if (!isTauri() || !selectedProfileId || isAuthenticatedForSelectedProfile) {
+      watchingClipboardRef.current = false;
+      return;
+    }
+    const tryAutoFillFromClipboard = (): void => {
+      if (!watchingClipboardRef.current) {
+        return;
+      }
+      void (async () => {
+        let text: string | null;
+        try {
+          text = await readText();
+        } catch {
+          return;
+        }
+        const code = text?.trim().toUpperCase() ?? '';
+        if (!PAIRING_CODE_PATTERN.test(code) || code === clipboardBaselineRef.current) {
+          return;
+        }
+        clipboardBaselineRef.current = code;
+        try {
+          await redeemAuthCode(selectedProfileId, code);
+        } catch {
+          // authFlowError already reflects the failure.
+        }
+      })();
+    };
+    window.addEventListener('focus', tryAutoFillFromClipboard);
+    return () => window.removeEventListener('focus', tryAutoFillFromClipboard);
+  }, [isAuthenticatedForSelectedProfile, redeemAuthCode, selectedProfileId]);
 
   const refreshMe = useCallback(async (profileId: string): Promise<void> => {
     await desktopClient.refreshMe(profileId);

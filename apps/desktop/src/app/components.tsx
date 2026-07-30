@@ -10,7 +10,7 @@ import type {
   TournamentFormat
 } from '@xips/api-contract';
 import { useEffect, useRef, useState } from 'react';
-import { useDesktop } from './DesktopContext';
+import { describeError, useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
 
 const navItems: ReadonlyArray<{ to: string; label: string; support?: boolean }> = [
@@ -334,7 +334,7 @@ export const OnboardingChecklist = (): JSX.Element => {
       setProfileName('');
       setBaseUrl('');
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to save server profile.');
+      setErrorMessage(describeError(error, 'Failed to save server profile.'));
     } finally {
       setBusyAction('');
     }
@@ -349,7 +349,7 @@ export const OnboardingChecklist = (): JSX.Element => {
     try {
       await refreshHealth();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to contact the selected server.');
+      setErrorMessage(describeError(error, 'Failed to contact the selected server.'));
     } finally {
       setBusyAction('');
     }
@@ -364,7 +364,7 @@ export const OnboardingChecklist = (): JSX.Element => {
     try {
       await openAuthWindow(selectedProfile.id);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to open the Discord sign-in window.');
+      setErrorMessage(describeError(error, 'Failed to open the Discord sign-in window.'));
     } finally {
       setBusyAction('');
     }
@@ -379,7 +379,7 @@ export const OnboardingChecklist = (): JSX.Element => {
     try {
       await refreshMe(selectedProfile.id);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Auth validation failed.');
+      setErrorMessage(describeError(error, 'Auth validation failed.'));
     } finally {
       setBusyAction('');
     }

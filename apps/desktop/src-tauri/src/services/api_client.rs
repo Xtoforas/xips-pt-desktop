@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use reqwest::{header, Client, Method, Response};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
@@ -6,6 +8,15 @@ use crate::models::api::{
     CardsResponse, DesktopExchangeResponse, DuplicateCheckResponse, FormatsResponse, MeResponse,
     MyAggResponse, ServiceHealth, TournamentFormat, UploadCreateResponse, UploadDetailResponse,
 };
+
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+
+fn http_client() -> Client {
+    Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .unwrap_or_else(|_| Client::new())
+}
 
 pub struct ApiResponse<T> {
     pub payload: T,
@@ -43,7 +54,7 @@ impl std::fmt::Display for ApiError {
 impl std::error::Error for ApiError {}
 
 pub async fn check_health(base_url: &str) -> Result<ServiceHealth, String> {
-    let client = Client::new();
+    let client = http_client();
     let url = format!("{}/health", base_url.trim_end_matches('/'));
     let response = client
         .get(url)
@@ -62,7 +73,7 @@ pub async fn fetch_formats(
     game_version: &str,
 ) -> Result<Vec<TournamentFormat>, String> {
     let response = send_json::<FormatsResponse>(
-        &Client::new(),
+        &http_client(),
         Method::GET,
         &format!(
             "{}/api/v1/formats?gameVersion={}",
@@ -82,7 +93,7 @@ pub async fn fetch_me(
     access_token: &str,
 ) -> Result<ApiResponse<MeResponse>, ApiError> {
     send_json::<MeResponse>(
-        &Client::new(),
+        &http_client(),
         Method::GET,
         &format!("{}/api/v1/me", base_url.trim_end_matches('/')),
         Some(access_token),
@@ -97,7 +108,7 @@ pub async fn redeem_desktop_code(
     label: &str,
 ) -> Result<ApiResponse<DesktopExchangeResponse>, ApiError> {
     send_json::<DesktopExchangeResponse>(
-        &Client::new(),
+        &http_client(),
         Method::POST,
         &format!(
             "{}/api/v1/auth/desktop/redeem",
@@ -111,7 +122,7 @@ pub async fn redeem_desktop_code(
 
 pub async fn logout(base_url: &str, access_token: &str) -> Result<ApiResponse<Value>, ApiError> {
     send_json::<Value>(
-        &Client::new(),
+        &http_client(),
         Method::POST,
         &format!("{}/api/v1/auth/logout", base_url.trim_end_matches('/')),
         Some(access_token),
@@ -152,7 +163,7 @@ pub async fn create_upload(
         }
     }
     send_json::<UploadCreateResponse>(
-        &Client::new(),
+        &http_client(),
         Method::POST,
         &format!("{}/api/v1/my/uploads", base_url.trim_end_matches('/')),
         Some(access_token),
@@ -167,7 +178,7 @@ pub async fn complete_upload_batch(
     upload_batch_id: &str,
 ) -> Result<ApiResponse<Value>, ApiError> {
     send_json::<Value>(
-        &Client::new(),
+        &http_client(),
         Method::POST,
         &format!(
             "{}/api/v1/my/uploads/batch/complete",
@@ -198,7 +209,7 @@ pub async fn check_duplicate(
         body["formatId"] = Value::String(format_id.to_string());
     }
     send_json::<DuplicateCheckResponse>(
-        &Client::new(),
+        &http_client(),
         Method::POST,
         &format!(
             "{}/api/v1/my/uploads/check-duplicate",
@@ -216,7 +227,7 @@ pub async fn fetch_upload_detail(
     upload_id: &str,
 ) -> Result<ApiResponse<UploadDetailResponse>, ApiError> {
     send_json::<UploadDetailResponse>(
-        &Client::new(),
+        &http_client(),
         Method::GET,
         &format!(
             "{}/api/v1/my/uploads/{}",
@@ -241,7 +252,7 @@ pub async fn fetch_cards(
         format!("&formatId={format_id}")
     };
     send_json::<CardsResponse>(
-        &Client::new(),
+        &http_client(),
         Method::GET,
         &format!(
             "{}/api/v1/cards?gameVersion={}{}",
@@ -260,7 +271,7 @@ pub async fn fetch_my_agg(
     access_token: &str,
 ) -> Result<ApiResponse<MyAggResponse>, ApiError> {
     send_json::<MyAggResponse>(
-        &Client::new(),
+        &http_client(),
         Method::GET,
         &format!("{}/api/v1/my/agg", base_url.trim_end_matches('/')),
         Some(access_token),

@@ -26,6 +26,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let state = create_app_state(app.handle())?;
             services::file_watcher::restart(app.handle(), &state)?;

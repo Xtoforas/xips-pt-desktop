@@ -2578,17 +2578,19 @@ export const SettingsPage = (): JSX.Element => {
   const settingsHash = location.hash || '#server-profile';
   const [authCode, setAuthCode] = useState('');
 
-  const handleRedeemCode = async (): Promise<void> => {
-    if (!selectedProfile || !authCode.trim()) {
+  const submitCode = async (code: string): Promise<void> => {
+    if (!selectedProfile || !code.trim()) {
       return;
     }
     try {
-      await redeemAuthCode(selectedProfile.id, authCode.trim());
+      await redeemAuthCode(selectedProfile.id, code.trim());
       setAuthCode('');
     } catch {
       // authFlowError already reflects the failure for display below.
     }
   };
+
+  const handleRedeemCode = (): Promise<void> => submitCode(authCode);
 
   return (
     <Stack gap="lg">
@@ -2657,7 +2659,8 @@ export const SettingsPage = (): JSX.Element => {
           {!isAuthenticated ? (
             <>
               <Text size="sm" c="dimmed">
-                After signing in in the popup, paste the short code it shows here to finish connecting this device.
+                After signing in in the popup, copy the short code it shows. This device will pick it up from your
+                clipboard automatically, or you can paste it below.
               </Text>
               <Group align="flex-end" wrap="wrap">
                 <TextInput
