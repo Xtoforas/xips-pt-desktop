@@ -2,7 +2,6 @@ import { Alert, Badge, Button, Card, Group, HoverCard, Select, Stack, Text, Text
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import type {
   DesktopPreferences,
-  LocalDetectedFile,
   LocalFormatRule,
   LocalServerProfile,
   LocalWatchRoot,
@@ -12,6 +11,20 @@ import type {
 import { useEffect, useRef, useState } from 'react';
 import { describeError, useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
+import {
+  formatFileKindLabel,
+  formatLifecycleLabel,
+  formatLocalPresenceLabel,
+  formatQueueStateLabel,
+  formatUploadJobChecksumStatusLabel,
+  formatUploadJobModifiedAt,
+  getUploadJobModifiedAt,
+  lifecycleColor,
+  localPresenceColor,
+  localStateColor,
+  uploadJobNeedsAttention,
+  uploadJobWorkingAutomatically
+} from './queue-model';
 
 const navItems: ReadonlyArray<{ to: string; label: string; support?: boolean }> = [
   { to: '/today', label: 'Today' },
@@ -561,187 +574,6 @@ export const OnboardingChecklist = (): JSX.Element => {
   );
 };
 
-const lifecycleColor = (value: string | null): string => {
-  switch (value) {
-    case 'complete':
-      return 'teal';
-    case 'refreshing':
-      return 'cyan';
-    case 'refresh_pending':
-      return 'blue';
-    case 'processing':
-      return 'blue';
-    case 'failed':
-      return 'red';
-    case 'skipped_duplicate':
-      return 'gray';
-    case 'queued':
-      return 'blue';
-    default:
-      return 'gray';
-  }
-};
-
-const localStateColor = (value: LocalUploadJob['localState']): string => {
-  switch (value) {
-    case 'complete':
-      return 'teal';
-    case 'detected':
-    case 'queued_local':
-    case 'uploading':
-      return 'blue';
-    case 'uploaded_waiting_server':
-    case 'server_queued':
-    case 'server_processing':
-    case 'server_refresh_pending':
-    case 'server_refreshing':
-      return 'blue';
-    case 'failed_retryable':
-      return 'orange';
-    case 'failed_terminal':
-      return 'red';
-    case 'ignored':
-      return 'gray';
-    case 'duplicate_skipped_local':
-      return 'gray';
-    case 'auth_blocked':
-      return 'red';
-    case 'awaiting_format_assignment':
-      return 'orange';
-    default:
-      return 'gray';
-  }
-};
-
-const localPresenceColor = (value: LocalUploadJob['localPresence']): string =>
-  value === 'present' ? 'teal' : 'gray';
-
-const actionRequiredStates = new Set<LocalUploadJob['localState']>([
-  'awaiting_format_assignment',
-  'failed_retryable',
-  'auth_blocked'
-]);
-
-const automaticQueueStates = new Set<LocalUploadJob['localState']>([
-  'detected',
-  'queued_local',
-  'uploading',
-  'uploaded_waiting_server',
-  'server_queued',
-  'server_processing',
-  'server_refresh_pending',
-  'server_refreshing'
-]);
-
-const serverActiveStates = new Set<LocalUploadJob['localState']>([
-  'uploaded_waiting_server',
-  'server_queued',
-  'server_processing',
-  'server_refresh_pending',
-  'server_refreshing'
-]);
-
-export const uploadJobNeedsAttention = (job: LocalUploadJob): boolean =>
-  actionRequiredStates.has(job.localState);
-
-export const uploadJobWorkingAutomatically = (job: LocalUploadJob): boolean =>
-  automaticQueueStates.has(job.localState);
-
-export const uploadJobWaitingOnServer = (job: LocalUploadJob): boolean =>
-  serverActiveStates.has(job.localState);
-
-export const formatFileKindLabel = (fileKind: LocalUploadJob['fileKind'] | 'unknown'): string => {
-  switch (fileKind) {
-    case 'stats_export':
-      return 'Stats Export';
-    case 'card_catalog':
-      return 'Card Catalog';
-    default:
-      return 'Unknown';
-  }
-};
-
-export const formatQueueStateLabel = (
-  state: LocalUploadJob['localState'],
-  fileKind: LocalUploadJob['fileKind']
-): string => {
-  const labels: Record<LocalUploadJob['localState'], string> = {
-    detected: 'Detected',
-    awaiting_format_assignment: 'Awaiting Format Assignment',
-    queued_local: 'Queued Locally',
-    duplicate_skipped_local: 'Skipped as Duplicate',
-    ignored: 'Ignored',
-    uploading: 'Uploading',
-    uploaded_waiting_server: 'Uploaded, Waiting on Server',
-    server_queued: 'Queued on Server',
-    server_processing: 'Server Processing',
-    server_refresh_pending: 'Refresh Pending',
-    server_refreshing: 'Refreshing',
-    complete: 'Complete',
-    failed_retryable: 'Retry Needed',
-    failed_terminal: 'Failed',
-    auth_blocked: 'Sign-In Required'
-  };
-
-  if (fileKind === 'card_catalog' && (state === 'complete' || state === 'server_refresh_pending')) {
-    return 'Catalog Updated';
-  }
-  return labels[state];
-};
-
-export const formatLifecycleLabel = (
-  phase: LocalUploadJob['lifecyclePhase'],
-  fileKind: LocalUploadJob['fileKind']
-): string => {
-  const labels: Record<NonNullable<LocalUploadJob['lifecyclePhase']>, string> = {
-    queued: 'Queued',
-    processing: 'Processing',
-    refresh_pending: 'Refresh Pending',
-    refreshing: 'Refreshing',
-    complete: 'Complete',
-    failed: 'Failed',
-    skipped_duplicate: 'Skipped as Duplicate'
-  };
-
-  if (fileKind === 'card_catalog' && (phase === 'complete' || phase === 'refresh_pending')) {
-    return 'Catalog Updated';
-  }
-  return phase ? labels[phase] : 'Not Started';
-};
-
-export const formatLocalPresenceLabel = (presence: LocalUploadJob['localPresence']): string =>
-  presence === 'present' ? 'Present' : 'Missing';
-
-export const formatDetectedFileStateLabel = (state: LocalDetectedFile['localState']): string => {
-  const labels: Record<LocalDetectedFile['localState'], string> = {
-    detected: 'Detected',
-    queued_local: 'Queued Locally',
-    awaiting_format_assignment: 'Awaiting Format Assignment',
-    ignored: 'Ignored'
-  };
-  return labels[state];
-};
-
-export const getUploadJobModifiedAt = (job: LocalUploadJob): number | null => {
-  const sourceModifiedAt = Number(job.sourceModifiedAt);
-  if (Number.isFinite(sourceModifiedAt) && sourceModifiedAt > 0) {
-    return sourceModifiedAt;
-  }
-
-  const queueUpdatedAt = Date.parse(job.updatedAt);
-  return Number.isFinite(queueUpdatedAt) ? queueUpdatedAt : null;
-};
-
-export const formatUploadJobModifiedAt = (job: LocalUploadJob): string => {
-  const modifiedAt = getUploadJobModifiedAt(job);
-  return modifiedAt === null ? '-' : new Date(modifiedAt).toLocaleString();
-};
-
-export const formatSourceModifiedAt = (sourceModifiedAt: string): string => {
-  const parsed = Number(sourceModifiedAt);
-  return Number.isFinite(parsed) && parsed > 0 ? new Date(parsed).toLocaleString() : '-';
-};
-
 export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind'] }): JSX.Element => (
   <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
     {formatFileKindLabel(fileKind)}
@@ -921,7 +753,7 @@ export const QueueTable = ({
                 <LocalPresenceBadge presence={job.localPresence} />
               </td>
               <td className="desktop-mono">
-                {job.duplicateReason ? 'Duplicate' : job.remoteChecksum ? 'Uploaded' : 'Pending'}
+                {formatUploadJobChecksumStatusLabel(job)}
               </td>
               <td>
                 <QueueStateBadge state={job.localState} fileKind={job.fileKind} />

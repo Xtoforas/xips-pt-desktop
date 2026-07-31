@@ -7,27 +7,50 @@ import {
   buildOnboardingSteps,
   FormatRuleTable,
   FormatsTable,
-  formatDetectedFileStateLabel,
-  formatFileKindLabel,
-  formatLifecycleLabel,
-  formatLocalPresenceLabel,
-  formatSourceModifiedAt,
-  formatUploadJobModifiedAt,
-  getUploadJobModifiedAt,
   formatOvrRangeLabel,
-  formatQueueStateLabel,
   formatSlotCountsLabel,
   formatTeamsPerTournamentLabel,
   PreferencesForm,
   QueueTable,
   ServerProfileForm,
   SummaryCard,
-  uploadJobNeedsAttention,
-  uploadJobWaitingOnServer,
-  uploadJobWorkingAutomatically,
   WatchRootForm,
   WatchRootTable
 } from './components';
+import {
+  blockerActionLabelByState,
+  blockerDetailByState,
+  blockerPriority,
+  blockerTitleByState,
+  canDismissUploadJob,
+  canIgnoreUploadJob,
+  explainFilenameAutoAssignment,
+  formatDetectedFileStateLabel,
+  formatFileKindLabel,
+  formatLifecycleLabel,
+  formatLocalPresenceLabel,
+  formatMatchesTeamCount,
+  formatQueueStateLabel,
+  formatSourceModifiedAt,
+  formatUploadJobModifiedAt,
+  getIncompleteTeamCountWarning,
+  getQueueRowActionKeys,
+  getUploadJobKindDetail,
+  getUploadJobModifiedAt,
+  isQueueJobDone,
+  parseLegacyQueueWorkspaceView,
+  parseQueueWorkspaceView,
+  queueLinkForJob,
+  queueWorkspaceViewColor,
+  queueWorkspaceViewDetail,
+  queueWorkspaceViewForJob,
+  queueWorkspaceViewLabel,
+  uploadJobNeedsAttention,
+  uploadJobWaitingOnServer,
+  uploadJobWorkingAutomatically,
+  type QueueWorkspaceView,
+  type TodayBlockerState
+} from './queue-model';
 
 const useScrollToHash = (): void => {
   const location = useLocation();
@@ -60,197 +83,6 @@ const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
     ) : null}
   </Group>
 );
-
-const formatMatchesTeamCount = (teamsPerTournament: number, teamCount: number): boolean =>
-  teamCount === 0 || teamsPerTournament === 0 || teamCount <= teamsPerTournament;
-
-const getIncompleteTeamCountWarning = (
-  fileKind: string,
-  teamCount: number,
-  format: { name: string; teamsPerTournament: number } | null | undefined
-): { badgeLabel: string; message: string } | null => {
-  if (
-    fileKind !== 'stats_export' ||
-    !format ||
-    teamCount === 0 ||
-    format.teamsPerTournament === 0 ||
-    teamCount >= format.teamsPerTournament
-  ) {
-    return null;
-  }
-
-  return {
-    badgeLabel: `${teamCount}/${format.teamsPerTournament} teams`,
-    message: `Detected ${teamCount} distinct team codes for ${format.name}'s ${format.teamsPerTournament}-team format. The app still assigned it because the filename matched, but this usually means a team was left unrostered or collapsed into an unknown placeholder in the export.`
-  };
-};
-
-const extractTournamentIdCandidates = (value: string): string[] => {
-  const matches = value.match(/\d+/gu) ?? [];
-  return matches.filter((candidate) => candidate.length >= 5 && candidate.length <= 7);
-};
-
-const explainFilenameAutoAssignment = (
-  filename: string,
-  teamCount: number,
-  formats: Array<{ id: string; name: string; tournamentIdPrefix: string; teamsPerTournament: number }>
-): string => {
-  const candidates = extractTournamentIdCandidates(filename);
-  if (candidates.length === 0) {
-    return 'The filename does not contain a 5 to 7 digit tournament ID, so the app cannot map it automatically.';
-  }
-
-  for (const candidate of candidates) {
-    const prefixMatches = formats.filter(
-      (format) =>
-        format.tournamentIdPrefix.length > 0 &&
-        candidate.length === format.tournamentIdPrefix.length + 4 &&
-        candidate.startsWith(format.tournamentIdPrefix)
-    );
-
-    if (prefixMatches.length === 0) {
-      continue;
-    }
-
-    const compatibleMatches = prefixMatches.filter((format) =>
-      formatMatchesTeamCount(format.teamsPerTournament, teamCount)
-    );
-
-    if (compatibleMatches.length === 0) {
-      return teamCount > 0
-        ? `The filename looks like tournament ID ${candidate}, but none of the cached formats with that prefix accept this file's ${teamCount} detected teams.`
-        : `The filename looks like tournament ID ${candidate}, but none of the cached formats with that prefix are eligible for automatic assignment.`;
-    }
-
-    if (compatibleMatches.length > 1) {
-      return `The filename looks like tournament ID ${candidate}, but more than one cached format shares that tournament ID prefix, so the app will not guess.`;
-    }
-  }
-
-  return `The filename contains ${candidates.join(', ')}, but none of those IDs match a cached tournament prefix on this desktop.`;
-};
-
-type QueueWorkspaceView = 'needs_action' | 'ignored' | 'working' | 'done';
-
-type TodayBlockerState = 'awaiting_format_assignment' | 'failed_retryable' | 'auth_blocked';
-
-const queueWorkspaceViewLabel: Record<QueueWorkspaceView, string> = {
-  needs_action: 'Needs Action',
-  ignored: 'Ignored',
-  working: 'Working',
-  done: 'Done'
-};
-
-const queueWorkspaceViewDetail: Record<QueueWorkspaceView, string> = {
-  needs_action: 'Rows waiting on a user decision.',
-  ignored: 'Rows hidden from the active queue until you restore them.',
-  working: 'Automatic or server-side work that is still progressing.',
-  done: 'Finished, skipped, or terminal rows.'
-};
-
-const queueWorkspaceViewColor: Record<QueueWorkspaceView, string> = {
-  needs_action: 'orange',
-  ignored: 'gray',
-  working: 'blue',
-  done: 'teal'
-};
-
-const queueLinkForJob = (jobId: string, view: QueueWorkspaceView = 'needs_action'): string => {
-  const params = new URLSearchParams();
-  params.set('view', view);
-  params.set('job', jobId);
-  const query = params.toString();
-  return query ? `/queue?${query}` : '/queue';
-};
-
-const parseQueueWorkspaceView = (value: string | null): QueueWorkspaceView | null => {
-  if (value === 'needs_action' || value === 'ignored' || value === 'working' || value === 'done') {
-    return value;
-  }
-  return null;
-};
-
-const parseLegacyQueueWorkspaceView = (
-  value: string | null,
-  selectedJob: LocalUploadJob | null
-): QueueWorkspaceView | null => {
-  if (value === 'uploaded') {
-    return 'done';
-  }
-  if (value === 'queued') {
-    return selectedJob && uploadJobNeedsAttention(selectedJob) ? 'needs_action' : 'working';
-  }
-  return null;
-};
-
-const queueWorkspaceViewForJob = (job: LocalUploadJob): QueueWorkspaceView => {
-  if (uploadJobNeedsAttention(job)) {
-    return 'needs_action';
-  }
-  if (job.localState === 'ignored') {
-    return 'ignored';
-  }
-  if (uploadJobWorkingAutomatically(job)) {
-    return 'working';
-  }
-  return 'done';
-};
-
-const isQueueJobDone = (job: LocalUploadJob): boolean => queueWorkspaceViewForJob(job) === 'done';
-
-const canIgnoreUploadJob = (job: LocalUploadJob): boolean =>
-  uploadJobNeedsAttention(job) || uploadJobWorkingAutomatically(job);
-
-const canDismissUploadJob = (job: LocalUploadJob): boolean =>
-  job.localState === 'duplicate_skipped_local' ||
-  job.localState === 'awaiting_format_assignment' ||
-  job.localState === 'detected' ||
-  job.localState === 'queued_local';
-
-const blockerPriority: Record<TodayBlockerState, number> = {
-  auth_blocked: 0,
-  awaiting_format_assignment: 1,
-  failed_retryable: 2
-};
-
-const blockerTitleByState: Record<TodayBlockerState, string> = {
-  awaiting_format_assignment: 'Waiting for format assignment',
-  failed_retryable: 'Retryable failure',
-  auth_blocked: 'Sign-in required'
-};
-
-const blockerActionLabelByState: Record<TodayBlockerState, string> = {
-  awaiting_format_assignment: 'Open queue to assign format',
-  failed_retryable: 'Open queue to retry',
-  auth_blocked: 'Open queue to re-authenticate'
-};
-
-const blockerDetailByState = (
-  job: { fileKind: string; error?: string | null; formatId?: string | null; filename: string },
-  formatLabelById: Record<string, string>
-): string => {
-  switch (job.fileKind) {
-    case 'stats_export':
-      return `The export is blocked until it is mapped to a tournament format${job.formatId ? ` (${formatLabelById[job.formatId] ?? 'unknown format'})` : ''}.`;
-    case 'card_catalog':
-      return 'The catalog is waiting for the queue to finish assigning its next server lifecycle step.';
-    default:
-      return 'This file is blocked and needs one quick queue action before it can continue.';
-  }
-};
-
-const getUploadJobKindDetail = (job: Pick<LocalUploadJob, 'fileKind' | 'lifecyclePhase' | 'localState'>): string => {
-  if (job.localState === 'failed_retryable') {
-    return 'A transient error paused the upload.';
-  }
-  if (job.localState === 'auth_blocked') {
-    return 'The selected account needs to be signed in again.';
-  }
-  if (job.localState === 'awaiting_format_assignment') {
-    return 'The queue is waiting for a format match.';
-  }
-  return job.lifecyclePhase ? formatLifecycleLabel(job.lifecyclePhase, job.fileKind) : 'In progress';
-};
 
 const ReadinessCard = ({
   id,
@@ -918,6 +750,7 @@ export const UploadQueuePage = (): JSX.Element => {
     [selectedJob?.fileKind, selectedJob?.teamCount, selectedJobFormat]
   );
   const selectedJobView = selectedJob ? queueWorkspaceViewForJob(selectedJob) : null;
+  const selectedJobActions = useMemo(() => (selectedJob ? getQueueRowActionKeys(selectedJob) : []), [selectedJob]);
   const selectedJobDetail = selectedJob
     ? selectedJob.localState === 'awaiting_format_assignment'
       ? 'Awaiting format assignment'
@@ -1271,7 +1104,9 @@ export const UploadQueuePage = (): JSX.Element => {
                     </Group>
                   );
                 }}
-                actions={(job) => (
+                actions={(job) => {
+                  const rowActions = getQueueRowActionKeys(job);
+                  return (
                   <Group gap="xs">
                     <Button
                       size="compact-xs"
@@ -1283,7 +1118,7 @@ export const UploadQueuePage = (): JSX.Element => {
                     >
                       Reveal
                     </Button>
-                    {job.localState === 'awaiting_format_assignment' ? (
+                    {rowActions.includes('assign') ? (
                       <Button
                         size="compact-xs"
                         variant="light"
@@ -1297,7 +1132,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Assign
                       </Button>
                     ) : null}
-                    {job.localState === 'failed_retryable' ? (
+                    {rowActions.includes('retry') ? (
                       <Button
                         size="compact-xs"
                         variant="light"
@@ -1310,7 +1145,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Retry
                       </Button>
                     ) : null}
-                    {job.localState === 'auth_blocked' && selectedProfile ? (
+                    {rowActions.includes('reauth') && selectedProfile ? (
                       <Button
                         size="compact-xs"
                         variant="light"
@@ -1323,7 +1158,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Re-auth
                       </Button>
                     ) : null}
-                    {canIgnoreUploadJob(job) ? (
+                    {rowActions.includes('ignore') ? (
                       <Button
                         size="compact-xs"
                         variant="subtle"
@@ -1336,7 +1171,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Ignore
                       </Button>
                     ) : null}
-                    {job.localState === 'detected' || job.localState === 'queued_local' ? (
+                    {rowActions.includes('dismissWorking') ? (
                       <Button
                         size="compact-xs"
                         variant="subtle"
@@ -1349,7 +1184,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Dismiss
                       </Button>
                     ) : null}
-                    {job.localState === 'ignored' ? (
+                    {rowActions.includes('restore') ? (
                       <Button
                         size="compact-xs"
                         variant="subtle"
@@ -1362,7 +1197,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Restore
                       </Button>
                     ) : null}
-                    {job.localState === 'duplicate_skipped_local' ? (
+                    {rowActions.includes('dismissDuplicate') ? (
                       <Button
                         size="compact-xs"
                         variant="subtle"
@@ -1374,7 +1209,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Dismiss
                       </Button>
                     ) : null}
-                    {job.localState === 'awaiting_format_assignment' ? (
+                    {rowActions.includes('removeAwaiting') ? (
                       <Button
                         size="compact-xs"
                         variant="subtle"
@@ -1388,7 +1223,8 @@ export const UploadQueuePage = (): JSX.Element => {
                       </Button>
                     ) : null}
                   </Group>
-                )}
+                  );
+                }}
               />
             </Stack>
           </Card>
@@ -1427,7 +1263,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         >
                           Reveal file
                         </Button>
-                        {selectedJob.localState === 'failed_retryable' ? (
+                        {selectedJobActions.includes('retry') ? (
                           <Button
                             size="xs"
                             color="orange"
@@ -1438,7 +1274,7 @@ export const UploadQueuePage = (): JSX.Element => {
                             Retry now
                           </Button>
                         ) : null}
-                        {selectedJob.localState === 'auth_blocked' && selectedProfile ? (
+                        {selectedJobActions.includes('reauth') && selectedProfile ? (
                           <Button
                             size="xs"
                             color="red"
@@ -1449,7 +1285,7 @@ export const UploadQueuePage = (): JSX.Element => {
                             Re-authenticate
                           </Button>
                         ) : null}
-                        {canIgnoreUploadJob(selectedJob) ? (
+                        {selectedJobActions.includes('ignore') ? (
                           <Button
                             size="xs"
                             variant="light"
@@ -1461,7 +1297,7 @@ export const UploadQueuePage = (): JSX.Element => {
                             Ignore row
                           </Button>
                         ) : null}
-                        {selectedJob.localState === 'ignored' ? (
+                        {selectedJobActions.includes('restore') ? (
                           <Button
                             size="xs"
                             color="gray"
@@ -1472,7 +1308,7 @@ export const UploadQueuePage = (): JSX.Element => {
                             Restore row
                           </Button>
                         ) : null}
-                        {selectedJob.localState === 'detected' || selectedJob.localState === 'queued_local' ? (
+                        {selectedJobActions.includes('dismissWorking') ? (
                           <Button
                             size="xs"
                             color="red"
@@ -1484,7 +1320,7 @@ export const UploadQueuePage = (): JSX.Element => {
                             Dismiss row
                           </Button>
                         ) : null}
-                        {selectedJob.localState === 'awaiting_format_assignment' ? (
+                        {selectedJobActions.includes('removeAwaiting') ? (
                           <Button
                             size="xs"
                             color="orange"
@@ -1495,7 +1331,7 @@ export const UploadQueuePage = (): JSX.Element => {
                             Remove from queue
                           </Button>
                         ) : null}
-                        {selectedJob.localState === 'duplicate_skipped_local' ? (
+                        {selectedJobActions.includes('dismissDuplicate') ? (
                           <Button
                             size="xs"
                             variant="light"
