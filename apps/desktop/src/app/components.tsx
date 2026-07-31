@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, HoverCard, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, HoverCard, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import type {
   DesktopPreferences,
@@ -144,6 +144,137 @@ export const buildOnboardingSteps = ({
       dismissible: formatRules.length === 0 && !automationReminderDismissed
     }
   ];
+};
+
+export const ReadinessCard = ({
+  id,
+  onboardingSteps,
+  nextStep,
+  selectedProfileName,
+  dismissCompletedReadinessCard,
+  onDismissCompletedReadinessCard,
+  onDismissAutomationReminder,
+  variant
+}: {
+  id?: string;
+  onboardingSteps: ReturnType<typeof buildOnboardingSteps>;
+  nextStep: ReturnType<typeof buildOnboardingSteps>[number] | null;
+  selectedProfileName: string;
+  dismissCompletedReadinessCard: boolean;
+  onDismissCompletedReadinessCard: (dismissed: boolean) => void;
+  onDismissAutomationReminder: () => void;
+  variant: 'today' | 'settings';
+}): JSX.Element | null => {
+  if (!nextStep && variant === 'today' && dismissCompletedReadinessCard) {
+    return null;
+  }
+
+  if (!nextStep) {
+    return (
+      <Card withBorder className="desktop-card desktop-today-readiness-compact" id={id}>
+        <Stack gap="sm">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <div>
+              <Text className="desktop-micro-label">Readiness</Text>
+              <Text fw={700}>Operationally ready</Text>
+            </div>
+            <Text size="sm" c="dimmed">
+              {selectedProfileName}
+            </Text>
+          </Group>
+          <Group gap="xs" wrap="wrap">
+            {onboardingSteps.map((step) => (
+              <Badge key={step.key} color="teal" variant="light">
+                {step.label}
+              </Badge>
+            ))}
+          </Group>
+          <Group gap="xs" wrap="wrap" justify="space-between">
+            <Text size="sm" c="dimmed">
+              The desktop app is ready for normal operation.
+            </Text>
+            <Group gap="xs" wrap="wrap">
+              {variant === 'today' ? (
+                <Button size="compact-xs" variant="subtle" color="gray" onClick={() => onDismissCompletedReadinessCard(true)}>
+                  Dismiss
+                </Button>
+              ) : (
+                <Button
+                  size="compact-xs"
+                  variant="light"
+                  color="gray"
+                  onClick={() => onDismissCompletedReadinessCard(!dismissCompletedReadinessCard)}
+                >
+                  {dismissCompletedReadinessCard ? 'Show on Today' : 'Hide from Today'}
+                </Button>
+              )}
+              {variant === 'today' ? (
+                <Button component={Link} to="/settings#readiness" size="compact-xs" variant="light">
+                  Manage readiness
+                </Button>
+              ) : (
+                <Button component={Link} to="/today" size="compact-xs" variant="light">
+                  Open Today
+                </Button>
+              )}
+            </Group>
+          </Group>
+        </Stack>
+      </Card>
+    );
+  }
+
+  return (
+    <Card withBorder className="desktop-card desktop-today-strip" id={id}>
+      <Stack gap="sm">
+        <Group justify="space-between" align="center" wrap="wrap">
+          <div>
+            <Text className="desktop-micro-label">Readiness</Text>
+            <Text fw={700}>Finish setup</Text>
+          </div>
+          <Text size="sm" c="dimmed">
+            {selectedProfileName}
+          </Text>
+        </Group>
+        <SimpleGrid cols={{ base: 1, md: 2, xl: variant === 'today' ? 3 : 2 }} spacing="sm">
+          {onboardingSteps.map((step, index) => (
+            <Card key={step.key} withBorder className={`desktop-card desktop-today-strip-item${step.complete ? ' complete' : ''}`}>
+              <Stack gap={6}>
+                <Group justify="space-between" align="flex-start" wrap="nowrap">
+                  <div>
+                    <Text size="sm" fw={700}>
+                      {index + 1}. {step.label}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {step.status}
+                    </Text>
+                  </div>
+                  <Badge color={step.complete ? 'teal' : step === nextStep ? 'orange' : 'gray'} variant="light">
+                    {step.complete ? 'Ready' : 'Pending'}
+                  </Badge>
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {step === nextStep ? step.detail : step.complete ? 'Ready for normal operation.' : 'Still needs setup.'}
+                </Text>
+                {!step.complete ? (
+                  <Group gap="xs" wrap="wrap">
+                    <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-today-strip-action">
+                      {step.actionLabel}
+                    </Button>
+                    {step.dismissible ? (
+                      <Button size="compact-xs" variant="subtle" color="gray" onClick={onDismissAutomationReminder}>
+                        Dismiss
+                      </Button>
+                    ) : null}
+                  </Group>
+                ) : null}
+              </Stack>
+            </Card>
+          ))}
+        </SimpleGrid>
+      </Stack>
+    </Card>
+  );
 };
 
 export const DesktopSidebar = (): JSX.Element => {
