@@ -84,7 +84,8 @@ jobs:
             libgtk-3-dev \
             libayatana-appindicator3-dev \
             libsoup-3.0-dev \
-            libwebkit2gtk-4.1-dev
+            libwebkit2gtk-4.1-dev \
+            librsvg2-dev
 
       - name: Install npm dependencies
         run: npm ci
@@ -99,7 +100,7 @@ jobs:
           # linuxdeploy ships as an AppImage and needs FUSE to mount itself; GitHub's
           # ubuntu-24.04 runners don't have FUSE, so make it self-extract instead.
           APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: npx tauri build --verbose --bundles ${{ matrix.bundles }}
+        run: npx tauri build --bundles ${{ matrix.bundles }}
 
       - name: Build signed desktop bundles
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -108,7 +109,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: npx tauri build --verbose --bundles ${{ matrix.bundles }} --config src-tauri/tauri.release.conf.json
+        run: npx tauri build --bundles ${{ matrix.bundles }} --config src-tauri/tauri.release.conf.json
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v4
