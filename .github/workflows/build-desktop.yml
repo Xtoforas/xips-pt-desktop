@@ -95,6 +95,10 @@ jobs:
       - name: Build desktop bundles
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         working-directory: apps/desktop
+        env:
+          # linuxdeploy ships as an AppImage and needs FUSE to mount itself; GitHub's
+          # ubuntu-24.04 runners don't have FUSE, so make it self-extract instead.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npx tauri build --bundles ${{ matrix.bundles }}
 
       - name: Build signed desktop bundles
@@ -103,6 +107,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npx tauri build --bundles ${{ matrix.bundles }} --config src-tauri/tauri.release.conf.json
 
       - name: Upload desktop artifacts
