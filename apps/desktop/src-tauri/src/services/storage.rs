@@ -1460,6 +1460,7 @@ pub fn ignore_upload_job(db_path: &Path, upload_job_id: &str) -> Result<DesktopS
             | "server_refreshing"
             | "awaiting_format_assignment"
             | "failed_retryable"
+            | "failed_terminal"
             | "auth_blocked"
     ) {
         return Err(String::from("ignorable_upload_job_required"));

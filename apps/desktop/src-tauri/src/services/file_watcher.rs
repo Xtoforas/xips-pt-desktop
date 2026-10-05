@@ -37,6 +37,21 @@ struct WatchSubscription {
   root_path: PathBuf,
 }
 
+pub fn run_initial_scan(app: &AppHandle, db_path: &Path) -> Result<(), String> {
+  let rescanned_files = storage::rescan_active_watch_roots(db_path)?;
+  if rescanned_files > 0 {
+    storage::write_diagnostic_event(
+      db_path,
+      "info",
+      "watcher",
+      "Rescanned active watch roots during startup",
+      &format!("detected_files={}", rescanned_files),
+    )?;
+  }
+  app.emit(SNAPSHOT_EVENT, true).map_err(|error| error.to_string())?;
+  Ok(())
+}
+
 pub fn restart(app: &AppHandle, state: &AppState) -> Result<(), String> {
   let watch_roots = storage::load_snapshot(&state.db_path)?.watch_roots;
   let active_roots = watch_roots.into_iter().filter(|root| !root.paused).collect::<Vec<LocalWatchRoot>>();

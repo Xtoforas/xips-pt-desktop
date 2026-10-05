@@ -866,17 +866,24 @@ pub(crate) async fn process_upload_queue_for_profile(
                         &error,
                     );
                 }
+                let permanent = error.is_permanent_validation_failure();
+                let next_state = if permanent { "failed_terminal" } else { "failed_retryable" };
+                let next_retry_after = if permanent {
+                    String::new()
+                } else {
+                    retry_after_iso(job.retries + 1)
+                };
                 storage::update_upload_job_metadata(
                     db_path,
                     &job.id,
-                    "failed_retryable",
+                    next_state,
                     Some("failed"),
                     None,
                     "",
                     "",
                     &error.request_id,
                     "",
-                    &retry_after_iso(job.retries + 1),
+                    &next_retry_after,
                     "",
                     "",
                     "",
@@ -985,17 +992,24 @@ pub(crate) async fn process_upload_queue_for_profile(
                         &error,
                     );
                 }
+                let permanent = error.is_permanent_validation_failure();
+                let next_state = if permanent { "failed_terminal" } else { "failed_retryable" };
+                let next_retry_after = if permanent {
+                    String::new()
+                } else {
+                    retry_after_iso(job.retries + 1)
+                };
                 storage::update_upload_job_metadata(
                     db_path,
                     &job.id,
-                    "failed_retryable",
+                    next_state,
                     Some("failed"),
                     None,
                     "",
                     "",
                     &error.request_id,
                     "",
-                    &retry_after_iso(job.retries + 1),
+                    &next_retry_after,
                     "",
                     "",
                     "",
@@ -1214,10 +1228,10 @@ pub fn desktop_open_upload_file_location(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let job = storage::load_upload_job_by_id(&state.db_path, &upload_job_id)?;
-    let reveal_path = if !job.staged_path.is_empty() {
-        job.staged_path.clone()
-    } else {
+    let reveal_path = if !job.path.is_empty() {
         job.path.clone()
+    } else {
+        job.staged_path.clone()
     };
     open_file_location(&reveal_path)?;
     storage::write_diagnostic_event(
@@ -1334,16 +1348,6 @@ pub fn create_app_state(app: &AppHandle) -> Result<AppState, String> {
             "queue",
             "Repaired stale upload jobs during startup",
             &format!("repaired_jobs={}", repaired_jobs),
-        )?;
-    }
-    let rescanned_files = storage::rescan_active_watch_roots(&db_path)?;
-    if rescanned_files > 0 {
-        storage::write_diagnostic_event(
-            &db_path,
-            "info",
-            "watcher",
-            "Rescanned active watch roots during startup",
-            &format!("detected_files={}", rescanned_files),
         )?;
     }
     Ok(AppState {

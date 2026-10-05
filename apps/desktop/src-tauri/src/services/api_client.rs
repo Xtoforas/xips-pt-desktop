@@ -35,6 +35,17 @@ impl ApiError {
     pub fn is_auth_error(&self) -> bool {
         self.status == 401 || self.code == "authentication_required"
     }
+
+    /// True for deterministic server-side validation rejections that will not
+    /// change on a bare retry (e.g. cap/variant limits, missing teams) — only
+    /// resolved by editing the tournament format/rules on the server.
+    pub fn is_permanent_validation_failure(&self) -> bool {
+        self.status == 400
+            && matches!(
+                self.code.as_str(),
+                "team_count_mismatch" | "format_team_count_mismatch" | "variant_limit_exceeded"
+            )
+    }
 }
 
 impl std::fmt::Display for ApiError {
@@ -519,7 +530,37 @@ pub fn into_session_user(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_health_payload;
+    use super::{parse_health_payload, ApiError};
+
+    fn api_error(status: u16, code: &str) -> ApiError {
+        ApiError {
+            status,
+            code: code.to_string(),
+            request_id: String::new(),
+            detail: String::new(),
+        }
+    }
+
+    #[test]
+    fn is_permanent_validation_failure_true_for_known_codes_at_400() {
+        assert!(api_error(400, "team_count_mismatch").is_permanent_validation_failure());
+        assert!(api_error(400, "format_team_count_mismatch").is_permanent_validation_failure());
+        assert!(api_error(400, "variant_limit_exceeded").is_permanent_validation_failure());
+    }
+
+    #[test]
+    fn is_permanent_validation_failure_false_for_same_codes_at_other_status() {
+        assert!(!api_error(500, "team_count_mismatch").is_permanent_validation_failure());
+        assert!(!api_error(429, "variant_limit_exceeded").is_permanent_validation_failure());
+    }
+
+    #[test]
+    fn is_permanent_validation_failure_false_for_unrelated_or_transient_codes() {
+        assert!(!api_error(400, "format_not_found").is_permanent_validation_failure());
+        assert!(!api_error(400, "authentication_required").is_permanent_validation_failure());
+        assert!(!api_error(500, "request_failed").is_permanent_validation_failure());
+        assert!(!api_error(429, "rate_limited").is_permanent_validation_failure());
+    }
 
     #[test]
     fn parse_health_payload_accepts_stringified_counts() {

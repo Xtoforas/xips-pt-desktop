@@ -29,9 +29,24 @@ fn main() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let state = create_app_state(app.handle())?;
+            let db_path = state.db_path.clone();
             services::file_watcher::restart(app.handle(), &state)?;
             services::background_queue::start(app.handle(), &state)?;
             app.manage(state);
+
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Err(error) = services::file_watcher::run_initial_scan(&app_handle, &db_path) {
+                    let _ = services::storage::write_diagnostic_event(
+                        &db_path,
+                        "error",
+                        "watcher",
+                        "Initial watch root scan failed",
+                        &error,
+                    );
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -28,11 +28,13 @@ pub struct FormatRuleMatch {
     pub format_id: String,
 }
 
+const MAX_SCAN_WORKERS: usize = 4;
+
 pub fn scan_watch_roots(
     watch_roots: &[LocalWatchRoot],
     format_rules: &[FormatRuleMatch],
 ) -> Result<Vec<ScanResult>, String> {
-    let mut results: Vec<ScanResult> = Vec::new();
+    let mut candidates: Vec<(&LocalWatchRoot, PathBuf)> = Vec::new();
     for watch_root in watch_roots.iter().filter(|root| !root.paused) {
         let root_path = PathBuf::from(&watch_root.path);
         if !root_path.exists() {
@@ -51,46 +53,90 @@ pub fn scan_watch_roots(
             if should_ignore_path(path) {
                 return Ok(());
             }
-            let bytes = fs::read(path).map_err(|error| error.to_string())?;
-            let header_line = String::from_utf8_lossy(&bytes)
-                .lines()
-                .next()
-                .map(|value| value.to_string())
-                .unwrap_or_default();
-            let header = split_header(&header_line);
-            let file_kind = detect_kind(&header).to_string();
-            let validation_error = if file_kind == "stats_export" {
-                validate_stats_export(&bytes, &header).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let checksum = checksum_hex(&bytes);
-            let team_count = if file_kind == "stats_export" {
-                read_team_count(&bytes, &header)
-            } else {
-                0
-            };
-            let source_modified_at = read_source_modified_at(path);
-            let format_id = resolve_format_id(path, &file_kind, watch_root, format_rules);
-            results.push(ScanResult {
-                watch_root_id: watch_root.id.clone(),
-                path: path.to_string_lossy().to_string(),
-                filename: path
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                file_kind,
-                checksum,
-                team_count,
-                source_modified_at,
-                format_id,
-                validation_error,
-            });
+            candidates.push((watch_root, path.to_path_buf()));
             Ok(())
         })?;
     }
-    Ok(results)
+
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let worker_count = std::thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(1)
+        .min(MAX_SCAN_WORKERS)
+        .min(candidates.len());
+
+    let queue = std::sync::Mutex::new(candidates.into_iter());
+    let results = std::sync::Mutex::new(Vec::<ScanResult>::new());
+    let first_error = std::sync::Mutex::new(None::<String>);
+
+    std::thread::scope(|scope| {
+        for _ in 0..worker_count {
+            scope.spawn(|| loop {
+                let next = queue.lock().unwrap().next();
+                let Some((watch_root, path)) = next else {
+                    break;
+                };
+                match scan_file(&path, watch_root, format_rules) {
+                    Ok(result) => results.lock().unwrap().push(result),
+                    Err(error) => {
+                        first_error.lock().unwrap().get_or_insert(error);
+                        break;
+                    }
+                }
+            });
+        }
+    });
+
+    if let Some(error) = first_error.into_inner().unwrap() {
+        return Err(error);
+    }
+    Ok(results.into_inner().unwrap())
+}
+
+fn scan_file(
+    path: &Path,
+    watch_root: &LocalWatchRoot,
+    format_rules: &[FormatRuleMatch],
+) -> Result<ScanResult, String> {
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    let header_line = String::from_utf8_lossy(&bytes)
+        .lines()
+        .next()
+        .map(|value| value.to_string())
+        .unwrap_or_default();
+    let header = split_header(&header_line);
+    let file_kind = detect_kind(&header).to_string();
+    let validation_error = if file_kind == "stats_export" {
+        validate_stats_export(&bytes, &header).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let checksum = checksum_hex(&bytes);
+    let team_count = if file_kind == "stats_export" {
+        read_team_count(&bytes, &header)
+    } else {
+        0
+    };
+    let source_modified_at = read_source_modified_at(path);
+    let format_id = resolve_format_id(path, &file_kind, watch_root, format_rules);
+    Ok(ScanResult {
+        watch_root_id: watch_root.id.clone(),
+        path: path.to_string_lossy().to_string(),
+        filename: path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string(),
+        file_kind,
+        checksum,
+        team_count,
+        source_modified_at,
+        format_id,
+        validation_error,
+    })
 }
 
 fn should_ignore_path(path: &Path) -> bool {
