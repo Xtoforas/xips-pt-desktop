@@ -33,7 +33,7 @@ if errorlevel 1 (
 
 echo.
 echo == Installing workspace dependencies ==
-call npm install
+call npm install --prefer-offline --no-audit --no-fund
 if errorlevel 1 goto :fail
 
 echo.
@@ -45,7 +45,7 @@ if errorlevel 1 (
   goto :fail
 )
 
-call npx tauri build
+call npx tauri build --no-bundle
 if errorlevel 1 (
   popd >nul
   goto :fail
