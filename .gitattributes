@@ -1,0 +1,2 @@
+# Hook launchers run under sh, which may not tolerate CRLF (e.g. WSL on a Windows checkout)
+*.sh text eol=lf
