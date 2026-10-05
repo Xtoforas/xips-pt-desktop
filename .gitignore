@@ -8,3 +8,11 @@ plan.md
 examples/
 AGENTS.md
 .codex
+.vscode/
+
+# Agents
+.claude/settings.local.json
+.claude/worktrees*
+.playwright-mcp/
+__pycache__/
+tasks/
