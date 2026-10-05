@@ -7,10 +7,12 @@ import {
   formatLifecycleLabel,
   formatMatchesTeamCount,
   formatQueueStateLabel,
+  formatRetryableFailureMessage,
   formatUploadJobChecksumStatusLabel,
   getIncompleteTeamCountWarning,
   getQueueRowActionKeys,
   isQueueJobDone,
+  parseRetryableFailureDetail,
   queueWorkspaceViewForJob,
   uploadJobNeedsAttention,
   uploadJobWaitingOnServer,
@@ -87,7 +89,7 @@ describe('queueWorkspaceViewForJob', () => {
     server_refreshing: 'working',
     complete: 'done',
     failed_retryable: 'needs_action',
-    failed_terminal: 'done',
+    failed_terminal: 'needs_action',
     auth_blocked: 'needs_action'
   };
 
@@ -110,9 +112,9 @@ describe('isQueueJobDone', () => {
     expect(isQueueJobDone(job)).toBe(queueWorkspaceViewForJob(job) === 'done');
   });
 
-  test('is true for exactly complete, duplicate_skipped_local, and failed_terminal', () => {
+  test('is true for exactly complete and duplicate_skipped_local (failed_terminal now needs attention)', () => {
     const doneStates = ALL_LOCAL_STATES.filter((localState) => isQueueJobDone(makeUploadJob({ localState })));
-    expect(doneStates.sort()).toEqual(['complete', 'duplicate_skipped_local', 'failed_terminal'].sort());
+    expect(doneStates.sort()).toEqual(['complete', 'duplicate_skipped_local'].sort());
   });
 });
 
@@ -134,7 +136,7 @@ describe('upload job classification predicates', () => {
     server_refreshing: { needsAttention: false, workingAutomatically: true, waitingOnServer: true },
     complete: { needsAttention: false, workingAutomatically: false, waitingOnServer: false },
     failed_retryable: { needsAttention: true, workingAutomatically: false, waitingOnServer: false },
-    failed_terminal: { needsAttention: false, workingAutomatically: false, waitingOnServer: false },
+    failed_terminal: { needsAttention: true, workingAutomatically: false, waitingOnServer: false },
     auth_blocked: { needsAttention: true, workingAutomatically: false, waitingOnServer: false }
   };
 
@@ -208,7 +210,7 @@ describe('getQueueRowActionKeys', () => {
     server_refreshing: ['ignore'],
     complete: [],
     failed_retryable: ['retry', 'ignore'],
-    failed_terminal: [],
+    failed_terminal: ['retry', 'ignore'],
     auth_blocked: ['reauth', 'ignore']
   };
 
@@ -279,9 +281,10 @@ describe('formatUploadJobChecksumStatusLabel', () => {
 });
 
 describe('blockerPriority', () => {
-  test('orders auth_blocked before awaiting_format_assignment before failed_retryable', () => {
+  test('orders auth_blocked before awaiting_format_assignment before failed_retryable before failed_terminal', () => {
     expect(blockerPriority.auth_blocked).toBeLessThan(blockerPriority.awaiting_format_assignment);
     expect(blockerPriority.awaiting_format_assignment).toBeLessThan(blockerPriority.failed_retryable);
+    expect(blockerPriority.failed_retryable).toBeLessThan(blockerPriority.failed_terminal);
   });
 });
 
@@ -320,5 +323,92 @@ describe('getIncompleteTeamCountWarning', () => {
 
   test('is silent without an assigned format', () => {
     expect(getIncompleteTeamCountWarning('stats_export', 12, null)).toBeNull();
+  });
+});
+
+describe('formatRetryableFailureMessage', () => {
+  test('turns a team_count_mismatch ApiError into a readable sentence', () => {
+    const raw = 'team_count_mismatch ({"ok":false,"error":{"expected":2,"actual":1,"minimumAllowed":2}}) [requestId=4dbd-48f0-bbae-5d40fc61a604]';
+    expect(formatRetryableFailureMessage(raw)).toBe(
+      'Team count mismatch: Expected at least 2 teams in the export, but only 1 was detected. (request 4dbd-48f0-bbae-5d40fc61a604)'
+    );
+  });
+
+  test('describes known codes even without a matching detail shape', () => {
+    expect(formatRetryableFailureMessage('authentication_required ({})')).toBe(
+      'Authentication required: The selected account needs to sign in again.'
+    );
+  });
+
+  test('falls back to a labeled key/value list for unknown codes with a JSON object detail, ignoring "ok"', () => {
+    const raw = 'some_new_server_code ({"ok":false,"reason":"disk_full"})';
+    expect(formatRetryableFailureMessage(raw)).toBe('Some new server code: Reason: disk_full');
+  });
+
+  test('falls back to the raw detail text when it is not JSON', () => {
+    expect(formatRetryableFailureMessage('request_failed (Connection timed out)')).toBe(
+      'Request failed: Connection timed out'
+    );
+  });
+
+  test('handles a bare known code with no parenthesized detail', () => {
+    expect(formatRetryableFailureMessage('format_team_count_mismatch')).toBe(
+      'The export does not have enough distinct teams for this tournament format.'
+    );
+  });
+
+  test('passes through an unrecognized bare string unchanged', () => {
+    expect(formatRetryableFailureMessage('connection reset by peer')).toBe('connection reset by peer');
+  });
+
+  test('returns an empty string for empty input', () => {
+    expect(formatRetryableFailureMessage('')).toBe('');
+  });
+
+  test('summarizes a real variant_limit_exceeded payload captured from the server', () => {
+    const raw =
+      'variant_limit_exceeded ({"ok":false,"error":"variant_limit_exceeded","details":{"teamName":"Freedom Grabbers - HotL","allowed":5,"actual":6,"formatId":"c7305d8d-5caa-4189-b0d5-72035c6471c4","formatName":"Wednesday Ice to See You"}}) [requestId=ef5d6835-e0d4-48f4-8281-1b1f09d2fb4d]';
+    expect(formatRetryableFailureMessage(raw)).toBe(
+      'Variant limit exceeded: Freedom Grabbers - HotL has 6 variant cards, which exceeds the 5-card limit for Wednesday Ice to See You. (request ef5d6835-e0d4-48f4-8281-1b1f09d2fb4d)'
+    );
+  });
+});
+
+describe('parseRetryableFailureDetail', () => {
+  const realVariantLimitError =
+    'variant_limit_exceeded ({"ok":false,"error":"variant_limit_exceeded","details":{"teamName":"Freedom Grabbers - HotL","allowed":5,"actual":6,"formatId":"c7305d8d-5caa-4189-b0d5-72035c6471c4","formatName":"Wednesday Ice to See You"}}) [requestId=ef5d6835-e0d4-48f4-8281-1b1f09d2fb4d]';
+
+  test('extracts team, format, actual count, and limit from a real payload', () => {
+    expect(parseRetryableFailureDetail(realVariantLimitError)).toEqual({
+      kind: 'variant_limit_exceeded',
+      teamName: 'Freedom Grabbers - HotL',
+      formatName: 'Wednesday Ice to See You',
+      actual: 6,
+      allowed: 5
+    });
+  });
+
+  test('omits formatName when the server does not include it', () => {
+    const raw = 'variant_limit_exceeded ({"details":{"teamName":"Ice Breakers","allowed":10,"actual":12}})';
+    expect(parseRetryableFailureDetail(raw)).toEqual({
+      kind: 'variant_limit_exceeded',
+      teamName: 'Ice Breakers',
+      formatName: null,
+      actual: 12,
+      allowed: 10
+    });
+  });
+
+  test('returns null for unrelated error codes', () => {
+    expect(parseRetryableFailureDetail('team_count_mismatch ({"error":{"expected":2,"actual":1}})')).toBeNull();
+  });
+
+  test('returns null when the details shape is missing expected fields', () => {
+    expect(parseRetryableFailureDetail('variant_limit_exceeded ({"ok":false})')).toBeNull();
+  });
+
+  test('returns null for malformed input', () => {
+    expect(parseRetryableFailureDetail('not an api error')).toBeNull();
+    expect(parseRetryableFailureDetail('')).toBeNull();
   });
 });

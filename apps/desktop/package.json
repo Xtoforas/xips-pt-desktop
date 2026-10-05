@@ -11,6 +11,7 @@
     "contract:check": "vitest run --config vitest.contract.config.ts"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "@mantine/core": "^8.0.0",
     "@mantine/hooks": "^8.0.0",
     "@tauri-apps/api": "^2.0.0",

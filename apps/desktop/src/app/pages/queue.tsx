@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Card, Collapse, Group, Select, Stack, Table, Text, TextInput, Title } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
@@ -12,6 +12,7 @@ import {
   formatLocalPresenceLabel,
   formatMatchesTeamCount,
   formatQueueStateLabel,
+  formatRetryableFailureMessage,
   formatSourceModifiedAt,
   formatUploadJobModifiedAt,
   getIncompleteTeamCountWarning,
@@ -20,6 +21,7 @@ import {
   isQueueJobDone,
   parseLegacyQueueWorkspaceView,
   parseQueueWorkspaceView,
+  parseRetryableFailureDetail,
   queueWorkspaceViewColor,
   queueWorkspaceViewDetail,
   queueWorkspaceViewForJob,
@@ -71,6 +73,7 @@ export const UploadQueuePage = (): JSX.Element => {
   const [editingFilenameJobId, setEditingFilenameJobId] = useState('');
   const [inlineTournamentId, setInlineTournamentId] = useState('');
   const [bulkDismissInFlight, setBulkDismissInFlight] = useState(false);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const formatById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format])),
@@ -221,6 +224,10 @@ export const UploadQueuePage = (): JSX.Element => {
       ),
     [selectedJob?.fileKind, selectedJob?.teamCount, selectedJobFormat]
   );
+  const selectedJobFailureDetail = useMemo(
+    () => (selectedJob?.localState === 'failed_retryable' ? parseRetryableFailureDetail(selectedJob.error) : null),
+    [selectedJob?.localState, selectedJob?.error]
+  );
   const selectedJobView = selectedJob ? queueWorkspaceViewForJob(selectedJob) : null;
   const selectedJobActions = useMemo(() => (selectedJob ? getQueueRowActionKeys(selectedJob) : []), [selectedJob]);
   const selectedJobDetail = selectedJob
@@ -331,6 +338,7 @@ export const UploadQueuePage = (): JSX.Element => {
   useEffect(() => {
     setSelectedTournamentId('');
     setSelectedFormatId('');
+    setShowTechnicalDetails(false);
   }, [selectedJobId]);
 
   useEffect(() => {
@@ -418,10 +426,10 @@ export const UploadQueuePage = (): JSX.Element => {
 
   return (
     <Stack gap="lg">
-      <div>
-        <h2 className="desktop-page-title">Upload Queue</h2>
-        <p className="desktop-page-subtitle">Resolve blockers, track active work, and park ignored rows outside the main action lane.</p>
-      </div>
+      <Stack gap={4}>
+        <Title order={2}>Upload Queue</Title>
+        <Text c="dimmed">Resolve blockers, track active work, and park ignored rows outside the main action lane.</Text>
+      </Stack>
       {queueView !== 'needs_action' && queueCounts.needs_action > 0 ? (
         <Alert color="orange" variant="light">
           There are {queueCounts.needs_action} blocked job{queueCounts.needs_action === 1 ? '' : 's'} in Needs Action.
@@ -822,9 +830,40 @@ export const UploadQueuePage = (): JSX.Element => {
                       </Alert>
                     ) : null}
                     {selectedJob.localState === 'failed_retryable' ? (
-                      <Alert color="orange" title="Retryable failure">
-                        {selectedJob.error || 'A transient error paused this upload. Retry from the queue or after the service recovers.'}
+                      <Alert color="orange" title="Retryable failure" className="desktop-wrap-anywhere">
+                        {selectedJob.error
+                          ? formatRetryableFailureMessage(selectedJob.error)
+                          : 'A transient error paused this upload. Retry from the queue or after the service recovers.'}
                       </Alert>
+                    ) : null}
+                    {selectedJobFailureDetail?.kind === 'variant_limit_exceeded' ? (
+                      <Card withBorder className="desktop-subcard">
+                        <Stack gap="xs">
+                          <Text fw={600}>Variant limit details</Text>
+                          <Table withTableBorder withColumnBorders>
+                            <Table.Tbody>
+                              <Table.Tr>
+                                <Table.Th>Team</Table.Th>
+                                <Table.Td>{selectedJobFailureDetail.teamName}</Table.Td>
+                              </Table.Tr>
+                              {selectedJobFailureDetail.formatName ? (
+                                <Table.Tr>
+                                  <Table.Th>Format</Table.Th>
+                                  <Table.Td>{selectedJobFailureDetail.formatName}</Table.Td>
+                                </Table.Tr>
+                              ) : null}
+                              <Table.Tr>
+                                <Table.Th>Variant cards found</Table.Th>
+                                <Table.Td>{selectedJobFailureDetail.actual}</Table.Td>
+                              </Table.Tr>
+                              <Table.Tr>
+                                <Table.Th>Limit allowed</Table.Th>
+                                <Table.Td>{selectedJobFailureDetail.allowed}</Table.Td>
+                              </Table.Tr>
+                            </Table.Tbody>
+                          </Table>
+                        </Stack>
+                      </Card>
                     ) : null}
                     {selectedJob.localState === 'auth_blocked' ? (
                       <Alert color="red" title="Sign-in required">
@@ -893,15 +932,15 @@ export const UploadQueuePage = (): JSX.Element => {
                           <Text size="sm" c="dimmed">
                             Fallback: assign the format directly if the tournament ID is not in the filename yet or if multiple formats share a prefix.
                           </Text>
-                          <select value={selectedFormatId} onChange={(event) => setSelectedFormatId(event.currentTarget.value)}>
-                            <option value="">Choose a format</option>
-                            {compatibleDirectFormats.map((format) => (
-                              <option key={format.id} value={format.id}>
-                                {format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}
-                                {format.teamsPerTournament > 0 ? ` - ${format.teamsPerTournament} teams` : ''}
-                              </option>
-                            ))}
-                          </select>
+                          <Select
+                            placeholder="Choose a format"
+                            value={selectedFormatId || null}
+                            onChange={(value) => setSelectedFormatId(value ?? '')}
+                            data={compatibleDirectFormats.map((format) => ({
+                              value: format.id,
+                              label: `${format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}${format.teamsPerTournament > 0 ? ` - ${format.teamsPerTournament} teams` : ''}`
+                            }))}
+                          />
                           <Group justify="flex-end">
                             <Button
                               size="xs"
@@ -935,71 +974,85 @@ export const UploadQueuePage = (): JSX.Element => {
                     {selectedJobTeamCountWarning.message}
                   </Alert>
                 ) : null}
-                <div className="desktop-table-wrap">
-                  <table className="desktop-table">
-                    <tbody>
-                      <tr><th>File</th><td>{selectedJob.filename}</td></tr>
-                      <tr><th>Local job ID</th><td><TechnicalValue value={selectedJob.id} /></td></tr>
-                      <tr><th>Path</th><td className="desktop-mono">{selectedJob.path}</td></tr>
-                      <tr><th>Staged path</th><td className="desktop-mono">{selectedJob.stagedPath || '-'}</td></tr>
-                      <tr><th>Kind</th><td>{formatFileKindLabel(selectedJob.fileKind)}</td></tr>
-                      <tr><th>Teams</th><td>{selectedJob.teamCount > 0 ? selectedJob.teamCount : '-'}</td></tr>
-                      <tr><th>Local file</th><td>{formatLocalPresenceLabel(selectedJob.localPresence)}</td></tr>
-                      <tr><th>Format</th><td>{selectedJobFormat?.name ?? (selectedJob.formatId ? 'Unknown format' : 'Unassigned')}</td></tr>
-                      <tr><th>Tournament ID</th><td>{selectedJob.tournamentId || '-'}</td></tr>
-                      <tr><th>Local state</th><td>{formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind)}</td></tr>
-                      <tr><th>Server lifecycle</th><td>{formatLifecycleLabel(selectedJob.lifecyclePhase, selectedJob.fileKind)}</td></tr>
-                      <tr><th>Server status</th><td>{selectedJob.serverStatus || '-'}</td></tr>
-                      <tr><th>Checksum</th><td><TechnicalValue value={selectedJob.checksum} /></td></tr>
-                      <tr><th>Remote checksum</th><td><TechnicalValue value={selectedJob.remoteChecksum} /></td></tr>
-                      <tr><th>Upload ID</th><td><TechnicalValue value={selectedJob.uploadId} /></td></tr>
-                      <tr><th>Request ID</th><td><TechnicalValue value={selectedJob.lastRequestId} /></td></tr>
-                      <tr><th>Duplicate reason</th><td>{selectedJob.duplicateReason || '-'}</td></tr>
-                      <tr><th>Retry after</th><td>{selectedJob.nextRetryAfter || '-'}</td></tr>
-                      <tr><th>Queued</th><td>{selectedJob.queuedAt || '-'}</td></tr>
-                      <tr><th>Processing</th><td>{selectedJob.processingAt || '-'}</td></tr>
-                      <tr><th>Parsed</th><td>{selectedJob.parsedAt || '-'}</td></tr>
-                      <tr><th>Refreshing</th><td>{selectedJob.refreshingAt || '-'}</td></tr>
-                      <tr><th>Completed</th><td>{selectedJob.completedAt || '-'}</td></tr>
-                      <tr><th>Failed</th><td>{selectedJob.failedAt || '-'}</td></tr>
-                      <tr><th>Retries</th><td>{selectedJob.retries}</td></tr>
-                      <tr><th>Error</th><td>{selectedJob.error || '-'}</td></tr>
-                      <tr><th>Source modified</th><td>{formatSourceModifiedAt(selectedJob.sourceModifiedAt)}</td></tr>
-                      <tr><th>Queue updated</th><td>{new Date(selectedJob.updatedAt).toLocaleString()}</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-                <Card withBorder className="desktop-subcard">
-                  <Stack gap="xs">
-                    <Text fw={600}>Attempt history</Text>
-                    {selectedAttempts.length === 0 ? (
-                      <Alert color="gray">No local attempts recorded yet.</Alert>
-                    ) : (
-                      <div className="desktop-table-wrap">
-                        <table className="desktop-table">
-                          <thead>
-                            <tr>
-                              <th>#</th>
-                              <th>Status</th>
-                              <th>Detail</th>
-                              <th>Updated</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedAttempts.map((attempt) => (
-                              <tr key={attempt.id}>
-                                <td>{attempt.attemptNumber}</td>
-                                <td>{attempt.status}</td>
-                                <td className="desktop-mono">{attempt.detail}</td>
-                                <td>{new Date(attempt.updatedAt).toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </Stack>
-                </Card>
+                <Table withTableBorder withColumnBorders>
+                  <Table.Tbody>
+                    <Table.Tr><Table.Th>File</Table.Th><Table.Td>{selectedJob.filename}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Kind</Table.Th><Table.Td>{formatFileKindLabel(selectedJob.fileKind)}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Format</Table.Th><Table.Td>{selectedJobFormat?.name ?? (selectedJob.formatId ? 'Unknown format' : 'Unassigned')}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Teams</Table.Th><Table.Td>{selectedJob.teamCount > 0 ? selectedJob.teamCount : '-'}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Local state</Table.Th><Table.Td>{formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind)}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Server lifecycle</Table.Th><Table.Td>{formatLifecycleLabel(selectedJob.lifecyclePhase, selectedJob.fileKind)}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Server status</Table.Th><Table.Td>{selectedJob.serverStatus || '-'}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Error</Table.Th><Table.Td className="desktop-wrap-anywhere">{selectedJob.error ? formatRetryableFailureMessage(selectedJob.error) : '-'}</Table.Td></Table.Tr>
+                  </Table.Tbody>
+                </Table>
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  onClick={() => setShowTechnicalDetails((current) => !current)}
+                >
+                  {showTechnicalDetails ? 'Hide technical details' : 'Show technical details'}
+                </Button>
+                <Collapse in={showTechnicalDetails}>
+                  <Table.ScrollContainer minWidth={480} type="native">
+                    <Table withTableBorder withColumnBorders>
+                      <Table.Tbody>
+                        <Table.Tr><Table.Th>Local job ID</Table.Th><Table.Td><TechnicalValue value={selectedJob.id} /></Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Path</Table.Th><Table.Td className="desktop-mono">{selectedJob.path}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Staged path</Table.Th><Table.Td className="desktop-mono">{selectedJob.stagedPath || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Local file</Table.Th><Table.Td>{formatLocalPresenceLabel(selectedJob.localPresence)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Tournament ID</Table.Th><Table.Td>{selectedJob.tournamentId || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Checksum</Table.Th><Table.Td><TechnicalValue value={selectedJob.checksum} /></Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Remote checksum</Table.Th><Table.Td><TechnicalValue value={selectedJob.remoteChecksum} /></Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Upload ID</Table.Th><Table.Td><TechnicalValue value={selectedJob.uploadId} /></Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Request ID</Table.Th><Table.Td><TechnicalValue value={selectedJob.lastRequestId} /></Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Duplicate reason</Table.Th><Table.Td>{selectedJob.duplicateReason || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Retry after</Table.Th><Table.Td>{selectedJob.nextRetryAfter || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Queued</Table.Th><Table.Td>{selectedJob.queuedAt || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Processing</Table.Th><Table.Td>{selectedJob.processingAt || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Parsed</Table.Th><Table.Td>{selectedJob.parsedAt || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Refreshing</Table.Th><Table.Td>{selectedJob.refreshingAt || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Completed</Table.Th><Table.Td>{selectedJob.completedAt || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Failed</Table.Th><Table.Td>{selectedJob.failedAt || '-'}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Retries</Table.Th><Table.Td>{selectedJob.retries}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Source modified</Table.Th><Table.Td>{formatSourceModifiedAt(selectedJob.sourceModifiedAt)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Queue updated</Table.Th><Table.Td>{new Date(selectedJob.updatedAt).toLocaleString()}</Table.Td></Table.Tr>
+                      </Table.Tbody>
+                    </Table>
+                  </Table.ScrollContainer>
+                  <Card withBorder className="desktop-subcard">
+                    <Stack gap="xs">
+                      <Text fw={600}>Attempt history</Text>
+                      {selectedAttempts.length === 0 ? (
+                        <Alert color="gray">No local attempts recorded yet.</Alert>
+                      ) : (
+                        <Table.ScrollContainer minWidth={480} type="native">
+                          <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
+                            <Table.Thead>
+                              <Table.Tr>
+                                <Table.Th>#</Table.Th>
+                                <Table.Th>Status</Table.Th>
+                                <Table.Th>Detail</Table.Th>
+                                <Table.Th>Updated</Table.Th>
+                              </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                              {selectedAttempts.map((attempt) => (
+                                <Table.Tr key={attempt.id}>
+                                  <Table.Td>{attempt.attemptNumber}</Table.Td>
+                                  <Table.Td>{attempt.status}</Table.Td>
+                                  <Table.Td className="desktop-mono">{attempt.detail}</Table.Td>
+                                  <Table.Td>{new Date(attempt.updatedAt).toLocaleString()}</Table.Td>
+                                </Table.Tr>
+                              ))}
+                            </Table.Tbody>
+                          </Table>
+                        </Table.ScrollContainer>
+                      )}
+                    </Stack>
+                  </Card>
+                </Collapse>
               </>
             )}
           </Stack>

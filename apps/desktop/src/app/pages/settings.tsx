@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Group, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Card, Group, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
 import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
@@ -47,10 +47,10 @@ export const SettingsPage = (): JSX.Element => {
 
   return (
     <Stack gap="lg">
-      <div>
-        <h2 className="desktop-page-title">Settings</h2>
-        <p className="desktop-page-subtitle">Server profiles and desktop behavior configuration.</p>
-      </div>
+      <Stack gap={4}>
+        <Title order={2}>Settings</Title>
+        <Text c="dimmed">Server profiles and desktop behavior configuration.</Text>
+      </Stack>
       <Group gap="xs" wrap="wrap">
         <Button component={Link} to="/settings#server-profile" size="xs" variant={settingsHash === '#server-profile' ? 'filled' : 'light'}>
           Server

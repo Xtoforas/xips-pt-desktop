@@ -58,6 +58,7 @@ export const localPresenceColor = (value: LocalUploadJob['localPresence']): stri
 const actionRequiredStates = new Set<LocalUploadJob['localState']>([
   'awaiting_format_assignment',
   'failed_retryable',
+  'failed_terminal',
   'auth_blocked'
 ]);
 
@@ -260,23 +261,30 @@ export const canDismissUploadJob = (job: LocalUploadJob): boolean =>
   job.localState === 'detected' ||
   job.localState === 'queued_local';
 
-export type TodayBlockerState = 'awaiting_format_assignment' | 'failed_retryable' | 'auth_blocked';
+export type TodayBlockerState =
+  | 'awaiting_format_assignment'
+  | 'failed_retryable'
+  | 'failed_terminal'
+  | 'auth_blocked';
 
 export const blockerPriority: Record<TodayBlockerState, number> = {
   auth_blocked: 0,
   awaiting_format_assignment: 1,
-  failed_retryable: 2
+  failed_retryable: 2,
+  failed_terminal: 3
 };
 
 export const blockerTitleByState: Record<TodayBlockerState, string> = {
   awaiting_format_assignment: 'Waiting for format assignment',
   failed_retryable: 'Retryable failure',
+  failed_terminal: 'Blocked — needs a format or rule change',
   auth_blocked: 'Sign-in required'
 };
 
 export const blockerActionLabelByState: Record<TodayBlockerState, string> = {
   awaiting_format_assignment: 'Open queue to assign format',
   failed_retryable: 'Open queue to retry',
+  failed_terminal: 'Open queue to review',
   auth_blocked: 'Open queue to re-authenticate'
 };
 
@@ -297,6 +305,9 @@ export const blockerDetailByState = (
 export const getUploadJobKindDetail = (job: Pick<LocalUploadJob, 'fileKind' | 'lifecyclePhase' | 'localState'>): string => {
   if (job.localState === 'failed_retryable') {
     return 'A transient error paused the upload.';
+  }
+  if (job.localState === 'failed_terminal') {
+    return "The export was rejected and won't succeed until the format or export changes.";
   }
   if (job.localState === 'auth_blocked') {
     return 'The selected account needs to be signed in again.';
@@ -392,7 +403,7 @@ export const getQueueRowActionKeys = (job: LocalUploadJob): QueueRowActionKey[] 
   if (job.localState === 'awaiting_format_assignment') {
     keys.push('assign');
   }
-  if (job.localState === 'failed_retryable') {
+  if (job.localState === 'failed_retryable' || job.localState === 'failed_terminal') {
     keys.push('retry');
   }
   if (job.localState === 'auth_blocked') {
@@ -414,4 +425,140 @@ export const getQueueRowActionKeys = (job: LocalUploadJob): QueueRowActionKey[] 
     keys.push('restore');
   }
   return keys;
+};
+
+type ApiErrorDetail = Record<string, unknown>;
+
+const humanizeErrorCode = (code: string): string => {
+  const spaced = code.replace(/_/g, ' ').trim();
+  return spaced.length > 0 ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : spaced;
+};
+
+const asRecord = (value: unknown): ApiErrorDetail | null =>
+  value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as ApiErrorDetail) : null;
+
+// Codes the desktop app and the xips-pt server are known to return for failed_retryable jobs.
+const describeKnownErrorCode = (code: string, detail: ApiErrorDetail): string | null => {
+  switch (code) {
+    case 'team_count_mismatch':
+    case 'format_team_count_mismatch': {
+      const inner = asRecord(detail.error) ?? detail;
+      const expected = inner.expected ?? inner.minimumAllowed;
+      const actual = inner.actual;
+      if (typeof expected === 'number' && typeof actual === 'number') {
+        return `Expected at least ${expected} team${expected === 1 ? '' : 's'} in the export, but only ${actual} ${actual === 1 ? 'was' : 'were'} detected.`;
+      }
+      return 'The export does not have enough distinct teams for this tournament format.';
+    }
+    case 'variant_limit_exceeded': {
+      const inner = asRecord(detail.details) ?? detail;
+      const teamName = inner.teamName;
+      const allowed = inner.allowed;
+      const actual = inner.actual;
+      if (typeof teamName === 'string' && typeof allowed === 'number' && typeof actual === 'number') {
+        const formatName = typeof inner.formatName === 'string' ? ` for ${inner.formatName}` : '';
+        return `${teamName} has ${actual} variant card${actual === 1 ? '' : 's'}, which exceeds the ${allowed}-card limit${formatName}.`;
+      }
+      return 'A team in this export has more variant cards than the format allows.';
+    }
+    case 'authentication_required':
+      return 'The selected account needs to sign in again.';
+    case 'format_not_found':
+      return 'The assigned tournament format is no longer cached on this desktop.';
+    case 'request_failed':
+      return 'The server could not process the request.';
+    case 'response_read_failed':
+      return 'The server response could not be read.';
+    default:
+      return null;
+  }
+};
+
+const describeUnknownErrorDetail = (detail: ApiErrorDetail): string => {
+  const inner = asRecord(detail.error) ?? detail;
+  const message = inner.message ?? inner.error;
+  if (typeof message === 'string' && message.trim().length > 0) {
+    return message;
+  }
+  const entries = Object.entries(inner).filter(
+    ([key, value]) => key !== 'ok' && (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+  );
+  return entries.length > 0 ? entries.map(([key, value]) => `${humanizeErrorCode(key)}: ${value}`).join(', ') : '';
+};
+
+// Rust's ApiError Display is `code ({"json":"detail"}) [requestId=...]`; turn that into a sentence.
+export const formatRetryableFailureMessage = (rawError: string): string => {
+  const trimmed = rawError.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const match = trimmed.match(/^([a-zA-Z0-9_]+)\s\((.*)\)(?:\s\[requestId=([^\]]*)\])?$/s);
+  if (!match) {
+    return /^[a-zA-Z0-9_]+$/.test(trimmed) ? (describeKnownErrorCode(trimmed, {}) ?? humanizeErrorCode(trimmed)) : trimmed;
+  }
+
+  const [, code, detailText, requestId] = match;
+  const humanizedCode = humanizeErrorCode(code);
+  let parsedDetail: unknown = null;
+  try {
+    parsedDetail = JSON.parse(detailText);
+  } catch {
+    parsedDetail = null;
+  }
+  const detailRecord = asRecord(parsedDetail);
+
+  let sentence = '';
+  if (detailRecord) {
+    sentence = describeKnownErrorCode(code, detailRecord) ?? describeUnknownErrorDetail(detailRecord);
+  }
+  if (!sentence && parsedDetail === null && detailText.trim()) {
+    sentence = detailText.trim();
+  }
+
+  const parts = sentence && sentence !== humanizedCode ? [humanizedCode, sentence] : [humanizedCode];
+  const message = parts.join(': ');
+  return requestId && requestId.trim() ? `${message} (request ${requestId.trim()})` : message;
+};
+
+export type VariantLimitExceededDetail = {
+  kind: 'variant_limit_exceeded';
+  teamName: string;
+  formatName: string | null;
+  actual: number;
+  allowed: number;
+};
+
+export type RetryableFailureDetail = VariantLimitExceededDetail;
+
+// Structured breakdown for failure codes with a details pane, distinct from the one-line summary above.
+export const parseRetryableFailureDetail = (rawError: string): RetryableFailureDetail | null => {
+  const trimmed = rawError.trim();
+  const match = trimmed.match(/^([a-zA-Z0-9_]+)\s\((.*)\)(?:\s\[requestId=([^\]]*)\])?$/s);
+  if (!match || match[1] !== 'variant_limit_exceeded') {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[2]);
+  } catch {
+    return null;
+  }
+
+  const details = asRecord(asRecord(parsed)?.details);
+  if (!details) {
+    return null;
+  }
+  const { teamName, allowed, actual, formatName } = details;
+  if (typeof teamName !== 'string' || typeof allowed !== 'number' || typeof actual !== 'number') {
+    return null;
+  }
+  return {
+    kind: 'variant_limit_exceeded',
+    teamName,
+    formatName: typeof formatName === 'string' ? formatName : null,
+    actual,
+    allowed
+  };
 };

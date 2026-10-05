@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
 import {
@@ -50,10 +50,10 @@ export const AutomationPage = (): JSX.Element => {
 
   return (
     <Stack gap="lg">
-      <div>
-        <h2 className="desktop-page-title">Automation</h2>
-        <p className="desktop-page-subtitle">Watch folder, rule, format match, and validation in one workflow for background uploads.</p>
-      </div>
+      <Stack gap={4}>
+        <Title order={2}>Automation</Title>
+        <Text c="dimmed">Watch folder, rule, format match, and validation in one workflow for background uploads.</Text>
+      </Stack>
       <Card withBorder className="desktop-card desktop-automation-hero">
         <Stack gap="xs">
           <Group justify="space-between" align="flex-start">
@@ -173,16 +173,13 @@ export const AutomationPage = (): JSX.Element => {
                   Format: {selectedFormat?.name ?? 'Choose in step 3'}
                 </Badge>
               </Group>
-              <select value={selectedWatchRootId} onChange={(event) => setSelectedWatchRootId(event.currentTarget.value)}>
-                <option value="">Choose a watch folder</option>
-                {snapshot.watchRoots.map((root) => (
-                  <option key={root.id} value={root.id}>
-                    {root.path}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="mantine-Input-input"
+              <Select
+                placeholder="Choose a watch folder"
+                value={selectedWatchRootId || null}
+                onChange={(value) => setSelectedWatchRootId(value ?? '')}
+                data={snapshot.watchRoots.map((root) => ({ value: root.id, label: root.path }))}
+              />
+              <TextInput
                 placeholder="Filename contains..."
                 value={pattern}
                 onChange={(event) => setPattern(event.currentTarget.value)}
@@ -231,14 +228,15 @@ export const AutomationPage = (): JSX.Element => {
                   Refresh formats
                 </Button>
               </Group>
-              <select value={selectedFormatId} onChange={(event) => setSelectedFormatId(event.currentTarget.value)}>
-                <option value="">Choose a format</option>
-                {snapshot.cachedFormats.map((format) => (
-                  <option key={format.id} value={format.id}>
-                    {format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}
-                  </option>
-                ))}
-              </select>
+              <Select
+                placeholder="Choose a format"
+                value={selectedFormatId || null}
+                onChange={(value) => setSelectedFormatId(value ?? '')}
+                data={snapshot.cachedFormats.map((format) => ({
+                  value: format.id,
+                  label: format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name
+                }))}
+              />
               <Text size="xs" c="dimmed">
                 This selection drives the rule above and keeps the watch folder, filename pattern, and target format linked together.
               </Text>

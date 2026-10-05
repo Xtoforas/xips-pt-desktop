@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { useMemo, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
 
@@ -16,10 +16,10 @@ export const DiagnosticsPage = (): JSX.Element => {
 
   return (
     <Stack gap="lg" className="desktop-support-page">
-      <div>
-        <h2 className="desktop-page-title">Diagnostics</h2>
-        <p className="desktop-page-subtitle">Support-only tooling for exports, app data, and deeper troubleshooting.</p>
-      </div>
+      <Stack gap={4}>
+        <Title order={2}>Diagnostics</Title>
+        <Text c="dimmed">Support-only tooling for exports, app data, and deeper troubleshooting.</Text>
+      </Stack>
       <Card withBorder className="desktop-card desktop-support-hero">
         <Stack gap="sm">
           <Group justify="space-between" align="flex-start">
@@ -105,26 +105,26 @@ export const DiagnosticsPage = (): JSX.Element => {
           {snapshot.watchRoots.length === 0 ? (
             <Alert color="gray">No watch roots configured.</Alert>
           ) : (
-            <div className="desktop-table-wrap">
-              <table className="desktop-table">
-                <thead>
-                  <tr>
-                    <th>Path</th>
-                    <th>Status</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <Table.ScrollContainer minWidth={480} type="native">
+              <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Path</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Updated</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
                   {snapshot.watchRoots.map((root) => (
-                    <tr key={root.id}>
-                      <td className="desktop-mono">{root.path}</td>
-                      <td>{root.paused ? 'Paused' : 'Active'}</td>
-                      <td>{new Date(root.updatedAt).toLocaleString()}</td>
-                    </tr>
+                    <Table.Tr key={root.id}>
+                      <Table.Td className="desktop-mono">{root.path}</Table.Td>
+                      <Table.Td>{root.paused ? 'Paused' : 'Active'}</Table.Td>
+                      <Table.Td>{new Date(root.updatedAt).toLocaleString()}</Table.Td>
+                    </Table.Tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
           )}
         </Stack>
       </Card>
@@ -162,26 +162,26 @@ export const DiagnosticsPage = (): JSX.Element => {
             {recentApiEvents.length === 0 ? (
               <Alert color="gray">No API events captured yet.</Alert>
             ) : (
-              <div className="desktop-table-wrap">
-                <table className="desktop-table">
-                  <thead>
-                    <tr>
-                      <th>When</th>
-                      <th>Message</th>
-                      <th>Detail</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              <Table.ScrollContainer minWidth={480} type="native">
+                <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>When</Table.Th>
+                      <Table.Th>Message</Table.Th>
+                      <Table.Th>Detail</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
                     {recentApiEvents.map((event) => (
-                      <tr key={event.id}>
-                        <td>{new Date(event.createdAt).toLocaleString()}</td>
-                        <td>{event.message}</td>
-                        <td className="desktop-mono">{event.detail}</td>
-                      </tr>
+                      <Table.Tr key={event.id}>
+                        <Table.Td>{new Date(event.createdAt).toLocaleString()}</Table.Td>
+                        <Table.Td>{event.message}</Table.Td>
+                        <Table.Td className="desktop-mono">{event.detail}</Table.Td>
+                      </Table.Tr>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
             )}
           </Stack>
         </Card>

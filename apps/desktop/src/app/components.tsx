@@ -1,5 +1,5 @@
-import { Alert, Badge, Button, Card, Group, HoverCard, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, NavLink, Paper, Select, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Tooltip } from '@mantine/core';
+import { Link, useLocation } from 'react-router-dom';
 import type {
   DesktopPreferences,
   LocalFormatRule,
@@ -9,7 +9,7 @@ import type {
   TournamentFormat
 } from '@xips/api-contract';
 import { useEffect, useRef, useState } from 'react';
-import { describeError, useDesktop } from './DesktopContext';
+import { useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
 import {
   formatFileKindLabel,
@@ -26,12 +26,42 @@ import {
   uploadJobWorkingAutomatically
 } from './queue-model';
 
-const navItems: ReadonlyArray<{ to: string; label: string; support?: boolean }> = [
-  { to: '/today', label: 'Today' },
-  { to: '/queue', label: 'Queue' },
-  { to: '/automation', label: 'Automation' },
-  { to: '/settings', label: 'Settings' },
-  { to: '/diagnostics', label: 'Diagnostics', support: true }
+const SidebarIcon = ({ path }: { path: string }): JSX.Element => (
+  <svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d={path} />
+  </svg>
+);
+
+const navItems: ReadonlyArray<{ to: string; label: string; iconPath: string; support?: boolean }> = [
+  {
+    to: '/today',
+    label: 'Today',
+    iconPath:
+      'M19,3H18V1H16V3H8V1H6V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.9 20.1,3 19,3M19,19H5V8H19V19Z'
+  },
+  {
+    to: '/queue',
+    label: 'Queue',
+    iconPath: 'M19.35 10.04A7.49 7.49 0 0 0 5 8a6 6 0 0 0 .35 12H19a5 5 0 0 0 .35-9.96zM13 13v4h-2v-4H8l4-4 4 4z'
+  },
+  {
+    to: '/automation',
+    label: 'Automation',
+    iconPath: 'M7,2V13H10V22L17,10H13L17,2H7Z'
+  },
+  {
+    to: '/settings',
+    label: 'Settings',
+    iconPath:
+      'M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.22 7.22 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z'
+  },
+  {
+    to: '/diagnostics',
+    label: 'Diagnostics',
+    iconPath:
+      'M22.7,19L13.6,9.9C14.5,7.6 14,4.9 12.1,3C10.1,1 7.1,0.6 4.7,1.7L9,6L6,9L1.6,4.7C0.4,7.1 0.9,10.1 2.9,12.1C4.8,14 7.5,14.5 9.8,13.6L18.9,22.7C19.3,23.1 19.9,23.1 20.3,22.7L22.6,20.4C23.1,20 23.1,19.3 22.7,19Z',
+    support: true
+  }
 ];
 
 const serverOptions = (profiles: LocalServerProfile[]): Array<{ value: string; label: string }> =>
@@ -277,55 +307,159 @@ export const ReadinessCard = ({
   );
 };
 
+const SIDEBAR_COLLAPSE_DELAY_MS = 5000;
+const SIDEBAR_EXPAND_HOVER_DELAY_MS = 3000;
+
 export const DesktopSidebar = (): JSX.Element => {
   const location = useLocation();
   const { snapshot, health } = useDesktop();
+  const [collapsed, setCollapsed] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
+  const collapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expandTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCollapseTimer = (): void => {
+    if (collapseTimeoutRef.current !== null) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
+  };
+
+  const clearExpandTimer = (): void => {
+    if (expandTimeoutRef.current !== null) {
+      clearTimeout(expandTimeoutRef.current);
+      expandTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleCollapse = (): void => {
+    clearExpandTimer();
+    clearCollapseTimer();
+    collapseTimeoutRef.current = setTimeout(() => setCollapsed(true), SIDEBAR_COLLAPSE_DELAY_MS);
+  };
+
+  const expandNow = (): void => {
+    clearExpandTimer();
+    clearCollapseTimer();
+    setCollapsed(false);
+  };
+
+  const handleMouseEnter = (): void => {
+    clearCollapseTimer();
+    if (!collapsed) {
+      return;
+    }
+    // Wait for a deliberate hover instead of expanding the instant the cursor
+    // grazes the collapsed rail, which otherwise flickers expand/collapse.
+    clearExpandTimer();
+    expandTimeoutRef.current = setTimeout(() => setCollapsed(false), SIDEBAR_EXPAND_HOVER_DELAY_MS);
+  };
+
+  const handleMouseLeave = (): void => {
+    clearExpandTimer();
+    if (!collapsed) {
+      scheduleCollapse();
+    }
+  };
+
+  useEffect(() => {
+    scheduleCollapse();
+    return () => {
+      clearCollapseTimer();
+      clearExpandTimer();
+    };
+  }, []);
 
   return (
-    <aside className="desktop-sidebar">
-      <div className="desktop-brand">
-        <div className="desktop-brand-mark">XP</div>
-        <div>
-          <h1>xips-pt Desktop</h1>
-          <p>Operator workflow control room</p>
-        </div>
-      </div>
-      <div className="desktop-nav">
-        {navItems.map((item) => (
-          <div key={item.to}>
-            {item.support ? <div className="desktop-nav-support-label">Support tools</div> : null}
-            <NavLink
-              className={`desktop-nav-link${location.pathname === item.to ? ' active' : ''}${
-                item.support ? ' desktop-nav-link-support' : ''
-              }`}
-              to={item.to}
-            >
-              {item.label}
-            </NavLink>
-          </div>
-        ))}
-      </div>
-      <Card withBorder className="desktop-status-card desktop-server-status-card">
-        <Stack gap={6}>
-          <Text className="desktop-micro-label">Server status</Text>
-          <Group justify="space-between">
-            <Text size="sm">{health?.service ?? 'Not checked'}</Text>
-            <Badge color={health?.ok ? 'teal' : 'gray'} variant="light">
-              {health?.ok ? 'Healthy' : 'Idle'}
-            </Badge>
-          </Group>
-          <Text size="xs" c="dimmed">
-            Queue depth: {health?.queueDepth ?? 0}
-          </Text>
-          <Text size="xs" c="dimmed">
-            Failed jobs: {health?.failedJobs ?? 0}
-          </Text>
-          <Text size="xs" c="dimmed">
-            Profiles: {snapshot.profiles.length}
-          </Text>
+    <Stack
+      gap="sm"
+      className="desktop-sidebar"
+      data-collapsed={collapsed}
+      p="sm"
+      ref={sidebarRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onFocusCapture={expandNow}
+      onBlurCapture={(event) => {
+        if (!(event.relatedTarget instanceof Node) || !sidebarRef.current?.contains(event.relatedTarget)) {
+          scheduleCollapse();
+        }
+      }}
+    >
+      <Paper withBorder radius="md" p="sm">
+        <Group gap="sm" wrap="nowrap" align="center" justify={collapsed ? 'center' : 'flex-start'}>
+          <ThemeIcon size={40} radius="md" variant="gradient" gradient={{ from: 'xipsBlue.5', to: 'xipsBlue.8', deg: 145 }}>
+            <SidebarIcon path="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M7.39,5.72C8.61,7.16 9.34,9.07 9.34,11.17C9.34,13.27 8.61,15.18 7.39,16.62C5.94,15.41 5,13.8 5,12C5,10.19 5.94,8.59 7.39,7.37V5.72M16.61,7.38C18.05,8.59 19,10.2 19,12C19,13.8 18.05,15.41 16.61,16.62C15.39,15.18 14.66,13.27 14.66,11.17C14.66,9.07 15.39,7.16 16.61,5.72V7.38M9.03,4.79C9.88,4.29 10.9,4 12,4C13.1,4 14.12,4.29 14.97,4.79C13.78,6.45 13.09,8.53 13.09,10.76C13.09,12.97 13.78,15.05 14.97,16.71C14.12,17.21 13.1,17.5 12,17.5C10.9,17.5 9.88,17.21 9.03,16.71C10.22,15.05 10.91,12.97 10.91,10.76C10.91,8.53 10.22,6.45 9.03,4.79M8.66,17.95C9.63,18.45 10.77,18.74 12,18.74C13.23,18.74 14.37,18.45 15.34,17.95C14.38,19.2 13.26,20 12,20C10.74,20 9.62,19.2 8.66,17.95Z" />
+          </ThemeIcon>
+          {collapsed ? null : (
+            <div>
+              <Text component="h1" fw={700} size="sm">
+                xips-pt Desktop
+              </Text>
+              <Text size="xs" c="dimmed">
+                Local CSV uploader for xips-pt
+              </Text>
+            </div>
+          )}
+        </Group>
+      </Paper>
+      <Paper withBorder radius="md" p="xs" style={{ flex: '1 1 auto' }}>
+        <Stack gap="xs" align={collapsed ? 'center' : 'stretch'}>
+          {navItems.map((item) => {
+            const navLink = (
+              <NavLink
+                component={Link}
+                to={item.to}
+                label={collapsed ? undefined : item.label}
+                color="xipsBlue"
+                variant="light"
+                active={location.pathname === item.to}
+                leftSection={<SidebarIcon path={item.iconPath} />}
+                style={collapsed ? { width: 40, justifyContent: 'center' } : undefined}
+              />
+            );
+            return (
+              <div key={item.to}>
+                {item.support && !collapsed ? (
+                  <Text className="desktop-nav-support-label" size="xs" c="dimmed" tt="uppercase">
+                    Support tools
+                  </Text>
+                ) : null}
+                {collapsed ? (
+                  <Tooltip label={item.label} position="right" withArrow openDelay={200}>
+                    {navLink}
+                  </Tooltip>
+                ) : (
+                  navLink
+                )}
+              </div>
+            );
+          })}
         </Stack>
-      </Card>
-    </aside>
+      </Paper>
+      {collapsed ? null : (
+        <Card withBorder className="desktop-server-status-card">
+          <Stack gap={6}>
+            <Text className="desktop-micro-label">Server status</Text>
+            <Group justify="space-between">
+              <Text size="sm">{health?.service ?? 'Not checked'}</Text>
+              <Badge color={health?.ok ? 'teal' : 'gray'} variant="light">
+                {health?.ok ? 'Healthy' : 'Idle'}
+              </Badge>
+            </Group>
+            <Text size="xs" c="dimmed">
+              Queue depth: {health?.queueDepth ?? 0}
+            </Text>
+            <Text size="xs" c="dimmed">
+              Failed jobs: {health?.failedJobs ?? 0}
+            </Text>
+            <Text size="xs" c="dimmed">
+              Profiles: {snapshot.profiles.length}
+            </Text>
+          </Stack>
+        </Card>
+      )}
+    </Stack>
   );
 };
 
@@ -364,8 +498,8 @@ export const DesktopTopbar = (): JSX.Element => {
         </Group>
         <Group gap="sm" wrap="wrap" className="desktop-topbar-meta">
           {selectedProfile ? (
-            <Text size="sm" c="dimmed" className="desktop-mono desktop-topbar-endpoint">
-              {selectedProfile.baseUrl}
+            <Text size="sm" c="dimmed">
+              Uploading to <span className="desktop-mono">{selectedProfile.baseUrl}</span>
             </Text>
           ) : null}
           {snapshot.tokenExpiresAt && isAuthenticated ? (
@@ -403,14 +537,19 @@ export const DesktopTopbar = (): JSX.Element => {
         {selectedProfile ? (
           <>
             {!isAuthenticated ? (
-              <Button
-                size="xs"
-                variant="light"
-                disabled={authFlowState === 'waiting'}
-                onClick={() => void openAuthWindow(selectedProfile.id)}
-              >
-                Sign in
-              </Button>
+              <>
+                <Badge color="gray" variant="light">
+                  Signed out
+                </Badge>
+                <Button
+                  size="xs"
+                  variant="light"
+                  disabled={authFlowState === 'waiting'}
+                  onClick={() => void openAuthWindow(selectedProfile.id)}
+                >
+                  Sign in
+                </Button>
+              </>
             ) : null}
             <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void processUploadQueue(selectedProfile.id)}>
               Run queue now
@@ -438,270 +577,6 @@ export const DesktopTopbar = (): JSX.Element => {
         ) : null}
       </Group>
     </header>
-  );
-};
-
-export const OnboardingChecklist = (): JSX.Element => {
-  const {
-    snapshot,
-    authFlowError,
-    authFlowState,
-    selectedProfile,
-    health,
-    saveServerProfile,
-    refreshHealth,
-    openAuthWindow,
-    refreshMe
-  } = useDesktop();
-  const [profileName, setProfileName] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [busyAction, setBusyAction] = useState<'save' | 'health' | 'signin' | 'validate' | ''>('');
-  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
-  const hasSelectedProfile = selectedProfile !== null;
-  const onboardingSteps = buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState });
-  const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
-  const completedCount = onboardingSteps.filter((step) => step.complete).length;
-
-  const handleSaveProfile = async (): Promise<void> => {
-    if (!profileName.trim() || !baseUrl.trim()) {
-      setErrorMessage('Enter a profile name and the xips-pt base URL first.');
-      return;
-    }
-    setBusyAction('save');
-    setErrorMessage('');
-    try {
-      await saveServerProfile({
-        name: profileName.trim(),
-        baseUrl: baseUrl.trim()
-      });
-      setProfileName('');
-      setBaseUrl('');
-    } catch (error) {
-      setErrorMessage(describeError(error, 'Failed to save server profile.'));
-    } finally {
-      setBusyAction('');
-    }
-  };
-
-  const handleCheckServer = async (): Promise<void> => {
-    if (!selectedProfile) {
-      return;
-    }
-    setBusyAction('health');
-    setErrorMessage('');
-    try {
-      await refreshHealth();
-    } catch (error) {
-      setErrorMessage(describeError(error, 'Failed to contact the selected server.'));
-    } finally {
-      setBusyAction('');
-    }
-  };
-
-  const handleOpenSignin = async (): Promise<void> => {
-    if (!selectedProfile) {
-      return;
-    }
-    setBusyAction('signin');
-    setErrorMessage('');
-    try {
-      await openAuthWindow(selectedProfile.id);
-    } catch (error) {
-      setErrorMessage(describeError(error, 'Failed to open the Discord sign-in window.'));
-    } finally {
-      setBusyAction('');
-    }
-  };
-
-  const handleValidateAuth = async (): Promise<void> => {
-    if (!selectedProfile) {
-      return;
-    }
-    setBusyAction('validate');
-    setErrorMessage('');
-    try {
-      await refreshMe(selectedProfile.id);
-    } catch (error) {
-      setErrorMessage(describeError(error, 'Auth validation failed.'));
-    } finally {
-      setBusyAction('');
-    }
-  };
-
-  return (
-    <div className="desktop-oobe-wrap">
-      <Card withBorder className="desktop-oobe-hero">
-        <Stack gap="lg">
-          <div>
-            <Text className="desktop-micro-label">First-run setup</Text>
-            <h2 className="desktop-page-title">Keep the app shell visible while setup finishes</h2>
-            <p className="desktop-page-subtitle">
-              Follow the checklist to add a server, verify health, sign in, and wire up automation without hiding the rest of the product.
-            </p>
-          </div>
-          <Alert color={nextStep ? 'blue' : 'teal'} variant="light" title={nextStep ? `Next step: ${nextStep.label}` : 'Setup complete'}>
-            {nextStep
-              ? nextStep.detail
-              : 'The desktop app is ready for normal operation, and the full workflow is now unlocked.'}
-          </Alert>
-          {errorMessage ? (
-            <Alert color="red" title="Setup problem">
-              {errorMessage}
-            </Alert>
-          ) : null}
-          {authFlowError ? (
-            <Alert color="red" title="Desktop sign-in problem">
-              {authFlowError}
-            </Alert>
-          ) : null}
-          <Group gap="sm">
-            <Badge color="blue" variant="light">
-              {completedCount}/5 ready
-            </Badge>
-            {selectedProfile ? (
-              <Badge color="teal" variant="light">
-                {selectedProfile.name}
-              </Badge>
-            ) : (
-              <Badge color="gray" variant="light">
-                No server selected
-              </Badge>
-            )}
-          </Group>
-          <div className="desktop-oobe-grid">
-            <Card withBorder className="desktop-card">
-              <Stack gap="sm">
-                <Group justify="space-between">
-                  <Text fw={700}>1. Add server</Text>
-                  <Badge color={hasSelectedProfile ? 'teal' : 'blue'} variant="light">
-                    {hasSelectedProfile ? 'Done' : 'Required'}
-                  </Badge>
-                </Group>
-                <Text size="sm" c="dimmed">
-                  Create or choose the server profile for the xips-pt instance this desktop app should talk to.
-                </Text>
-                <TextInput
-                  label="Profile name"
-                  placeholder="Local xips-pt"
-                  value={profileName}
-                  onChange={(event) => setProfileName(event.currentTarget.value)}
-                />
-                <TextInput
-                  label="Base URL"
-                  placeholder="http://localhost:8080"
-                  value={baseUrl}
-                  onChange={(event) => setBaseUrl(event.currentTarget.value)}
-                />
-                {selectedProfile ? (
-                  <Alert color="gray" variant="light" title="Selected server">
-                    <div>{selectedProfile.name}</div>
-                    <div className="desktop-mono">{selectedProfile.baseUrl}</div>
-                  </Alert>
-                ) : null}
-                <Group justify="flex-end">
-                  <Button loading={busyAction === 'save'} onClick={() => void handleSaveProfile()}>
-                    Save server
-                  </Button>
-                </Group>
-              </Stack>
-            </Card>
-            <Card withBorder className="desktop-card">
-              <Stack gap="sm">
-                <Group justify="space-between">
-                  <Text fw={700}>2. Verify server</Text>
-                  <Badge color={health?.ok ? 'teal' : 'gray'} variant="light">
-                    {health?.ok ? 'Healthy' : 'Unchecked'}
-                  </Badge>
-                </Group>
-                <Text size="sm" c="dimmed">
-                  Make sure the selected server responds before opening the auth flow.
-                </Text>
-                <div className="desktop-oobe-status-list">
-                  <div>
-                    <Text className="desktop-micro-label">Service</Text>
-                    <Text>{health?.service ?? 'Not checked yet'}</Text>
-                  </div>
-                  <div>
-                    <Text className="desktop-micro-label">Queue depth</Text>
-                    <Text>{health?.queueDepth ?? 0}</Text>
-                  </div>
-                  <div>
-                    <Text className="desktop-micro-label">Failed jobs</Text>
-                    <Text>{health?.failedJobs ?? 0}</Text>
-                  </div>
-                </div>
-                <Group justify="flex-end">
-                  <Button
-                    variant="light"
-                    disabled={!selectedProfile}
-                    loading={busyAction === 'health'}
-                    onClick={() => void handleCheckServer()}
-                  >
-                    Check server
-                  </Button>
-                </Group>
-              </Stack>
-            </Card>
-            <Card withBorder className="desktop-card">
-              <Stack gap="sm">
-                <Group justify="space-between">
-                  <Text fw={700}>3. Sign in with Discord</Text>
-                  <Badge color={isAuthenticated ? 'teal' : 'orange'} variant="light">
-                    {isAuthenticated ? 'Connected' : 'Pending'}
-                  </Badge>
-                </Group>
-                <Text size="sm" c="dimmed">
-                  Open the website login flow in the auth popup. As soon as Discord auth finishes, the desktop app will complete token exchange and close the window automatically.
-                </Text>
-                <div className="desktop-oobe-status-list">
-                  <div>
-                    <Text className="desktop-micro-label">Selected profile</Text>
-                    <Text>{selectedProfile?.name ?? 'No server selected'}</Text>
-                  </div>
-                  <div>
-                    <Text className="desktop-micro-label">Auth state</Text>
-                    <Text>
-                      {isAuthenticated
-                        ? snapshot.authUser?.displayName ?? 'Signed in'
-                        : authFlowState === 'waiting'
-                          ? 'Waiting for callback'
-                          : 'Signed out'}
-                    </Text>
-                  </div>
-                  <div>
-                    <Text className="desktop-micro-label">Token expiry</Text>
-                    <Text>{snapshot.tokenExpiresAt || 'No token issued yet'}</Text>
-                  </div>
-                </div>
-                <Group>
-                  <Button
-                    disabled={!selectedProfile}
-                    loading={busyAction === 'signin' || authFlowState === 'waiting'}
-                    onClick={() => void handleOpenSignin()}
-                  >
-                    Open sign-in
-                  </Button>
-                  <Button
-                    variant="subtle"
-                    disabled={!selectedProfile}
-                    loading={busyAction === 'validate'}
-                    onClick={() => void handleValidateAuth()}
-                  >
-                    Validate auth
-                  </Button>
-                </Group>
-                {isAuthenticated ? (
-                  <Alert color="teal" title="Setup complete">
-                    The desktop app is connected. Watch folders and automation rules are the next steps.
-                  </Alert>
-                ) : null}
-              </Stack>
-            </Card>
-          </div>
-        </Stack>
-      </Card>
-    </div>
   );
 };
 
@@ -817,89 +692,90 @@ export const QueueTable = ({
   }, [selectionEnabled, someVisibleSelected]);
 
   return (
-  <div className="desktop-table-wrap">
-    <table className="desktop-table">
-      <thead>
-        <tr>
-          {selectionEnabled ? (
-            <th>
-              <input
-                ref={selectAllRef}
-                type="checkbox"
-                aria-label="Select all queue entries"
-                checked={allVisibleSelected}
-                onChange={(event) => {
-                  onToggleAllSelection?.(event.currentTarget.checked);
-                }}
-              />
-            </th>
-          ) : null}
-          <th>Modified</th>
-          <th>File</th>
-          <th>Kind</th>
-          <th>Format</th>
-          <th>Local file</th>
-          <th>Checksum</th>
-          <th>Local state</th>
-          <th>Server state</th>
-          <th>Retry attempts</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {orderedJobs.length === 0 ? (
-          <tr>
-            <td colSpan={selectionEnabled ? 11 : 10}>No queued uploads yet.</td>
-          </tr>
-        ) : (
-          orderedJobs.map((job) => (
-            <tr
-              key={job.id}
-              className={selectedJobId === job.id ? 'desktop-row-selected' : ''}
-              onClick={() => onSelect?.(job)}
-            >
-              {selectionEnabled ? (
-                <td>
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${job.filename}`}
-                    checked={selectedIds.has(job.id)}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                    }}
-                    onChange={(event) => {
-                      event.stopPropagation();
-                      onToggleJobSelection?.(job, event.currentTarget.checked);
-                    }}
-                  />
-                </td>
-              ) : null}
-              <td>{formatUploadJobModifiedAt(job)}</td>
-              <td>{renderFilename ? renderFilename(job) : job.filename}</td>
-              <td>
-                <FileKindBadge fileKind={job.fileKind} />
-              </td>
-              <td>{job.formatId ? (formatLabels?.[job.formatId] ?? 'Unknown format') : 'Unassigned'}</td>
-              <td>
-                <LocalPresenceBadge presence={job.localPresence} />
-              </td>
-              <td className="desktop-mono">
-                {formatUploadJobChecksumStatusLabel(job)}
-              </td>
-              <td>
-                <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
-              </td>
-              <td>
-                <LifecycleBadge phase={job.lifecyclePhase} fileKind={job.fileKind} />
-              </td>
-              <td>{job.retries}</td>
-              <td>{actions ? actions(job) : '-'}</td>
-            </tr>
-          ))
-        )}
-      </tbody>
-    </table>
-  </div>
+    <Table.ScrollContainer minWidth={960} type="native">
+      <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
+        <Table.Thead>
+          <Table.Tr>
+            {selectionEnabled ? (
+              <Table.Th>
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  aria-label="Select all queue entries"
+                  checked={allVisibleSelected}
+                  onChange={(event) => {
+                    onToggleAllSelection?.(event.currentTarget.checked);
+                  }}
+                />
+              </Table.Th>
+            ) : null}
+            <Table.Th>Modified</Table.Th>
+            <Table.Th>File</Table.Th>
+            <Table.Th>Kind</Table.Th>
+            <Table.Th>Format</Table.Th>
+            <Table.Th>Local file</Table.Th>
+            <Table.Th>Checksum</Table.Th>
+            <Table.Th>Local state</Table.Th>
+            <Table.Th>Server state</Table.Th>
+            <Table.Th>Retry attempts</Table.Th>
+            <Table.Th>Actions</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {orderedJobs.length === 0 ? (
+            <Table.Tr>
+              <Table.Td colSpan={selectionEnabled ? 11 : 10}>No queued uploads yet.</Table.Td>
+            </Table.Tr>
+          ) : (
+            orderedJobs.map((job) => (
+              <Table.Tr
+                key={job.id}
+                className={selectedJobId === job.id ? 'desktop-row-selected' : ''}
+                style={{ cursor: onSelect ? 'pointer' : undefined }}
+                onClick={() => onSelect?.(job)}
+              >
+                {selectionEnabled ? (
+                  <Table.Td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${job.filename}`}
+                      checked={selectedIds.has(job.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onChange={(event) => {
+                        event.stopPropagation();
+                        onToggleJobSelection?.(job, event.currentTarget.checked);
+                      }}
+                    />
+                  </Table.Td>
+                ) : null}
+                <Table.Td>{formatUploadJobModifiedAt(job)}</Table.Td>
+                <Table.Td>{renderFilename ? renderFilename(job) : job.filename}</Table.Td>
+                <Table.Td>
+                  <FileKindBadge fileKind={job.fileKind} />
+                </Table.Td>
+                <Table.Td>{job.formatId ? (formatLabels?.[job.formatId] ?? 'Unknown format') : 'Unassigned'}</Table.Td>
+                <Table.Td>
+                  <LocalPresenceBadge presence={job.localPresence} />
+                </Table.Td>
+                <Table.Td className="desktop-mono">
+                  {formatUploadJobChecksumStatusLabel(job)}
+                </Table.Td>
+                <Table.Td>
+                  <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
+                </Table.Td>
+                <Table.Td>
+                  <LifecycleBadge phase={job.lifecyclePhase} fileKind={job.fileKind} />
+                </Table.Td>
+                <Table.Td>{job.retries}</Table.Td>
+                <Table.Td>{actions ? actions(job) : '-'}</Table.Td>
+              </Table.Tr>
+            ))
+          )}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
   );
 };
 
@@ -912,30 +788,30 @@ export const WatchRootTable = ({
   onToggle: (watchRootId: string, paused: boolean) => Promise<void>;
   onDelete: (watchRootId: string) => Promise<void>;
 }): JSX.Element => (
-  <div className="desktop-table-wrap">
-    <table className="desktop-table">
-      <thead>
-        <tr>
-          <th>Path</th>
-          <th>Recursive</th>
-          <th>Status</th>
-          <th>Updated</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
+  <Table.ScrollContainer minWidth={640} type="native">
+    <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>Path</Table.Th>
+          <Table.Th>Recursive</Table.Th>
+          <Table.Th>Status</Table.Th>
+          <Table.Th>Updated</Table.Th>
+          <Table.Th>Actions</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
         {watchRoots.length === 0 ? (
-          <tr>
-            <td colSpan={5}>No watched directories configured.</td>
-          </tr>
+          <Table.Tr>
+            <Table.Td colSpan={5}>No watched directories configured.</Table.Td>
+          </Table.Tr>
         ) : (
           watchRoots.map((root) => (
-            <tr key={root.id}>
-              <td className="desktop-mono">{root.path}</td>
-              <td>{root.recursive ? 'Yes' : 'No'}</td>
-              <td>{root.paused ? 'Paused' : 'Active'}</td>
-              <td>{new Date(root.updatedAt).toLocaleString()}</td>
-              <td>
+            <Table.Tr key={root.id}>
+              <Table.Td className="desktop-mono">{root.path}</Table.Td>
+              <Table.Td>{root.recursive ? 'Yes' : 'No'}</Table.Td>
+              <Table.Td>{root.paused ? 'Paused' : 'Active'}</Table.Td>
+              <Table.Td>{new Date(root.updatedAt).toLocaleString()}</Table.Td>
+              <Table.Td>
                 <Group gap="xs">
                   <Button size="compact-xs" variant="light" onClick={() => void onToggle(root.id, !root.paused)}>
                     {root.paused ? 'Resume' : 'Pause'}
@@ -944,54 +820,54 @@ export const WatchRootTable = ({
                     Remove
                   </Button>
                 </Group>
-              </td>
-            </tr>
+              </Table.Td>
+            </Table.Tr>
           ))
         )}
-      </tbody>
-    </table>
-  </div>
+      </Table.Tbody>
+    </Table>
+  </Table.ScrollContainer>
 );
 
 export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.Element => (
-  <div className="desktop-table-wrap">
-    <table className="desktop-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Tournament ID</th>
-          <th>Teams</th>
-          <th>Mode</th>
-          <th>Run Environment</th>
-          <th>Park</th>
-          <th>Cap</th>
-          <th>OVR range</th>
-          <th>Slots</th>
-        </tr>
-      </thead>
-      <tbody>
+  <Table.ScrollContainer minWidth={760} type="native">
+    <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>Name</Table.Th>
+          <Table.Th>Tournament ID</Table.Th>
+          <Table.Th>Teams</Table.Th>
+          <Table.Th>Mode</Table.Th>
+          <Table.Th>Run Environment</Table.Th>
+          <Table.Th>Park</Table.Th>
+          <Table.Th>Cap</Table.Th>
+          <Table.Th>OVR range</Table.Th>
+          <Table.Th>Slots</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
         {formats.length === 0 ? (
-          <tr>
-            <td colSpan={9}>No cached formats yet.</td>
-          </tr>
+          <Table.Tr>
+            <Table.Td colSpan={9}>No cached formats yet.</Table.Td>
+          </Table.Tr>
         ) : (
           formats.map((format) => (
-            <tr key={format.id}>
-              <td>{format.name}</td>
-              <td>{format.tournamentIdPrefix ? `${format.tournamentIdPrefix}${'x'.repeat(4)}` : '-'}</td>
-              <td>{formatTeamsPerTournamentLabel(format)}</td>
-              <td>{format.mode || '-'}</td>
-              <td>{format.runEnvironment || '-'}</td>
-              <td>{format.parkKey || '-'}</td>
-              <td>{format.capValue || '-'}</td>
-              <td>{formatOvrRangeLabel(format)}</td>
-              <td>{formatSlotCountsLabel(format)}</td>
-            </tr>
+            <Table.Tr key={format.id}>
+              <Table.Td>{format.name}</Table.Td>
+              <Table.Td>{format.tournamentIdPrefix ? `${format.tournamentIdPrefix}${'x'.repeat(4)}` : '-'}</Table.Td>
+              <Table.Td>{formatTeamsPerTournamentLabel(format)}</Table.Td>
+              <Table.Td>{format.mode || '-'}</Table.Td>
+              <Table.Td>{format.runEnvironment || '-'}</Table.Td>
+              <Table.Td>{format.parkKey || '-'}</Table.Td>
+              <Table.Td>{format.capValue || '-'}</Table.Td>
+              <Table.Td>{formatOvrRangeLabel(format)}</Table.Td>
+              <Table.Td>{formatSlotCountsLabel(format)}</Table.Td>
+            </Table.Tr>
           ))
         )}
-      </tbody>
-    </table>
-  </div>
+      </Table.Tbody>
+    </Table>
+  </Table.ScrollContainer>
 );
 
 export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
@@ -1060,6 +936,7 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
 export const WatchRootForm = ({ id }: { id?: string }): JSX.Element => {
   const { selectedProfile, addWatchRoot } = useDesktop();
   const [path, setPath] = useState('');
+  const [recursive, setRecursive] = useState(false);
 
   useEffect(() => {
     if (!selectedProfile) {
@@ -1090,6 +967,12 @@ export const WatchRootForm = ({ id }: { id?: string }): JSX.Element => {
         <Text size="xs" c="dimmed">
           Defaults to the current platform&apos;s OOTP Baseball 27 `online_data` directory.
         </Text>
+        <Checkbox
+          label="Include subfolders"
+          description="Scan and watch nested folders under this path, not just files directly inside it."
+          checked={recursive}
+          onChange={(event) => setRecursive(event.currentTarget.checked)}
+        />
         <Group justify="flex-end">
           <Button
             disabled={!selectedProfile || !path.trim()}
@@ -1100,13 +983,14 @@ export const WatchRootForm = ({ id }: { id?: string }): JSX.Element => {
               void addWatchRoot({
                 profileId: selectedProfile.id,
                 path: path.trim(),
-                recursive: false
+                recursive
               }).then(() => {
                 void desktopClient.getDefaultWatchRoot().then((defaultPath) => {
                   setPath(defaultPath);
                 }).catch(() => {
                   setPath('');
                 });
+                setRecursive(false);
               });
             }}
           >
@@ -1125,40 +1009,40 @@ export const FormatRuleTable = ({
   rules: LocalFormatRule[];
   onDelete: (formatRuleId: string) => Promise<void>;
 }): JSX.Element => (
-  <div className="desktop-table-wrap">
-    <table className="desktop-table">
-      <thead>
-        <tr>
-          <th>Match</th>
-          <th>Pattern</th>
-          <th>Format</th>
-          <th>Updated</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
+  <Table.ScrollContainer minWidth={640} type="native">
+    <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>Match</Table.Th>
+          <Table.Th>Pattern</Table.Th>
+          <Table.Th>Format</Table.Th>
+          <Table.Th>Updated</Table.Th>
+          <Table.Th>Actions</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
         {rules.length === 0 ? (
-          <tr>
-            <td colSpan={5}>No saved format rules yet.</td>
-          </tr>
+          <Table.Tr>
+            <Table.Td colSpan={5}>No saved format rules yet.</Table.Td>
+          </Table.Tr>
         ) : (
           rules.map((rule) => (
-            <tr key={rule.id}>
-              <td>{rule.matchType}</td>
-              <td className="desktop-mono">{rule.pattern}</td>
-              <td>{rule.formatName}</td>
-              <td>{new Date(rule.updatedAt).toLocaleString()}</td>
-              <td>
+            <Table.Tr key={rule.id}>
+              <Table.Td>{rule.matchType}</Table.Td>
+              <Table.Td className="desktop-mono">{rule.pattern}</Table.Td>
+              <Table.Td>{rule.formatName}</Table.Td>
+              <Table.Td>{new Date(rule.updatedAt).toLocaleString()}</Table.Td>
+              <Table.Td>
                 <Button size="compact-xs" color="red" variant="light" onClick={() => void onDelete(rule.id)}>
                   Remove
                 </Button>
-              </td>
-            </tr>
+              </Table.Td>
+            </Table.Tr>
           ))
         )}
-      </tbody>
-    </table>
-  </div>
+      </Table.Tbody>
+    </Table>
+  </Table.ScrollContainer>
 );
 
 export const PreferencesForm = ({

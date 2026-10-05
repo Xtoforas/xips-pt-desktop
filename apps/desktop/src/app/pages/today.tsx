@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
@@ -22,17 +22,7 @@ import {
 } from '../queue-model';
 
 export const TodayPage = (): JSX.Element => {
-  const {
-    snapshot,
-    selectedProfile,
-    health,
-    authFlowState,
-    cards,
-    cardSource,
-    refreshCards,
-    refreshMyAgg,
-    updatePreferences
-  } = useDesktop();
+  const { snapshot, selectedProfile, health, authFlowState, updatePreferences } = useDesktop();
   const onboardingSteps = useMemo(
     () => buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState }),
     [authFlowState, health, selectedProfile, snapshot]
@@ -88,9 +78,12 @@ export const TodayPage = (): JSX.Element => {
     () => snapshot.uploadJobs.filter(uploadJobWaitingOnServer).length,
     [snapshot.uploadJobs]
   );
-  const localUploadCount = useMemo(
-    () => activeMachineJobs.length,
-    [activeMachineJobs.length]
+  const inProgressJobs = useMemo(
+    () =>
+      [...activeMachineJobs, ...serverProgressJobs].sort(
+        (left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)
+      ),
+    [activeMachineJobs, serverProgressJobs]
   );
   const completedJobs = useMemo(
     () =>
@@ -103,24 +96,17 @@ export const TodayPage = (): JSX.Element => {
 
   return (
     <Stack gap="lg">
-      <Card withBorder className="desktop-card desktop-today-hero">
-        <Stack gap="md">
-          <div>
-            <Text className="desktop-micro-label">Today</Text>
-            <h2 className="desktop-page-title">What needs you right now</h2>
-            <p className="desktop-page-subtitle">Blockers, automatic progress, and recent finishes all live on one operating surface.</p>
-          </div>
-          {nextStep ? (
-            <Alert color="blue" variant="light" title={`Next readiness step: ${nextStep.label}`}>
-              {nextStep.detail}
-            </Alert>
-          ) : (
-            <Alert color="teal" variant="light">
-              Operational readiness is complete.
-            </Alert>
-          )}
-        </Stack>
-      </Card>
+      <Stack gap={4}>
+        <Title order={2}>Today</Title>
+        <Text c="dimmed">
+          Files that need your input, and what&apos;s uploading right now.
+          {selectedProfile ? (
+            <>
+              {' '}Watched folders are uploaded to <span className="desktop-mono">{selectedProfile.baseUrl}</span> automatically.
+            </>
+          ) : null}
+        </Text>
+      </Stack>
       <ReadinessCard
         onboardingSteps={readinessItems}
         nextStep={nextStep}
@@ -200,85 +186,58 @@ export const TodayPage = (): JSX.Element => {
           )}
         </Stack>
       </Card>
-      <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
-        <Card withBorder className="desktop-card desktop-today-section">
-          <Stack gap="md">
-            <Group justify="space-between" align="center" wrap="wrap">
-              <div>
-                <Text className="desktop-micro-label">In progress</Text>
-                <Text fw={700}>Automatic work</Text>
-              </div>
+      <Card withBorder className="desktop-card desktop-today-section">
+        <Stack gap="md">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <div>
+              <Text className="desktop-micro-label">In progress</Text>
+              <Text fw={700}>Uploading now</Text>
+            </div>
+            <Group gap="xs" wrap="wrap">
               <Badge color="blue" variant="light">
                 {automaticQueueCount} moving
               </Badge>
-            </Group>
-            <Stack gap="sm">
-              <div className="desktop-today-mini-list">
-                <Text size="sm" fw={600}>
-                  On this machine
-                </Text>
-                {activeMachineJobs.length === 0 ? (
-                  <Alert color="gray" variant="light">
-                    No uploads are currently staged or uploading on this desktop.
-                  </Alert>
-                ) : (
-                  activeMachineJobs.slice(0, 4).map((job) => (
-                    <div key={job.id} className="desktop-today-mini-row">
-                      <div>
-                        <Text size="sm" fw={600}>
-                          {job.filename}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          {formatQueueStateLabel(job.localState, job.fileKind)} · {formatUploadJobModifiedAt(job)}
-                        </Text>
-                      </div>
-                      <Badge color="blue" variant="light">
-                        {formatFileKindLabel(job.fileKind)}
-                      </Badge>
-                    </div>
-                  ))
-                )}
-              </div>
-            </Stack>
-          </Stack>
-        </Card>
-        <Card withBorder className="desktop-card desktop-today-section">
-          <Stack gap="md">
-            <Group justify="space-between" align="center" wrap="wrap">
-              <div>
-                <Text className="desktop-micro-label">In progress</Text>
-                <Text fw={700}>Waiting on the server</Text>
-              </div>
               <Badge color="cyan" variant="light">
                 {waitingOnServerCount} on server
               </Badge>
             </Group>
-            {serverProgressJobs.length === 0 ? (
-              <Alert color="gray" variant="light">
-                Nothing is currently waiting on the server.
-              </Alert>
-            ) : (
-              <Stack gap="sm">
-                {serverProgressJobs.slice(0, 4).map((job) => (
+          </Group>
+          {inProgressJobs.length === 0 ? (
+            <Alert color="gray" variant="light">
+              Nothing is uploading right now.
+            </Alert>
+          ) : (
+            <Stack gap="sm">
+              {inProgressJobs.slice(0, 6).map((job) => {
+                const onServer = uploadJobWaitingOnServer(job);
+                return (
                   <div key={job.id} className="desktop-today-mini-row">
                     <div>
                       <Text size="sm" fw={600}>
                         {job.filename}
                       </Text>
                       <Text size="xs" c="dimmed">
-                        {formatLifecycleLabel(job.lifecyclePhase, job.fileKind)} · {formatUploadJobModifiedAt(job)}
+                        {onServer
+                          ? formatLifecycleLabel(job.lifecyclePhase, job.fileKind)
+                          : formatQueueStateLabel(job.localState, job.fileKind)}{' '}
+                        · {formatUploadJobModifiedAt(job)}
                       </Text>
                     </div>
-                    <Badge color="cyan" variant="light">
-                      {job.localState === 'uploaded_waiting_server' ? 'Uploaded' : formatQueueStateLabel(job.localState, job.fileKind)}
-                    </Badge>
+                    <Group gap="xs" wrap="nowrap">
+                      <Badge color={onServer ? 'cyan' : 'blue'} variant="light">
+                        {onServer ? 'On server' : 'Local'}
+                      </Badge>
+                      <Badge color={job.fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
+                        {formatFileKindLabel(job.fileKind)}
+                      </Badge>
+                    </Group>
                   </div>
-                ))}
-              </Stack>
-            )}
-          </Stack>
-        </Card>
-      </SimpleGrid>
+                );
+              })}
+            </Stack>
+          )}
+        </Stack>
+      </Card>
       <Card withBorder className="desktop-card desktop-today-section">
         <Stack gap="md">
           <Group justify="space-between" align="center" wrap="wrap">
@@ -320,62 +279,6 @@ export const TodayPage = (): JSX.Element => {
           )}
         </Stack>
       </Card>
-      <SimpleGrid cols={{ base: 1, md: 4 }} spacing="sm">
-        <Card withBorder className="desktop-card">
-          <Stack gap={4}>
-            <Text className="desktop-micro-label">Server</Text>
-            <Text fw={700}>{selectedProfile?.name ?? 'None'}</Text>
-            <Text size="xs" c="dimmed">
-              {selectedProfile?.baseUrl ?? 'No server selected'}
-            </Text>
-          </Stack>
-        </Card>
-        <Card withBorder className="desktop-card">
-          <Stack gap={4}>
-            <Text className="desktop-micro-label">Watch folders</Text>
-            <Text fw={700}>{snapshot.watchRoots.length}</Text>
-            <Text size="xs" c="dimmed">
-              Configured folder monitors
-            </Text>
-          </Stack>
-        </Card>
-        <Card withBorder className="desktop-card">
-          <Stack gap={4}>
-            <Text className="desktop-micro-label">Cards</Text>
-            <Text fw={700}>{cards.length}</Text>
-            <Text size="xs" c="dimmed">
-              Source: {cardSource ?? 'Unknown'}
-            </Text>
-            <Group gap="xs" wrap="wrap" mt={4}>
-              <Button size="compact-xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshCards('')}>
-                Refresh cards
-              </Button>
-              <Button
-                size="compact-xs"
-                variant="light"
-                disabled={!selectedProfile}
-                onClick={() => {
-                  if (!selectedProfile) {
-                    return;
-                  }
-                  void refreshMyAgg(selectedProfile.id);
-                }}
-              >
-                Refresh personal aggregate
-              </Button>
-            </Group>
-          </Stack>
-        </Card>
-        <Card withBorder className="desktop-card">
-          <Stack gap={4}>
-            <Text className="desktop-micro-label">Queue state</Text>
-            <Text fw={700}>{waitingOnServerCount + localUploadCount}</Text>
-            <Text size="xs" c="dimmed">
-              Automatic work still in motion
-            </Text>
-          </Stack>
-        </Card>
-      </SimpleGrid>
     </Stack>
   );
 };
