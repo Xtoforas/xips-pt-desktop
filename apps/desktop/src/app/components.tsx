@@ -375,7 +375,7 @@ export const DesktopSidebar = (): JSX.Element => {
       gap="sm"
       className="desktop-sidebar"
       data-collapsed={collapsed}
-      p="sm"
+      p={collapsed ? 'xs' : 'sm'}
       ref={sidebarRef}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -386,7 +386,7 @@ export const DesktopSidebar = (): JSX.Element => {
         }
       }}
     >
-      <Paper withBorder radius="md" p="sm">
+      <Paper withBorder radius="md" p={collapsed ? 4 : 'sm'}>
         <Group gap="sm" wrap="nowrap" align="center" justify={collapsed ? 'center' : 'flex-start'}>
           <ThemeIcon size={40} radius="md" variant="gradient" gradient={{ from: 'xipsBlue.5', to: 'xipsBlue.8', deg: 145 }}>
             <SidebarIcon path="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M7.39,5.72C8.61,7.16 9.34,9.07 9.34,11.17C9.34,13.27 8.61,15.18 7.39,16.62C5.94,15.41 5,13.8 5,12C5,10.19 5.94,8.59 7.39,7.37V5.72M16.61,7.38C18.05,8.59 19,10.2 19,12C19,13.8 18.05,15.41 16.61,16.62C15.39,15.18 14.66,13.27 14.66,11.17C14.66,9.07 15.39,7.16 16.61,5.72V7.38M9.03,4.79C9.88,4.29 10.9,4 12,4C13.1,4 14.12,4.29 14.97,4.79C13.78,6.45 13.09,8.53 13.09,10.76C13.09,12.97 13.78,15.05 14.97,16.71C14.12,17.21 13.1,17.5 12,17.5C10.9,17.5 9.88,17.21 9.03,16.71C10.22,15.05 10.91,12.97 10.91,10.76C10.91,8.53 10.22,6.45 9.03,4.79M8.66,17.95C9.63,18.45 10.77,18.74 12,18.74C13.23,18.74 14.37,18.45 15.34,17.95C14.38,19.2 13.26,20 12,20C10.74,20 9.62,19.2 8.66,17.95Z" />
@@ -403,7 +403,7 @@ export const DesktopSidebar = (): JSX.Element => {
           )}
         </Group>
       </Paper>
-      <Paper withBorder radius="md" p="xs" style={{ flex: '1 1 auto' }}>
+      <Paper withBorder radius="md" p={collapsed ? 4 : 'xs'} style={{ flex: '1 1 auto' }}>
         <Stack gap="xs" align={collapsed ? 'center' : 'stretch'}>
           {navItems.map((item) => {
             const navLink = (
