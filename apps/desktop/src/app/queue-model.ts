@@ -307,7 +307,46 @@ export const extractTournamentIdCandidates = (value: string): string[] => {
   return matches.filter((candidate) => candidate.length >= 5 && candidate.length <= 7);
 };
 
-type PrefixFormat = { id: string; name: string; tournamentIdPrefix: string; teamsPerTournament: number };
+// tournamentId is the exact id of an Event format (Pop-ups, PTCS Period 7); its prefix is empty.
+type PrefixFormat = {
+  id: string;
+  name: string;
+  tournamentIdPrefix: string;
+  tournamentId?: string;
+  teamsPerTournament: number;
+};
+
+const exactEventFormats = <T extends PrefixFormat>(formats: T[], tournamentId: string): T[] =>
+  formats.filter((format) => !!format.tournamentId && format.tournamentId === tournamentId);
+
+// Formats a tournament id maps to: exact Event ids first (skipping prefix rules for that id), then prefixes.
+export const matchFormatsForTournamentId = <T extends PrefixFormat>(
+  formats: T[],
+  tournamentId: string,
+  teamCount: number
+): T[] => {
+  const exact = exactEventFormats(formats, tournamentId);
+  if (exact.length > 0) {
+    return exact.filter((format) => formatMatchesTeamCount(format.teamsPerTournament, teamCount));
+  }
+  return formats.filter(
+    (format) =>
+      format.tournamentIdPrefix.length > 0 &&
+      tournamentId.length === format.tournamentIdPrefix.length + 4 &&
+      tournamentId.startsWith(format.tournamentIdPrefix) &&
+      formatMatchesTeamCount(format.teamsPerTournament, teamCount)
+  );
+};
+
+// Digit runs that exactly equal an Event format id. Runs under 5 digits only count as the whole filename stem.
+const eventIdCandidates = (filename: string, formats: PrefixFormat[]): string[] => {
+  const dot = filename.lastIndexOf('.');
+  const stem = dot >= 0 ? filename.slice(0, dot) : filename;
+  const runs = filename.match(/\d+/gu) ?? [];
+  return [...new Set(runs)].filter(
+    (run) => exactEventFormats(formats, run).length > 0 && (run.length >= 5 || run === stem)
+  );
+};
 
 const leagueLevelLabel = (leagueNumber: number): string => {
   if (leagueNumber === 500) return 'Perfect League';
@@ -366,6 +405,7 @@ export type FilenameAutoAssignmentDiagnosis =
   | { kind: 'no_tournament_id' }
   | { kind: 'no_format_for_team_count'; candidate: string; prefix: string; teamCount: number }
   | { kind: 'ambiguous_prefix'; candidate: string; prefix: string }
+  | { kind: 'event_team_count'; candidate: string; formatName: string; teamCount: number }
   | { kind: 'no_matching_prefix'; candidates: string[] };
 
 // Why a filename was not auto-assigned; explainFilenameAutoAssignment and summarizeBlockedJob word it.
@@ -385,12 +425,27 @@ export const diagnoseFilenameAutoAssignment = (
     }
   }
 
+  const eventCandidates = eventIdCandidates(filename, formats);
+  for (const candidate of eventCandidates) {
+    const exact = exactEventFormats(formats, candidate);
+    const compatible = exact.filter((format) => formatMatchesTeamCount(format.teamsPerTournament, teamCount));
+    if (compatible.length === 0) {
+      return { kind: 'event_team_count', candidate, formatName: exact[0].name, teamCount };
+    }
+    if (compatible.length > 1) {
+      return { kind: 'ambiguous_prefix', candidate, prefix: '' };
+    }
+  }
+
   const candidates = extractTournamentIdCandidates(filename);
-  if (candidates.length === 0) {
+  if (candidates.length === 0 && eventCandidates.length === 0) {
     return { kind: 'no_tournament_id' };
   }
 
   for (const candidate of candidates) {
+    if (eventCandidates.includes(candidate)) {
+      continue;
+    }
     const prefixMatches = formats.filter(
       (format) =>
         format.tournamentIdPrefix.length > 0 &&
@@ -432,8 +487,12 @@ export const explainFilenameAutoAssignment = (
       return diagnosis.teamCount > 0
         ? `The filename looks like tournament ID ${diagnosis.candidate}, but none of the cached formats with that prefix accept this file's ${diagnosis.teamCount} detected teams.`
         : `The filename looks like tournament ID ${diagnosis.candidate}, but none of the cached formats with that prefix are eligible for automatic assignment.`;
+    case 'event_team_count':
+      return `The filename looks like event tournament ID ${diagnosis.candidate} (${diagnosis.formatName}), but none of the cached event formats with that ID accept this file's ${diagnosis.teamCount} detected teams.`;
     case 'ambiguous_prefix':
-      return `The filename looks like tournament ID ${diagnosis.candidate}, but more than one cached format shares that tournament ID prefix, so the app will not guess.`;
+      return diagnosis.prefix
+        ? `The filename looks like tournament ID ${diagnosis.candidate}, but more than one cached format shares that tournament ID prefix, so the app will not guess.`
+        : `The filename looks like tournament ID ${diagnosis.candidate}, but more than one cached event format uses that exact ID, so the app will not guess.`;
     case 'no_matching_prefix':
       return `The filename contains ${diagnosis.candidates.join(', ')}, but none of those IDs match a cached tournament prefix on this desktop.`;
   }
@@ -679,8 +738,12 @@ const summarizeFormatMatchProblem = (job: LocalUploadJob, formats: PrefixFormat[
       return diagnosis.teamCount > 0
         ? `No prefix ${diagnosis.prefix} format accepts ${diagnosis.teamCount} teams.`
         : `No prefix ${diagnosis.prefix} format is eligible for automatic assignment.`;
+    case 'event_team_count':
+      return `${diagnosis.formatName} (event ${diagnosis.candidate}) doesn't accept ${diagnosis.teamCount} teams.`;
     case 'ambiguous_prefix':
-      return `Several formats share prefix ${diagnosis.prefix}.`;
+      return diagnosis.prefix
+        ? `Several formats share prefix ${diagnosis.prefix}.`
+        : `Several formats share event ID ${diagnosis.candidate}.`;
     case 'no_matching_prefix':
       return `No format for prefix ${[...new Set(diagnosis.candidates.map((candidate) => candidate.slice(0, -4)))].join(', ')}.`;
   }

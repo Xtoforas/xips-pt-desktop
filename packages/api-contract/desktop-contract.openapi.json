@@ -424,6 +424,9 @@
                       "slotCounts": { "P": 2, "D": 3, "G": 4, "S": 5, "B": 6 },
                       "eraRestrictions": [],
                       "cardTypeRestrictions": [],
+                      "tournamentId": "",
+                      "isDraft": false,
+                      "categories": [],
                       "createdByUserId": "discord-1",
                       "createdAt": "2026-07-01T00:00:00.000Z",
                       "updatedAt": "2026-07-01T00:00:00.000Z"
@@ -819,13 +822,15 @@
       },
       "TournamentFormatRow": {
         "type": "object",
-        "required": ["id", "name", "gameVersion", "formatType", "tournamentIdPrefix", "teamCount", "runEnvironment", "parkKey", "mode", "capValue", "variantLimitValue", "ovrMin", "ovrMax", "isSlotsTournament", "slotCounts", "eraRestrictions", "cardTypeRestrictions", "createdByUserId", "createdAt", "updatedAt"],
+        "required": ["id", "name", "gameVersion", "formatType", "tournamentIdPrefix", "teamCount", "runEnvironment", "parkKey", "mode", "capValue", "variantLimitValue", "ovrMin", "ovrMax", "isSlotsTournament", "slotCounts", "eraRestrictions", "cardTypeRestrictions", "categories", "createdByUserId", "createdAt", "updatedAt"],
         "properties": {
           "id": { "type": "string" },
           "name": { "type": "string" },
           "gameVersion": { "$ref": "#/components/schemas/GameVersion" },
-          "formatType": { "type": "string", "enum": ["Quick", "Daily", "Weekly", "Special"] },
-          "tournamentIdPrefix": { "type": "string" },
+          "formatType": { "type": "string", "enum": ["Event", "Daily", "Quick", "Weekly"] },
+          "tournamentIdPrefix": { "type": "string", "description": "3-digit prefix for recurring formats; empty for Events." },
+          "tournamentId": { "type": "string", "description": "Exact tournament id for Events (one tournament per format); empty otherwise." },
+          "isDraft": { "type": "boolean" },
           "teamCount": { "type": "integer", "description": "Server field name is teamCount (a number), never teamsPerTournament." },
           "runEnvironment": { "type": "string" },
           "parkKey": { "type": "string" },
@@ -838,6 +843,7 @@
           "slotCounts": { "$ref": "#/components/schemas/SlotCounts" },
           "eraRestrictions": { "type": "array", "items": { "type": "string" } },
           "cardTypeRestrictions": { "type": "array", "items": { "type": "string" } },
+          "categories": { "type": "array", "items": { "type": "string", "enum": ["Iron", "Bronze", "Silver", "Gold", "Diamond", "Open", "Live", "Cap", "DailyPD", "WeeklyPD"] } },
           "createdByUserId": { "type": "string" },
           "createdAt": { "type": "string" },
           "updatedAt": { "type": "string" }

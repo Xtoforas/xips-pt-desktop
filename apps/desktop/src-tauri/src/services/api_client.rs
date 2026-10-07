@@ -183,8 +183,12 @@ fn create_upload_body(
         body["leagueNumber"] = Value::String(number.to_string());
     } else if file_kind == "stats_export" {
         body["formatId"] = Value::String(format_id.to_string());
-        if !tournament_id.trim().is_empty() {
-            body["tournamentId"] = Value::String(tournament_id.trim().to_string());
+        // The server only accepts 5-7 digit ids; shorter Event ids are filled in from the format.
+        let tournament_id = tournament_id.trim();
+        if (5..=7).contains(&tournament_id.len())
+            && tournament_id.chars().all(|value| value.is_ascii_digit())
+        {
+            body["tournamentId"] = Value::String(tournament_id.to_string());
         }
     }
     body
@@ -630,6 +634,22 @@ mod tests {
         assert_eq!(body["deferProcessing"], true);
         assert_eq!(body["uploadBatchId"], "b1");
         assert!(body.get("leagueYear").is_none());
+    }
+
+    #[test]
+    fn create_body_omits_short_event_tournament_id() {
+        let body = create_upload_body(
+            "713.csv",
+            "x",
+            "stats_export",
+            "format-713",
+            "713",
+            "ootp27",
+            None,
+            false,
+        );
+        assert_eq!(body["formatId"], "format-713");
+        assert!(body.get("tournamentId").is_none());
     }
 
     #[test]

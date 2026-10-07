@@ -419,7 +419,7 @@ pub fn assign_detected_file_tournament(
     tournament_id: &str,
 ) -> Result<DesktopSnapshot, String> {
     let normalized_tournament_id = tournament_id.trim();
-    if normalized_tournament_id.len() < 5 || normalized_tournament_id.len() > 7 {
+    if normalized_tournament_id.len() < 3 || normalized_tournament_id.len() > 7 {
         return Err(String::from("tournament_id_invalid"));
     }
     if !normalized_tournament_id
@@ -514,6 +514,25 @@ fn match_format_for_tournament_id(
     tournament_id: &str,
     team_count: u32,
 ) -> Result<TournamentFormat, String> {
+    // Event formats match an exact tournament id; when one exists the prefix
+    // rules are skipped so e.g. 1010006 does not fall into the 101 prefix.
+    let exact_formats = formats
+        .iter()
+        .filter(|format| !format.tournament_id.is_empty() && format.tournament_id == tournament_id)
+        .collect::<Vec<&TournamentFormat>>();
+    if !exact_formats.is_empty() {
+        let mut accepted = exact_formats
+            .into_iter()
+            .filter(|format| format_matches_team_count(format, team_count));
+        let first = accepted
+            .next()
+            .ok_or_else(|| String::from("tournament_id_format_not_found"))?;
+        if accepted.next().is_some() {
+            return Err(String::from("tournament_id_prefix_ambiguous"));
+        }
+        return Ok(first.clone());
+    }
+
     let matched_formats = formats
         .iter()
         .filter(|format| {
@@ -1223,9 +1242,22 @@ fn infer_tournament_assignment_from_filename(
     filename: &str,
     team_count: u32,
 ) -> Option<(String, String)> {
+    let stem = filename
+        .rsplit_once('.')
+        .map_or(filename, |(stem, _)| stem);
     let candidates = extract_bounded_digit_runs(filename)
         .into_iter()
-        .filter(|value| (5..=7).contains(&value.len()))
+        .filter(|value| {
+            let is_event_id = formats
+                .iter()
+                .any(|format| !format.tournament_id.is_empty() && format.tournament_id == *value);
+            if value.len() < 5 {
+                // Short runs only count as an Event id when they are the whole stem.
+                is_event_id && value == stem
+            } else {
+                (5..=7).contains(&value.len()) || is_event_id
+            }
+        })
         .collect::<Vec<String>>();
     for candidate in candidates {
         if let Ok(format) = match_format_for_tournament_id(formats, &candidate, team_count) {
@@ -2260,6 +2292,9 @@ mod tests {
             game_version: String::from("ootp27"),
             format_type: String::from("Quick"),
             tournament_id_prefix: String::from(prefix),
+            tournament_id: String::new(),
+            is_draft: false,
+            categories: Vec::new(),
             run_environment: String::from("2026"),
             park_key: String::from("Test Park"),
             mode: String::from("Best of 5"),
@@ -2523,6 +2558,82 @@ mod tests {
         assert_eq!(job.format_id, "fmt-1");
         assert_eq!(job.tournament_id, "120001");
 
+        remove_test_dir(&db_path);
+    }
+
+    fn event_format(id: &str, tournament_id: &str, teams: u32) -> TournamentFormat {
+        let mut event = format(id, "");
+        event.format_type = String::from("Event");
+        event.tournament_id = String::from(tournament_id);
+        event.teams_per_tournament = teams;
+        event
+    }
+
+    #[test]
+    fn short_event_filename_matches_exact_event_format() {
+        let (db_path, csv_path) = league_fixture("event-713", "713.csv");
+        cache_formats(&db_path, &[event_format("event-713", "713", 128)])
+            .expect("formats should cache");
+        let snapshot = save_scan_results(&db_path, "profile-1", &[scan_result(&csv_path, "1000")])
+            .expect("scan should succeed");
+        let job = snapshot.upload_jobs.first().expect("upload job should exist");
+        assert_eq!(job.format_id, "event-713");
+        assert_eq!(job.tournament_id, "713");
+        remove_test_dir(&db_path);
+    }
+
+    #[test]
+    fn exact_event_id_beats_prefix_format() {
+        let (db_path, csv_path) = league_fixture("event-over-prefix", "1010006.csv");
+        let mut iron = format("iron-quick", "101");
+        iron.teams_per_tournament = 16;
+        cache_formats(&db_path, &[iron, event_format("event-p7", "1010006", 128)])
+            .expect("formats should cache");
+        let snapshot = save_scan_results(&db_path, "profile-1", &[scan_result(&csv_path, "1000")])
+            .expect("scan should succeed");
+        let job = snapshot.upload_jobs.first().expect("upload job should exist");
+        assert_eq!(job.format_id, "event-p7");
+        assert_eq!(job.tournament_id, "1010006");
+        remove_test_dir(&db_path);
+    }
+
+    #[test]
+    fn league_filename_ignores_short_event_id_inside_name() {
+        let (db_path, csv_path) = league_fixture("league-vs-event", "2050.403.csv");
+        cache_formats(&db_path, &[event_format("event-403", "403", 128)])
+            .expect("formats should cache");
+        let mut scan = scan_result(&csv_path, "1000");
+        scan.team_count = 30;
+        let snapshot =
+            save_scan_results(&db_path, "profile-1", &[scan]).expect("scan should succeed");
+        let job = snapshot.upload_jobs.first().expect("upload job should exist");
+        assert_eq!(job.format_id, "2050.403");
+        assert_eq!(job.tournament_id, "");
+        remove_test_dir(&db_path);
+    }
+
+    #[test]
+    fn event_match_checks_team_count_and_skips_prefix_logic() {
+        let formats = vec![format("iron", "101"), event_format("event-p7", "1010006", 16)];
+        let error = match_format_for_tournament_id(&formats, "1010006", 20)
+            .expect_err("too many teams for the event");
+        assert_eq!(error, "tournament_id_format_not_found");
+        let matched = match_format_for_tournament_id(&formats, "1010006", 16).expect("match");
+        assert_eq!(matched.id, "event-p7");
+    }
+
+    #[test]
+    fn manual_tournament_assignment_accepts_event_id() {
+        let (db_path, csv_path) = league_fixture("manual-event", "sortable_stats.csv");
+        cache_formats(&db_path, &[event_format("event-713", "713", 128)])
+            .expect("formats should cache");
+        let snapshot = save_scan_results(&db_path, "profile-1", &[scan_result(&csv_path, "1000")])
+            .expect("scan should succeed");
+        let id = snapshot.detected_files[0].id.clone();
+        let snapshot = super::assign_detected_file_tournament(&db_path, &id, "713")
+            .expect("manual assignment should succeed");
+        assert_eq!(snapshot.detected_files[0].format_id, "event-713");
+        assert_eq!(snapshot.detected_files[0].tournament_id, "713");
         remove_test_dir(&db_path);
     }
 

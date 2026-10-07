@@ -18,6 +18,7 @@ import {
   getIncompleteTeamCountWarning,
   getQueueRowActionKeys,
   isQueueJobDone,
+  matchFormatsForTournamentId,
   parseRetryableFailureDetail,
   queueWorkspaceViewForJob,
   summarizeBlockedJob,
@@ -594,5 +595,49 @@ describe('compareUploadJobsNewestFirst', () => {
       'old-source',
       'untimed'
     ]);
+  });
+});
+
+describe('Event formats matched by exact tournament id', () => {
+  const iron = { id: 'iron', name: 'Iron Quick', tournamentIdPrefix: '101', tournamentId: '', teamsPerTournament: 16 };
+  const ptcs = { id: 'ptcs7', name: 'PTCS Period 7', tournamentIdPrefix: '', tournamentId: '1010006', teamsPerTournament: 128 };
+  const popup = { id: 'p713', name: 'Live-Plus Bronze Pop-up', tournamentIdPrefix: '', tournamentId: '713', teamsPerTournament: 128 };
+  const formats = [iron, ptcs, popup];
+
+  test('matchFormatsForTournamentId prefers the exact Event id over a prefix', () => {
+    expect(matchFormatsForTournamentId(formats, '1010006', 100)).toEqual([ptcs]);
+    expect(matchFormatsForTournamentId(formats, '713', 100)).toEqual([popup]);
+  });
+
+  test('matchFormatsForTournamentId skips the prefix when an Event id exists but rejects the team count', () => {
+    expect(matchFormatsForTournamentId(formats, '1010006', 200)).toEqual([]);
+  });
+
+  test('matchFormatsForTournamentId keeps prefix matching for ordinary ids', () => {
+    expect(matchFormatsForTournamentId(formats, '1010001', 16)).toEqual([iron]);
+    expect(matchFormatsForTournamentId(formats, '1010001', 17)).toEqual([]);
+    expect(matchFormatsForTournamentId(formats, '714', 10)).toEqual([]);
+  });
+
+  test('matchFormatsForTournamentId returns several formats sharing an Event id', () => {
+    expect(matchFormatsForTournamentId([popup, { ...popup, id: 'dup' }], '713', 10)).toHaveLength(2);
+  });
+
+  test('diagnoses an Event id whose formats reject the team count', () => {
+    expect(diagnoseFilenameAutoAssignment('713.csv', 200, formats)).toEqual({
+      kind: 'event_team_count',
+      candidate: '713',
+      formatName: 'Live-Plus Bronze Pop-up',
+      teamCount: 200
+    });
+    expect(diagnoseFilenameAutoAssignment('1010006.csv', 200, formats).kind).toBe('event_team_count');
+    expect(explainFilenameAutoAssignment('713.csv', 200, formats)).toContain('event tournament ID 713');
+    expect(
+      summarizeBlockedJob(makeUploadJob({ localState: 'awaiting_format_assignment', filename: '713.csv', teamCount: 200 }), formats).reason
+    ).toBe("Live-Plus Bronze Pop-up (event 713) doesn't accept 200 teams.");
+  });
+
+  test('a short Event id inside a larger filename is not an Event match (league name stays a league)', () => {
+    expect(diagnoseFilenameAutoAssignment('2050.403.csv', 30, [...formats, { ...popup, id: 'p403', tournamentId: '403' }]).kind).toBe('no_tournament_id');
   });
 });

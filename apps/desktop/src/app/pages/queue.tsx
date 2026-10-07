@@ -8,6 +8,7 @@ import {
   canIgnoreUploadJob,
   compareUploadJobsNewestFirst,
   explainFilenameAutoAssignment,
+  matchFormatsForTournamentId,
   formatFileKindLabel,
   formatLifecycleLabel,
   formatLocalPresenceLabel,
@@ -162,16 +163,10 @@ export const UploadQueuePage = (): JSX.Element => {
   const inlineEditingJobTeamCount = inlineEditingJob?.teamCount ?? 0;
   const tournamentFormatMatches = useMemo(() => {
     const normalizedTournamentId = selectedTournamentId.trim();
-    if (normalizedTournamentId.length < 5 || normalizedTournamentId.length > 7) {
+    if (normalizedTournamentId.length < 3 || normalizedTournamentId.length > 7) {
       return [];
     }
-    return snapshot.cachedFormats.filter(
-      (format) =>
-        format.tournamentIdPrefix.length > 0 &&
-        normalizedTournamentId.length === format.tournamentIdPrefix.length + 4 &&
-        normalizedTournamentId.startsWith(format.tournamentIdPrefix) &&
-        formatMatchesTeamCount(format.teamsPerTournament, selectedJobTeamCount)
-    );
+    return matchFormatsForTournamentId(snapshot.cachedFormats, normalizedTournamentId, selectedJobTeamCount);
   }, [selectedJobTeamCount, selectedTournamentId, snapshot.cachedFormats]);
   const matchedTournamentFormat = tournamentFormatMatches.length === 1 ? tournamentFormatMatches[0] : null;
   const tournamentAssignmentError =
@@ -179,23 +174,17 @@ export const UploadQueuePage = (): JSX.Element => {
       ? ''
       : tournamentFormatMatches.length === 0
         ? selectedJobTeamCount > 0
-          ? `No cached tournament format matches that 5 to 7 digit tournament ID for ${selectedJobTeamCount} detected teams.`
-          : 'No cached tournament format matches that 5 to 7 digit tournament ID.'
+          ? `No cached tournament format matches that 3 to 7 digit tournament ID for ${selectedJobTeamCount} detected teams.`
+          : 'No cached tournament format matches that 3 to 7 digit tournament ID.'
         : tournamentFormatMatches.length > 1
-          ? 'More than one cached format shares that tournament ID prefix. Refresh formats or assign by format instead.'
+          ? 'More than one cached format matches that tournament ID. Refresh formats or assign by format instead.'
           : '';
   const inlineTournamentFormatMatches = useMemo(() => {
     const normalizedTournamentId = inlineTournamentId.trim();
-    if (normalizedTournamentId.length < 5 || normalizedTournamentId.length > 7) {
+    if (normalizedTournamentId.length < 3 || normalizedTournamentId.length > 7) {
       return [];
     }
-    return snapshot.cachedFormats.filter(
-      (format) =>
-        format.tournamentIdPrefix.length > 0 &&
-        normalizedTournamentId.length === format.tournamentIdPrefix.length + 4 &&
-        normalizedTournamentId.startsWith(format.tournamentIdPrefix) &&
-        formatMatchesTeamCount(format.teamsPerTournament, inlineEditingJobTeamCount)
-    );
+    return matchFormatsForTournamentId(snapshot.cachedFormats, normalizedTournamentId, inlineEditingJobTeamCount);
   }, [inlineEditingJobTeamCount, inlineTournamentId, snapshot.cachedFormats]);
   const inlineTournamentAssignmentError =
     inlineTournamentId.trim().length === 0
@@ -205,7 +194,7 @@ export const UploadQueuePage = (): JSX.Element => {
           ? `No cached format matches that tournament ID for ${inlineEditingJobTeamCount} detected teams.`
           : 'No cached format matches that tournament ID.'
         : inlineTournamentFormatMatches.length > 1
-          ? 'More than one cached format shares that tournament ID prefix.'
+          ? 'More than one cached format matches that tournament ID.'
           : '';
   const compatibleDirectFormats = useMemo(
     () => snapshot.cachedFormats.filter((format) => formatMatchesTeamCount(format.teamsPerTournament, selectedJobTeamCount)),
@@ -314,7 +303,7 @@ export const UploadQueuePage = (): JSX.Element => {
 
   const submitInlineTournamentAssignment = async (jobId: string): Promise<void> => {
     const tournamentId = inlineTournamentId.trim();
-    if (tournamentId.length < 5 || tournamentId.length > 7) {
+    if (tournamentId.length < 3 || tournamentId.length > 7) {
       return;
     }
     const job = snapshot.uploadJobs.find((entry) => entry.id === jobId) ?? null;
@@ -516,7 +505,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         size="xs"
                         autoFocus
                         value={inlineTournamentId}
-                        placeholder="5 to 7 digits"
+                        placeholder="3 to 7 digits"
                         error={inlineTournamentAssignmentError || undefined}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -558,7 +547,7 @@ export const UploadQueuePage = (): JSX.Element => {
                           setEditingFilenameJobId(job.id);
                           setInlineTournamentId('');
                         }}
-                        title={canInlineAssign ? 'Double-click to enter a 5 to 7 digit tournament ID.' : job.filename}
+                        title={canInlineAssign ? 'Double-click to enter a 3 to 7 digit tournament ID.' : job.filename}
                       >
                         {job.filename}
                       </button>
@@ -872,7 +861,7 @@ export const UploadQueuePage = (): JSX.Element => {
                           <Text fw={600}>Assign tournament export</Text>
                           <TextInput
                             label="Tournament ID"
-                            description="Enter the full 5 to 7 digit tournament ID. The desktop app maps it to the matching format prefix automatically."
+                            description="Enter the full 3 to 7 digit tournament ID. The desktop app maps it to the matching format prefix automatically."
                             placeholder="12345"
                             value={selectedTournamentId}
                             onChange={(event) => {
@@ -881,9 +870,9 @@ export const UploadQueuePage = (): JSX.Element => {
                           />
                           {matchedTournamentFormat ? (
                             <Alert color="teal">
-                              Maps to {matchedTournamentFormat.name} using prefix {matchedTournamentFormat.tournamentIdPrefix}
-                              {' '}
-                              ({matchedTournamentFormat.tournamentIdPrefix.length + 4} digits total).
+                              {matchedTournamentFormat.tournamentId
+                                ? `Maps to ${matchedTournamentFormat.name} (event ${matchedTournamentFormat.tournamentId}).`
+                                : `Maps to ${matchedTournamentFormat.name} using prefix ${matchedTournamentFormat.tournamentIdPrefix} (${matchedTournamentFormat.tournamentIdPrefix.length + 4} digits total).`}
                               {matchedTournamentFormat.teamsPerTournament > 0 ? ` ${matchedTournamentFormat.teamsPerTournament} teams.` : ''}
                             </Alert>
                           ) : tournamentAssignmentError ? (
@@ -893,7 +882,7 @@ export const UploadQueuePage = (): JSX.Element => {
                             <Button
                               size="xs"
                               color="orange"
-                              disabled={!matchedTournamentFormat || selectedTournamentId.trim().length < 5}
+                              disabled={!matchedTournamentFormat || selectedTournamentId.trim().length < 3}
                               onClick={() => {
                                 const detectedFile = snapshot.detectedFiles.find(
                                   (file) => file.path === selectedJob.path && file.checksum === selectedJob.checksum

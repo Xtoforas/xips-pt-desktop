@@ -73,6 +73,12 @@ pub struct TournamentFormat {
     pub format_type: String,
     #[serde(default)]
     pub tournament_id_prefix: String,
+    #[serde(default)]
+    pub tournament_id: String,
+    #[serde(default)]
+    pub is_draft: bool,
+    #[serde(default)]
+    pub categories: Vec<String>,
     pub run_environment: String,
     pub park_key: String,
     pub mode: String,
@@ -242,6 +248,36 @@ mod tests {
     }
 
     #[test]
+    fn parses_event_format_fields() {
+        let parsed = serde_json::from_str::<TournamentFormat>(
+            r#"{
+        "id":"format-713",
+        "mode":"Best of 5",
+        "name":"Live-Plus Bronze Pop-up",
+        "parkKey":"Heinsohn Ballpark 2026",
+        "capValue":null,
+        "formatType":"Event",
+        "tournamentIdPrefix":"",
+        "tournamentId":"713",
+        "isDraft":true,
+        "categories":["Pop-ups"],
+        "gameVersion":"ootp27",
+        "runEnvironment":"2026",
+        "eraRestrictions":[],
+        "teamsPerTournament":128,
+        "variantLimitValue":10,
+        "cardTypeRestrictions":[]
+      }"#,
+        )
+        .expect("event format should deserialize");
+
+        assert_eq!(parsed.tournament_id, "713");
+        assert!(parsed.is_draft);
+        assert_eq!(parsed.categories, vec![String::from("Pop-ups")]);
+        assert_eq!(parsed.teams_per_tournament, 128);
+    }
+
+    #[test]
     fn defaults_missing_tournament_id_prefix_for_cached_rows() {
         let parsed = serde_json::from_str::<TournamentFormat>(
             r#"{
@@ -262,6 +298,9 @@ mod tests {
         .expect("legacy format should deserialize");
 
         assert_eq!(parsed.tournament_id_prefix, "");
+        assert_eq!(parsed.tournament_id, "");
+        assert!(!parsed.is_draft);
+        assert!(parsed.categories.is_empty());
         assert_eq!(parsed.ovr_min, None);
         assert_eq!(parsed.ovr_max, None);
         assert_eq!(parsed.teams_per_tournament, 16);
