@@ -43,7 +43,12 @@ impl ApiError {
         self.status == 400
             && matches!(
                 self.code.as_str(),
-                "team_count_mismatch" | "format_team_count_mismatch" | "variant_limit_exceeded"
+                "team_count_mismatch"
+                    | "format_team_count_mismatch"
+                    | "variant_limit_exceeded"
+                    | "cap_limit_exceeded"
+                    | "slot_limit_exceeded"
+                    | "ovr_range_violation"
             )
     }
 }
@@ -546,12 +551,16 @@ mod tests {
         assert!(api_error(400, "team_count_mismatch").is_permanent_validation_failure());
         assert!(api_error(400, "format_team_count_mismatch").is_permanent_validation_failure());
         assert!(api_error(400, "variant_limit_exceeded").is_permanent_validation_failure());
+        assert!(api_error(400, "cap_limit_exceeded").is_permanent_validation_failure());
+        assert!(api_error(400, "slot_limit_exceeded").is_permanent_validation_failure());
+        assert!(api_error(400, "ovr_range_violation").is_permanent_validation_failure());
     }
 
     #[test]
     fn is_permanent_validation_failure_false_for_same_codes_at_other_status() {
         assert!(!api_error(500, "team_count_mismatch").is_permanent_validation_failure());
         assert!(!api_error(429, "variant_limit_exceeded").is_permanent_validation_failure());
+        assert!(!api_error(502, "cap_limit_exceeded").is_permanent_validation_failure());
     }
 
     #[test]
