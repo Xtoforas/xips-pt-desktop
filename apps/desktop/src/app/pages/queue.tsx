@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Card, Collapse, Group, Select, Stack, Table, Text
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
-import { BlockedStatusBadge, QueueTable } from '../components';
+import { BlockedStatusBadge, QueueTable, SectionHeader } from '../components';
 import {
   canDismissUploadJob,
   canIgnoreUploadJob,
@@ -696,22 +696,18 @@ export const UploadQueuePage = (): JSX.Element => {
         </Stack>
         <Card withBorder className="desktop-card desktop-queue-inspector">
           <Stack gap="md">
-            <Group justify="space-between" align="flex-start" wrap="wrap">
-              <div>
-                <Text className="desktop-micro-label">Inspector</Text>
-                <Text fw={700}>{selectedJob ? selectedJob.filename : 'No row selected'}</Text>
-                <Text size="sm" c="dimmed">
-                  {selectedJob ? selectedJobDetail : 'Select a row to inspect its actions and queue metadata.'}
-                </Text>
-              </div>
-              {selectedJobBlocker ? (
+            <SectionHeader
+              eyebrow="Inspector"
+              title={selectedJob ? selectedJob.filename : 'No row selected'}
+              description={selectedJob ? selectedJobDetail : 'Select a row to inspect its actions and queue metadata.'}
+              aside={selectedJobBlocker ? (
                 <BlockedStatusBadge summary={selectedJobBlocker} />
               ) : selectedJob ? (
                 <Badge color={selectedJobStateColor} variant="light">
                   {selectedJobActionLabel}
                 </Badge>
               ) : null}
-            </Group>
+            />
             {!selectedJob ? (
               <Alert color="gray">Choose a queue row to inspect its actions, file path, checksum, and lifecycle details.</Alert>
             ) : (

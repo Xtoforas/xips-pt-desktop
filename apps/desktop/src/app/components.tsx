@@ -9,7 +9,7 @@ import type {
   LocalUploadJob,
   TournamentFormat
 } from '@xips/api-contract';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
 import {
@@ -182,15 +182,11 @@ export const ReadinessCard = ({
     return (
       <Card withBorder className="desktop-card desktop-today-readiness-compact" id={id}>
         <Stack gap="sm">
-          <Group justify="space-between" align="center" wrap="wrap">
-            <div>
-              <Text className="desktop-micro-label">Readiness</Text>
-              <Text fw={700}>Operationally ready</Text>
-            </div>
-            <Text size="sm" c="dimmed">
-              {selectedProfileName}
-            </Text>
-          </Group>
+          <SectionHeader
+            eyebrow="Readiness"
+            title="Operationally ready"
+            aside={<Text size="sm" c="dimmed">{selectedProfileName}</Text>}
+          />
           <Group gap="xs" wrap="wrap">
             {onboardingSteps.map((step) => (
               <Badge key={step.key} color="teal" variant="light">
@@ -236,15 +232,11 @@ export const ReadinessCard = ({
   return (
     <Card withBorder className="desktop-card desktop-today-strip" id={id}>
       <Stack gap="sm">
-        <Group justify="space-between" align="center" wrap="wrap">
-          <div>
-            <Text className="desktop-micro-label">Readiness</Text>
-            <Text fw={700}>Finish setup</Text>
-          </div>
-          <Text size="sm" c="dimmed">
-            {selectedProfileName}
-          </Text>
-        </Group>
+        <SectionHeader
+          eyebrow="Readiness"
+          title="Finish setup"
+          aside={<Text size="sm" c="dimmed">{selectedProfileName}</Text>}
+        />
         <SimpleGrid cols={{ base: 1, md: 2, xl: variant === 'today' ? 3 : 2 }} spacing="sm">
           {onboardingSteps.map((step, index) => (
             <Card key={step.key} withBorder className={`desktop-card desktop-today-strip-item${step.complete ? ' complete' : ''}`}>
@@ -563,6 +555,33 @@ export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind
   <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
     {formatFileKindLabel(fileKind)}
   </Badge>
+);
+
+// Card header: small uppercase eyebrow, bold title, optional dimmed description, and an optional aside
+// (badges, buttons, or text) pushed to the right.
+export const SectionHeader = ({
+  eyebrow,
+  title,
+  description,
+  aside
+}: {
+  eyebrow: string;
+  title: ReactNode;
+  description?: ReactNode;
+  aside?: ReactNode;
+}): JSX.Element => (
+  <Group justify="space-between" align={description ? 'flex-start' : 'center'} wrap="wrap">
+    <div>
+      <Text className="desktop-micro-label">{eyebrow}</Text>
+      <Text fw={700}>{title}</Text>
+      {description ? (
+        <Text size="sm" c="dimmed">
+          {description}
+        </Text>
+      ) : null}
+    </div>
+    {aside}
+  </Group>
 );
 
 // Status for a job that needs attention: orange when only the user can unblock it, blue when the app retries.

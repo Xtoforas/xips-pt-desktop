@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Card, Group, Stack, Table, Text, Title } from '@m
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
-import { BlockedStatusBadge, buildOnboardingSteps, ReadinessCard } from '../components';
+import { BlockedStatusBadge, buildOnboardingSteps, ReadinessCard, SectionHeader } from '../components';
 import {
   blockerPriority,
   formatFileKindLabel,
@@ -137,15 +137,13 @@ export const TodayPage = (): JSX.Element => {
       />
       <Card withBorder className="desktop-card desktop-today-section">
         <Stack gap="md">
-          <Group justify="space-between" align="center" wrap="wrap">
-            <div>
-              <Text className="desktop-micro-label">Needs attention</Text>
-              <Text fw={700}>Blocked files</Text>
-            </div>
-            <Badge color={needsAttentionCount > 0 ? 'orange' : 'gray'} variant="light">
+          <SectionHeader
+            eyebrow="Needs attention"
+            title="Blocked files"
+            aside={<Badge color={needsAttentionCount > 0 ? 'orange' : 'gray'} variant="light">
               {needsAttentionCount} file{needsAttentionCount === 1 ? '' : 's'}
-            </Badge>
-          </Group>
+            </Badge>}
+          />
           {blockerRows.length === 0 ? (
             <Alert color="teal" variant="light">
               No files are blocked right now. The queue is clear of user-driven work.
@@ -223,20 +221,18 @@ export const TodayPage = (): JSX.Element => {
       </Card>
       <Card withBorder className="desktop-card desktop-today-section">
         <Stack gap="md">
-          <Group justify="space-between" align="center" wrap="wrap">
-            <div>
-              <Text className="desktop-micro-label">In progress</Text>
-              <Text fw={700}>Uploading now</Text>
-            </div>
-            <Group gap="xs" wrap="wrap">
+          <SectionHeader
+            eyebrow="In progress"
+            title="Uploading now"
+            aside={<Group gap="xs" wrap="wrap">
               <Badge color="blue" variant="light">
                 {automaticQueueCount} moving
               </Badge>
               <Badge color="cyan" variant="light">
                 {waitingOnServerCount} on server
               </Badge>
-            </Group>
-          </Group>
+            </Group>}
+          />
           {inProgressJobs.length === 0 ? (
             <Alert color="gray" variant="light">
               Nothing is uploading right now.
@@ -275,15 +271,13 @@ export const TodayPage = (): JSX.Element => {
       </Card>
       <Card withBorder className="desktop-card desktop-today-section">
         <Stack gap="md">
-          <Group justify="space-between" align="center" wrap="wrap">
-            <div>
-              <Text className="desktop-micro-label">Recently completed</Text>
-              <Text fw={700}>Latest finished uploads</Text>
-            </div>
-            <Badge color="teal" variant="light">
+          <SectionHeader
+            eyebrow="Recently completed"
+            title="Latest finished uploads"
+            aside={<Badge color="teal" variant="light">
               {completedCount} total
-            </Badge>
-          </Group>
+            </Badge>}
+          />
           {completedJobs.length === 0 ? (
             <Alert color="gray" variant="light">
               No completed uploads have been recorded yet.

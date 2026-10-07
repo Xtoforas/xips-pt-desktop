@@ -1,6 +1,7 @@
 import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { useMemo, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
+import { SectionHeader } from '../components';
 
 export const DiagnosticsPage = (): JSX.Element => {
   const { health, refreshHealth, selectedProfile, snapshot, exportDiagnosticsBundle, openAppDataDirectory } = useDesktop();
@@ -22,23 +23,19 @@ export const DiagnosticsPage = (): JSX.Element => {
       </Stack>
       <Card withBorder className="desktop-card desktop-support-hero">
         <Stack gap="sm">
-          <Group justify="space-between" align="flex-start">
-            <div>
-              <Text className="desktop-micro-label">Support view</Text>
-              <Text fw={700}>Keep this page for investigation and handoff work</Text>
-              <Text size="sm" c="dimmed">
-                Normal workflow belongs on Today, Queue, and Automation. Diagnostics keeps the deeper traces and local files you need when something goes wrong.
-              </Text>
-            </div>
-            <Group gap="xs" wrap="wrap">
+          <SectionHeader
+            eyebrow="Support view"
+            title="Keep this page for investigation and handoff work"
+            description="Normal workflow belongs on Today, Queue, and Automation. Diagnostics keeps the deeper traces and local files you need when something goes wrong."
+            aside={<Group gap="xs" wrap="wrap">
               <Badge color="gray" variant="light">
                 Support only
               </Badge>
               <Badge color="blue" variant="light">
                 {snapshot.diagnostics.length} events
               </Badge>
-            </Group>
-          </Group>
+            </Group>}
+          />
           <Group gap="xs" wrap="wrap">
             <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshHealth()}>
               Refresh health snapshot
