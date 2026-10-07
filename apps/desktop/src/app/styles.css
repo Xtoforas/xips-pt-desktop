@@ -175,9 +175,28 @@ a {
   background: var(--surface-1);
 }
 
-.desktop-today-blocker-card {
+.desktop-blocker-table {
   background: var(--surface-2);
-  border: 1px solid #7a3838;
+}
+
+.desktop-blocker-table td {
+  vertical-align: top;
+}
+
+.desktop-blocker-col-file {
+  width: 28%;
+}
+
+.desktop-blocker-col-status {
+  width: 140px;
+}
+
+.desktop-blocker-col-updated {
+  width: 120px;
+}
+
+.desktop-blocker-col-action {
+  width: 64px;
 }
 
 .desktop-today-mini-list {

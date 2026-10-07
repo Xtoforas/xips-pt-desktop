@@ -7,6 +7,7 @@ import type {
   LocalDiagnosticEvent,
   LocalFormatRule,
   LocalServerProfile,
+  LocalUploadJob,
   LocalWatchRoot,
   MyAggResponse,
   ServiceHealth,
@@ -105,6 +106,94 @@ const mockWatchRoots: LocalWatchRoot[] = [
   }
 ];
 
+const mockFormats: TournamentFormat[] = [
+  {
+    id: 'format-207',
+    name: "Laptophound's Daily 5L Deadball",
+    gameVersion: 'ootp27',
+    formatType: 'Daily',
+    tournamentIdPrefix: '207',
+    runEnvironment: '1916',
+    parkKey: 'Harrison Park 1915',
+    mode: 'Best of 7',
+    capValue: '',
+    variantLimitValue: '',
+    ovrMin: 40,
+    ovrMax: 79,
+    teamsPerTournament: 64,
+    isSlotsTournament: false,
+    slotCounts: { P: 0, D: 0, G: 0, S: 0, B: 0 },
+    eraRestrictions: [],
+    cardTypeRestrictions: []
+  }
+];
+
+// One blocked job per kind of reason the Today and Queue pages explain.
+const mockUploadJob = (
+  id: string,
+  folder: string,
+  filename: string,
+  localState: LocalUploadJob['localState'],
+  teamCount: number,
+  error = ''
+): LocalUploadJob => {
+  const now = new Date().toISOString();
+  return {
+    id,
+    profileId: 'local',
+    filename,
+    path: `${mockWatchRoots[0].path}/${folder}/${filename}`,
+    stagedPath: '',
+    fileKind: 'stats_export',
+    localPresence: 'present',
+    localState,
+    lifecyclePhase: null,
+    checksum: id,
+    teamCount,
+    sourceModifiedAt: '',
+    formatId: '',
+    tournamentId: '',
+    uploadId: '',
+    serverStatus: '',
+    remoteChecksum: '',
+    lastRequestId: '',
+    duplicateReason: '',
+    ignoredFromState: '',
+    nextRetryAfter: '',
+    queuedAt: now,
+    processingAt: '',
+    parsedAt: '',
+    refreshingAt: '',
+    completedAt: '',
+    failedAt: localState.startsWith('failed') ? now : '',
+    error,
+    retries: localState === 'failed_retryable' ? 1 : 0,
+    createdAt: now,
+    updatedAt: now
+  };
+};
+
+const mockUploadJobs: LocalUploadJob[] = [
+  mockUploadJob('job-league', 'League', '2050.403.csv', 'awaiting_format_assignment', 0),
+  mockUploadJob('job-deadball', 'PD-D-LTH-Deadball-E1913', '2070146.csv', 'awaiting_format_assignment', 123),
+  mockUploadJob(
+    'job-cap',
+    'D-S-C2068-E2007',
+    '1910116.csv',
+    'failed_terminal',
+    63,
+    'cap_limit_exceeded ({"ok":false,"error":"cap_limit_exceeded","details":{"teamName":"Cymru Crushers","allowed":1610,"actual":1667,"formatName":"Daily Low Gold Cap"}}) [requestId=mock-1]'
+  ),
+  mockUploadJob('job-502', 'D-I-Slots-E1999', '1880115.csv', 'failed_retryable', 31, 'request_failed (error code: 502) [requestId=mock-2]'),
+  mockUploadJob(
+    'job-long-name',
+    'breslau_binturings_-_hotl_rosters',
+    'statistics_player_statistics_-_sortable_stats_export-fielding-xips.csv',
+    'awaiting_format_assignment',
+    48
+  )
+];
+
 const mockSnapshot = (): DesktopSnapshot => ({
   profiles: mockProfiles,
   selectedProfileId: 'local',
@@ -114,7 +203,7 @@ const mockSnapshot = (): DesktopSnapshot => ({
   watchRoots: mockWatchRoots,
   formatRules: [],
   detectedFiles: [] as LocalDetectedFile[],
-  uploadJobs: [],
+  uploadJobs: mockUploadJobs,
   uploadAttempts: [],
   preferences: {
     launchAtLogin: false,
@@ -125,7 +214,7 @@ const mockSnapshot = (): DesktopSnapshot => ({
     dismissCompletedReadinessCard: false
   },
   diagnostics: [],
-  cachedFormats: []
+  cachedFormats: mockFormats
 });
 
 export const isTauri = (): boolean => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ === 'object';
@@ -147,7 +236,7 @@ const browserClient: DesktopClient = {
     };
   },
   async fetchFormats() {
-    return [];
+    return mockFormats;
   },
   async fetchCards() {
     return {

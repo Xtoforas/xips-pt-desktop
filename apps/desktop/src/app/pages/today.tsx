@@ -1,25 +1,25 @@
-import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Stack, Table, Text, Title } from '@mantine/core';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
 import { buildOnboardingSteps, ReadinessCard } from '../components';
 import {
-  blockerActionLabelByState,
-  blockerDetailByState,
   blockerPriority,
-  blockerTitleByState,
   formatFileKindLabel,
   formatLifecycleLabel,
   formatQueueStateLabel,
   formatUploadJobModifiedAt,
-  getUploadJobKindDetail,
   getUploadJobModifiedAt,
   queueLinkForJob,
+  summarizeBlockedJob,
+  uploadJobFolderName,
   uploadJobNeedsAttention,
   uploadJobWaitingOnServer,
   uploadJobWorkingAutomatically,
   type TodayBlockerState
 } from '../queue-model';
+
+const BLOCKER_ROW_LIMIT = 15;
 
 export const TodayPage = (): JSX.Element => {
   const { snapshot, selectedProfile, health, authFlowState, updatePreferences } = useDesktop();
@@ -34,19 +34,28 @@ export const TodayPage = (): JSX.Element => {
     [snapshot.cachedFormats]
   );
   const readinessItems = onboardingSteps;
-  const blockerJobs = useMemo(
+  // Blocked files waiting on the user come first, then ones the app will retry; similar reasons sit together.
+  const blockerRows = useMemo(
     () =>
-      [...snapshot.uploadJobs]
+      snapshot.uploadJobs
         .filter((job) => uploadJobNeedsAttention(job))
+        .map((job) => ({ job, summary: summarizeBlockedJob(job, snapshot.cachedFormats) }))
         .sort((left, right) => {
-          const leftPriority = blockerPriority[left.localState as TodayBlockerState] ?? 99;
-          const rightPriority = blockerPriority[right.localState as TodayBlockerState] ?? 99;
+          if (left.summary.owner !== right.summary.owner) {
+            return left.summary.owner === 'user' ? -1 : 1;
+          }
+          const leftPriority = blockerPriority[left.job.localState as TodayBlockerState] ?? 99;
+          const rightPriority = blockerPriority[right.job.localState as TodayBlockerState] ?? 99;
           if (leftPriority !== rightPriority) {
             return leftPriority - rightPriority;
           }
-          return (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0);
+          const byReason = left.summary.reason.localeCompare(right.summary.reason);
+          if (byReason !== 0) {
+            return byReason;
+          }
+          return (getUploadJobModifiedAt(right.job) ?? 0) - (getUploadJobModifiedAt(left.job) ?? 0);
         }),
-    [snapshot.uploadJobs]
+    [snapshot.cachedFormats, snapshot.uploadJobs]
   );
   const activeMachineJobs = useMemo(
     () =>
@@ -137,52 +146,80 @@ export const TodayPage = (): JSX.Element => {
               {needsAttentionCount} file{needsAttentionCount === 1 ? '' : 's'}
             </Badge>
           </Group>
-          {blockerJobs.length === 0 ? (
+          {blockerRows.length === 0 ? (
             <Alert color="teal" variant="light">
               No files are blocked right now. The queue is clear of user-driven work.
             </Alert>
           ) : (
-            <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="sm">
-              {blockerJobs.map((job) => {
-                const blockerState = job.localState as TodayBlockerState;
-                const queueLink = queueLinkForJob(job.id, 'needs_action');
-                return (
-                  <Card key={job.id} withBorder className="desktop-card desktop-today-blocker-card">
-                    <Stack gap="sm">
-                      <Group justify="space-between" align="flex-start" wrap="nowrap">
-                        <div>
-                          <Text size="sm" fw={700}>
+            <>
+              <Table className="desktop-blocker-table" layout="fixed" verticalSpacing={6} highlightOnHover>
+                <colgroup>
+                  <col className="desktop-blocker-col-file" />
+                  <col />
+                  <col className="desktop-blocker-col-status" />
+                  <col className="desktop-blocker-col-updated" />
+                  <col className="desktop-blocker-col-action" />
+                </colgroup>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>File</Table.Th>
+                    <Table.Th>Reason</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Updated</Table.Th>
+                    <Table.Th aria-label="Actions" />
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {blockerRows.slice(0, BLOCKER_ROW_LIMIT).map(({ job, summary }) => {
+                    const folder = uploadJobFolderName(job);
+                    return (
+                      <Table.Tr key={job.id}>
+                        <Table.Td>
+                          <Text size="sm" fw={600} truncate="end" title={job.filename}>
                             {job.filename}
                           </Text>
-                          <Text size="xs" c="dimmed">
-                            {getUploadJobKindDetail(job)} Updated {formatUploadJobModifiedAt(job)}.
+                          {folder ? (
+                            <Text size="xs" c="dimmed" truncate="end" title={folder}>
+                              {folder}
+                            </Text>
+                          ) : null}
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" className="desktop-wrap-anywhere">
+                            {summary.reason}
                           </Text>
-                        </div>
-                        <Stack gap={4} align="flex-end">
-                          <Badge color="orange" variant="light">
-                            {blockerTitleByState[blockerState]}
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge color={summary.owner === 'user' ? 'orange' : 'blue'} variant="light">
+                            {summary.statusLabel}
                           </Badge>
-                          <Badge color={job.fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
-                            {formatFileKindLabel(job.fileKind)}
-                          </Badge>
-                        </Stack>
-                      </Group>
-                      <Text size="sm">
-                        {blockerDetailByState(job, formatLabelById)}
-                      </Text>
-                      <Group gap="xs" wrap="wrap">
-                        <Button component={Link} to={queueLink} size="xs">
-                          {blockerActionLabelByState[blockerState]}
-                        </Button>
-                        <Button component={Link} to={queueLink} size="xs" variant="light">
-                          Open queue row
-                        </Button>
-                      </Group>
-                    </Stack>
-                  </Card>
-                );
-              })}
-            </SimpleGrid>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs" c="dimmed">
+                            {formatUploadJobModifiedAt(job)}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Button component={Link} to={queueLinkForJob(job.id, 'needs_action')} size="compact-xs" variant="light">
+                            Open
+                          </Button>
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+              {blockerRows.length > BLOCKER_ROW_LIMIT ? (
+                <Group justify="space-between" align="center" wrap="wrap">
+                  <Text size="sm" c="dimmed">
+                    Showing {BLOCKER_ROW_LIMIT} of {blockerRows.length} blocked files.
+                  </Text>
+                  <Button component={Link} to="/queue?view=needs_action" size="xs" variant="light">
+                    Show all in the queue
+                  </Button>
+                </Group>
+              ) : null}
+            </>
           )}
         </Stack>
       </Card>

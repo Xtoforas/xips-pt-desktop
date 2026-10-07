@@ -4,6 +4,7 @@ import {
   blockerPriority,
   canDismissUploadJob,
   canIgnoreUploadJob,
+  explainFilenameAutoAssignment,
   formatLifecycleLabel,
   formatMatchesTeamCount,
   formatQueueStateLabel,
@@ -14,6 +15,8 @@ import {
   isQueueJobDone,
   parseRetryableFailureDetail,
   queueWorkspaceViewForJob,
+  summarizeBlockedJob,
+  uploadJobFolderName,
   uploadJobNeedsAttention,
   uploadJobWaitingOnServer,
   uploadJobWorkingAutomatically,
@@ -365,6 +368,38 @@ describe('formatRetryableFailureMessage', () => {
     expect(formatRetryableFailureMessage('')).toBe('');
   });
 
+  test('reads the server team_count_mismatch shape, which nests counts under details', () => {
+    const raw =
+      'team_count_mismatch ({"ok":false,"error":"team_count_mismatch","details":{"expected":64,"actual":32,"minimumAllowed":48,"maxAbsent":16,"absent":32,"formatName":"Daily Bronze Only Cap"}}) [requestId=r1]';
+    expect(formatRetryableFailureMessage(raw)).toBe(
+      'Team count mismatch: Expected at least 48 of 64 teams in the export, but only 32 were detected. (request r1)'
+    );
+  });
+
+  test('summarizes cap, slot, and rating-range rejections from the server', () => {
+    expect(
+      formatRetryableFailureMessage(
+        'cap_limit_exceeded ({"ok":false,"error":"cap_limit_exceeded","details":{"teamName":"Cymru Crushers","allowed":1610,"actual":1667,"formatName":"Daily Low Gold Cap"}})'
+      )
+    ).toBe("Cap limit exceeded: Cymru Crushers's cards total 1667, over the 1610 cap for Daily Low Gold Cap.");
+    expect(
+      formatRetryableFailureMessage(
+        'slot_limit_exceeded ({"ok":false,"error":"slot_limit_exceeded","details":{"teamName":"Absolute Units","slotTier":"S","allowed":20,"actual":21,"formatName":"Daily All-Star Hardware Slots"}})'
+      )
+    ).toBe('Slot limit exceeded: Absolute Units has 21 Silver slot cards, over the limit of 20 for Daily All-Star Hardware Slots.');
+    expect(
+      formatRetryableFailureMessage(
+        'ovr_range_violation ({"ok":false,"error":"ovr_range_violation","details":{"teamName":"The Black Freighter TBD","cardId":83868,"actual":59,"minimumAllowed":60,"maximumAllowed":69}})'
+      )
+    ).toBe('Ovr range violation: The Black Freighter TBD has card 83868 rated 59, outside the 60-69 range.');
+  });
+
+  test('can leave out the request id for compact lists', () => {
+    expect(formatRetryableFailureMessage('request_failed (error code: 502) [requestId=abc]', { includeRequestId: false })).toBe(
+      'Request failed: error code: 502'
+    );
+  });
+
   test('summarizes a real variant_limit_exceeded payload captured from the server', () => {
     const raw =
       'variant_limit_exceeded ({"ok":false,"error":"variant_limit_exceeded","details":{"teamName":"Freedom Grabbers - HotL","allowed":5,"actual":6,"formatId":"c7305d8d-5caa-4189-b0d5-72035c6471c4","formatName":"Wednesday Ice to See You"}}) [requestId=ef5d6835-e0d4-48f4-8281-1b1f09d2fb4d]';
@@ -410,5 +445,82 @@ describe('parseRetryableFailureDetail', () => {
   test('returns null for malformed input', () => {
     expect(parseRetryableFailureDetail('not an api error')).toBeNull();
     expect(parseRetryableFailureDetail('')).toBeNull();
+  });
+});
+
+const prefixFormats = [
+  { id: 'f-102', name: 'Bronze Quick', tournamentIdPrefix: '102', teamsPerTournament: 16 },
+  { id: 'f-207', name: "Laptophound's Daily 5L Deadball", tournamentIdPrefix: '207', teamsPerTournament: 64 },
+  { id: 'f-140a', name: 'Daily Wide Open', tournamentIdPrefix: '140', teamsPerTournament: 64 },
+  { id: 'f-140b', name: 'Daily Wide Open (copy)', tournamentIdPrefix: '140', teamsPerTournament: 64 }
+];
+
+describe('explainFilenameAutoAssignment', () => {
+  test('explains each reason a filename was not auto-assigned', () => {
+    expect(explainFilenameAutoAssignment('2050.403.csv', 0, prefixFormats)).toBe(
+      'The filename does not contain a 5 to 7 digit tournament ID, so the app cannot map it automatically.'
+    );
+    expect(explainFilenameAutoAssignment('2070146.csv', 123, prefixFormats)).toBe(
+      "The filename looks like tournament ID 2070146, but none of the cached formats with that prefix accept this file's 123 detected teams."
+    );
+    expect(explainFilenameAutoAssignment('1400101.csv', 60, prefixFormats)).toBe(
+      'The filename looks like tournament ID 1400101, but more than one cached format shares that tournament ID prefix, so the app will not guess.'
+    );
+    expect(explainFilenameAutoAssignment('9990001.csv', 60, prefixFormats)).toBe(
+      'The filename contains 9990001, but none of those IDs match a cached tournament prefix on this desktop.'
+    );
+  });
+});
+
+describe('summarizeBlockedJob', () => {
+  test('gives a short format-match reason for files waiting on a format', () => {
+    const awaiting = (filename: string, teamCount: number) =>
+      summarizeBlockedJob(makeUploadJob({ localState: 'awaiting_format_assignment', filename, teamCount }), prefixFormats);
+    expect(awaiting('2050.403.csv', 0)).toEqual({
+      owner: 'user',
+      statusLabel: 'Needs format',
+      reason: 'No tournament ID in the filename.'
+    });
+    expect(awaiting('2070146.csv', 123).reason).toBe('No prefix 207 format accepts 123 teams.');
+    expect(awaiting('1400101.csv', 60).reason).toBe('Several formats share prefix 140.');
+    expect(awaiting('9990001.csv', 60).reason).toBe('No format for prefix 999.');
+  });
+
+  test('marks retryable failures as automatic and rejections as needing the user', () => {
+    const retryable = summarizeBlockedJob(
+      makeUploadJob({ localState: 'failed_retryable', error: 'request_failed (error code: 502) [requestId=abc]' }),
+      prefixFormats
+    );
+    expect(retryable).toEqual({ owner: 'automatic', statusLabel: 'Will retry', reason: 'Request failed: error code: 502' });
+
+    const rejected = summarizeBlockedJob(
+      makeUploadJob({
+        localState: 'failed_terminal',
+        error:
+          'cap_limit_exceeded ({"ok":false,"error":"cap_limit_exceeded","details":{"teamName":"Cymru Crushers","allowed":1610,"actual":1667}}) [requestId=abc]'
+      }),
+      prefixFormats
+    );
+    expect(rejected).toEqual({
+      owner: 'user',
+      statusLabel: 'Rejected',
+      reason: "Cap limit exceeded: Cymru Crushers's cards total 1667, over the 1610 cap."
+    });
+  });
+
+  test('asks the user to sign in for auth-blocked jobs', () => {
+    expect(summarizeBlockedJob(makeUploadJob({ localState: 'auth_blocked' }), prefixFormats)).toEqual({
+      owner: 'user',
+      statusLabel: 'Sign in',
+      reason: 'Sign in again to resume uploads.'
+    });
+  });
+});
+
+describe('uploadJobFolderName', () => {
+  test('returns the parent folder for Windows and POSIX paths', () => {
+    expect(uploadJobFolderName({ path: 'C:\\Users\\me\\PT27\\data\\D-LS\\1970019.csv' })).toBe('D-LS');
+    expect(uploadJobFolderName({ path: '/tmp/watch/Q-Bronze-Bo5-T16/1025202.csv' })).toBe('Q-Bronze-Bo5-T16');
+    expect(uploadJobFolderName({ path: '1970019.csv' })).toBe('');
   });
 });

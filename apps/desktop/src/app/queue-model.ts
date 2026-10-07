@@ -274,50 +274,6 @@ export const blockerPriority: Record<TodayBlockerState, number> = {
   failed_terminal: 3
 };
 
-export const blockerTitleByState: Record<TodayBlockerState, string> = {
-  awaiting_format_assignment: 'Waiting for format assignment',
-  failed_retryable: 'Retryable failure',
-  failed_terminal: 'Blocked — needs a format or rule change',
-  auth_blocked: 'Sign-in required'
-};
-
-export const blockerActionLabelByState: Record<TodayBlockerState, string> = {
-  awaiting_format_assignment: 'Open queue to assign format',
-  failed_retryable: 'Open queue to retry',
-  failed_terminal: 'Open queue to review',
-  auth_blocked: 'Open queue to re-authenticate'
-};
-
-export const blockerDetailByState = (
-  job: { fileKind: string; error?: string | null; formatId?: string | null; filename: string },
-  formatLabelById: Record<string, string>
-): string => {
-  switch (job.fileKind) {
-    case 'stats_export':
-      return `The export is blocked until it is mapped to a tournament format${job.formatId ? ` (${formatLabelById[job.formatId] ?? 'unknown format'})` : ''}.`;
-    case 'card_catalog':
-      return 'The catalog is waiting for the queue to finish assigning its next server lifecycle step.';
-    default:
-      return 'This file is blocked and needs one quick queue action before it can continue.';
-  }
-};
-
-export const getUploadJobKindDetail = (job: Pick<LocalUploadJob, 'fileKind' | 'lifecyclePhase' | 'localState'>): string => {
-  if (job.localState === 'failed_retryable') {
-    return 'A transient error paused the upload.';
-  }
-  if (job.localState === 'failed_terminal') {
-    return "The export was rejected and won't succeed until the format or export changes.";
-  }
-  if (job.localState === 'auth_blocked') {
-    return 'The selected account needs to be signed in again.';
-  }
-  if (job.localState === 'awaiting_format_assignment') {
-    return 'The queue is waiting for a format match.';
-  }
-  return job.lifecyclePhase ? formatLifecycleLabel(job.lifecyclePhase, job.fileKind) : 'In progress';
-};
-
 export const formatMatchesTeamCount = (teamsPerTournament: number, teamCount: number): boolean =>
   teamCount === 0 || teamsPerTournament === 0 || teamCount <= teamsPerTournament;
 
@@ -347,14 +303,23 @@ export const extractTournamentIdCandidates = (value: string): string[] => {
   return matches.filter((candidate) => candidate.length >= 5 && candidate.length <= 7);
 };
 
-export const explainFilenameAutoAssignment = (
+type PrefixFormat = { id: string; name: string; tournamentIdPrefix: string; teamsPerTournament: number };
+
+export type FilenameAutoAssignmentDiagnosis =
+  | { kind: 'no_tournament_id' }
+  | { kind: 'no_format_for_team_count'; candidate: string; prefix: string; teamCount: number }
+  | { kind: 'ambiguous_prefix'; candidate: string; prefix: string }
+  | { kind: 'no_matching_prefix'; candidates: string[] };
+
+// Why a filename was not auto-assigned; explainFilenameAutoAssignment and summarizeBlockedJob word it.
+export const diagnoseFilenameAutoAssignment = (
   filename: string,
   teamCount: number,
-  formats: Array<{ id: string; name: string; tournamentIdPrefix: string; teamsPerTournament: number }>
-): string => {
+  formats: PrefixFormat[]
+): FilenameAutoAssignmentDiagnosis => {
   const candidates = extractTournamentIdCandidates(filename);
   if (candidates.length === 0) {
-    return 'The filename does not contain a 5 to 7 digit tournament ID, so the app cannot map it automatically.';
+    return { kind: 'no_tournament_id' };
   }
 
   for (const candidate of candidates) {
@@ -364,27 +329,42 @@ export const explainFilenameAutoAssignment = (
         candidate.length === format.tournamentIdPrefix.length + 4 &&
         candidate.startsWith(format.tournamentIdPrefix)
     );
-
     if (prefixMatches.length === 0) {
       continue;
     }
-
+    const prefix = prefixMatches[0].tournamentIdPrefix;
     const compatibleMatches = prefixMatches.filter((format) =>
       formatMatchesTeamCount(format.teamsPerTournament, teamCount)
     );
-
     if (compatibleMatches.length === 0) {
-      return teamCount > 0
-        ? `The filename looks like tournament ID ${candidate}, but none of the cached formats with that prefix accept this file's ${teamCount} detected teams.`
-        : `The filename looks like tournament ID ${candidate}, but none of the cached formats with that prefix are eligible for automatic assignment.`;
+      return { kind: 'no_format_for_team_count', candidate, prefix, teamCount };
     }
-
     if (compatibleMatches.length > 1) {
-      return `The filename looks like tournament ID ${candidate}, but more than one cached format shares that tournament ID prefix, so the app will not guess.`;
+      return { kind: 'ambiguous_prefix', candidate, prefix };
     }
   }
 
-  return `The filename contains ${candidates.join(', ')}, but none of those IDs match a cached tournament prefix on this desktop.`;
+  return { kind: 'no_matching_prefix', candidates };
+};
+
+export const explainFilenameAutoAssignment = (
+  filename: string,
+  teamCount: number,
+  formats: PrefixFormat[]
+): string => {
+  const diagnosis = diagnoseFilenameAutoAssignment(filename, teamCount, formats);
+  switch (diagnosis.kind) {
+    case 'no_tournament_id':
+      return 'The filename does not contain a 5 to 7 digit tournament ID, so the app cannot map it automatically.';
+    case 'no_format_for_team_count':
+      return diagnosis.teamCount > 0
+        ? `The filename looks like tournament ID ${diagnosis.candidate}, but none of the cached formats with that prefix accept this file's ${diagnosis.teamCount} detected teams.`
+        : `The filename looks like tournament ID ${diagnosis.candidate}, but none of the cached formats with that prefix are eligible for automatic assignment.`;
+    case 'ambiguous_prefix':
+      return `The filename looks like tournament ID ${diagnosis.candidate}, but more than one cached format shares that tournament ID prefix, so the app will not guess.`;
+    case 'no_matching_prefix':
+      return `The filename contains ${diagnosis.candidates.join(', ')}, but none of those IDs match a cached tournament prefix on this desktop.`;
+  }
 };
 
 export type QueueRowActionKey =
@@ -437,18 +417,55 @@ const humanizeErrorCode = (code: string): string => {
 const asRecord = (value: unknown): ApiErrorDetail | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as ApiErrorDetail) : null;
 
-// Codes the desktop app and the xips-pt server are known to return for failed_retryable jobs.
+const slotTierLabels: Record<string, string> = { P: 'Perfect', D: 'Diamond', G: 'Gold', S: 'Silver', B: 'Bronze' };
+
+const forFormat = (detail: ApiErrorDetail): string =>
+  typeof detail.formatName === 'string' ? ` for ${detail.formatName}` : '';
+
+// Codes the desktop app and the xips-pt server are known to return for failed jobs.
 const describeKnownErrorCode = (code: string, detail: ApiErrorDetail): string | null => {
   switch (code) {
     case 'team_count_mismatch':
     case 'format_team_count_mismatch': {
-      const inner = asRecord(detail.error) ?? detail;
-      const expected = inner.expected ?? inner.minimumAllowed;
-      const actual = inner.actual;
-      if (typeof expected === 'number' && typeof actual === 'number') {
-        return `Expected at least ${expected} team${expected === 1 ? '' : 's'} in the export, but only ${actual} ${actual === 1 ? 'was' : 'were'} detected.`;
+      const inner = asRecord(detail.details) ?? asRecord(detail.error) ?? detail;
+      const minimum = inner.minimumAllowed ?? inner.expected;
+      const { expected, actual } = inner;
+      if (typeof minimum === 'number' && typeof actual === 'number') {
+        const ofFormat = typeof expected === 'number' && expected !== minimum ? ` of ${expected}` : '';
+        return `Expected at least ${minimum}${ofFormat} team${minimum === 1 && !ofFormat ? '' : 's'} in the export, but only ${actual} ${actual === 1 ? 'was' : 'were'} detected.`;
       }
       return 'The export does not have enough distinct teams for this tournament format.';
+    }
+    case 'cap_limit_exceeded': {
+      const inner = asRecord(detail.details) ?? detail;
+      const { teamName, allowed, actual } = inner;
+      if (typeof teamName === 'string' && typeof allowed === 'number' && typeof actual === 'number') {
+        return `${teamName}'s cards total ${actual}, over the ${allowed} cap${forFormat(inner)}.`;
+      }
+      return 'A team in this export is over the format’s card value cap.';
+    }
+    case 'slot_limit_exceeded': {
+      const inner = asRecord(detail.details) ?? detail;
+      const { teamName, allowed, actual, slotTier } = inner;
+      if (typeof teamName === 'string' && typeof allowed === 'number' && typeof actual === 'number') {
+        const tier = typeof slotTier === 'string' ? `${slotTierLabels[slotTier] ?? slotTier} ` : '';
+        return `${teamName} has ${actual} ${tier}slot cards, over the limit of ${allowed}${forFormat(inner)}.`;
+      }
+      return 'A team in this export uses more slot cards than the format allows.';
+    }
+    case 'ovr_range_violation': {
+      const inner = asRecord(detail.details) ?? detail;
+      const { teamName, actual, minimumAllowed, maximumAllowed, cardId } = inner;
+      if (
+        typeof teamName === 'string' &&
+        typeof actual === 'number' &&
+        typeof minimumAllowed === 'number' &&
+        typeof maximumAllowed === 'number'
+      ) {
+        const card = typeof cardId === 'number' || typeof cardId === 'string' ? `card ${cardId}` : 'a card';
+        return `${teamName} has ${card} rated ${actual}, outside the ${minimumAllowed}-${maximumAllowed} range${forFormat(inner)}.`;
+      }
+      return 'A card in this export is outside the format’s rating range.';
     }
     case 'variant_limit_exceeded': {
       const inner = asRecord(detail.details) ?? detail;
@@ -487,7 +504,10 @@ const describeUnknownErrorDetail = (detail: ApiErrorDetail): string => {
 };
 
 // Rust's ApiError Display is `code ({"json":"detail"}) [requestId=...]`; turn that into a sentence.
-export const formatRetryableFailureMessage = (rawError: string): string => {
+export const formatRetryableFailureMessage = (
+  rawError: string,
+  { includeRequestId = true }: { includeRequestId?: boolean } = {}
+): string => {
   const trimmed = rawError.trim();
   if (!trimmed) {
     return '';
@@ -518,7 +538,7 @@ export const formatRetryableFailureMessage = (rawError: string): string => {
 
   const parts = sentence && sentence !== humanizedCode ? [humanizedCode, sentence] : [humanizedCode];
   const message = parts.join(': ');
-  return requestId && requestId.trim() ? `${message} (request ${requestId.trim()})` : message;
+  return includeRequestId && requestId && requestId.trim() ? `${message} (request ${requestId.trim()})` : message;
 };
 
 export type VariantLimitExceededDetail = {
@@ -561,4 +581,58 @@ export const parseRetryableFailureDetail = (rawError: string): RetryableFailureD
     actual,
     allowed
   };
+};
+
+export type BlockedJobSummary = {
+  // 'user' when only the user can unblock it; 'automatic' when the app will retry on its own.
+  owner: 'user' | 'automatic';
+  statusLabel: string;
+  reason: string;
+};
+
+const summarizeFormatMatchProblem = (job: LocalUploadJob, formats: PrefixFormat[]): string => {
+  const diagnosis = diagnoseFilenameAutoAssignment(job.filename, job.teamCount, formats);
+  switch (diagnosis.kind) {
+    case 'no_tournament_id':
+      return 'No tournament ID in the filename.';
+    case 'no_format_for_team_count':
+      return diagnosis.teamCount > 0
+        ? `No prefix ${diagnosis.prefix} format accepts ${diagnosis.teamCount} teams.`
+        : `No prefix ${diagnosis.prefix} format is eligible for automatic assignment.`;
+    case 'ambiguous_prefix':
+      return `Several formats share prefix ${diagnosis.prefix}.`;
+    case 'no_matching_prefix':
+      return `No format for prefix ${[...new Set(diagnosis.candidates.map((candidate) => candidate.slice(0, -4)))].join(', ')}.`;
+  }
+};
+
+// One-line status and reason for a blocked job, for compact lists such as the Today table.
+export const summarizeBlockedJob = (job: LocalUploadJob, formats: PrefixFormat[]): BlockedJobSummary => {
+  const failureReason = () =>
+    formatRetryableFailureMessage(job.error ?? '', { includeRequestId: false }) || 'The upload failed.';
+  switch (job.localState) {
+    case 'auth_blocked':
+      return { owner: 'user', statusLabel: 'Sign in', reason: 'Sign in again to resume uploads.' };
+    case 'awaiting_format_assignment':
+      return {
+        owner: 'user',
+        statusLabel: 'Needs format',
+        reason:
+          job.fileKind === 'stats_export'
+            ? summarizeFormatMatchProblem(job, formats)
+            : 'Waiting for a format before it can upload.'
+      };
+    case 'failed_retryable':
+      return { owner: 'automatic', statusLabel: 'Will retry', reason: failureReason() };
+    case 'failed_terminal':
+      return { owner: 'user', statusLabel: 'Rejected', reason: failureReason() };
+    default:
+      return { owner: 'automatic', statusLabel: formatQueueStateLabel(job.localState, job.fileKind), reason: '' };
+  }
+};
+
+// Name of the folder holding the job's source file (the tournament folder under the watch root).
+export const uploadJobFolderName = (job: Pick<LocalUploadJob, 'path'>): string => {
+  const parts = job.path.split(/[\\/]/u).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 2] : '';
 };
