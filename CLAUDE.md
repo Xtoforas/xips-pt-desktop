@@ -35,6 +35,20 @@ Hook tests: `python3 -m unittest discover -s .claude/hooks` and `-s .claude/revi
 - Pre-push review: `python3 .claude/review/review.py run [--base REF] [--render]`, then `review.py label <id> accept|reject` so the eval set grows. The diff is base vs working tree; keep the base recent or lanes skip on size. `--render` needs `npm run dev --workspace @xips/desktop` running.
 - Headless review lanes set `XIPS_REVIEW_LANE=1`; hooks that shouldn't run inside a lane must check it.
 
+## Fat and thin agents
+
+The top-level session is the fat agent when it runs on the most expensive tier available (Fable, or Opus when Fable isn't offered). It plans, makes the judgment calls, verifies, and owns git. Thin agents on cheaper models do the execution. Sonnet or Haiku top-level sessions, and subagents of any model, work directly.
+
+- Set the model explicitly on every Agent call; an omitted model inherits the session's. `haiku` for mechanical bulk work (renames, boilerplate, format conversion, log triage). `sonnet` for well-specified implementation with clear acceptance criteria; this is the default and what the `implementer` agent runs on. `opus` for concurrency, subtle algorithms, gnarly debugging, or judge panels. `fable` only after asking the user. When unsure, pick the cheaper tier and escalate if it fails.
+- Act directly when the work is reading or answering, a change of roughly 30 lines across 1-2 files, a fix inside a review loop you already hold, a task whose brief would cost more than the change, or any git operation.
+- Delegate to `implementer` when implementation spans 3+ files, is mechanical, or splits by file into independent pieces. Prefer one agent with a complete brief over many fragments. Run agents in parallel only when their files don't overlap.
+- Thin agents see none of the conversation, so every brief is self-contained: exact paths, the change, acceptance criteria, the gate command (`python3 .claude/hooks/gate.py verify <area>`), and "do not commit; the parent session owns commits". Set the write scope before delegating and clear it afterwards.
+- Never accept a thin agent's self-report. Read the diff, run the gate, check the acceptance criteria, then commit.
+
+## Commits
+
+Commit each work item as soon as it is done; this is standing authorization, so don't wait for approval per commit. One work item per commit, staged by path (`git add <paths>`, never `git add .`), with the message `<type>: <what changed>`, where type is `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, or `style`. Split a change that touches several concerns into sequential commits, and give each commit's own content a passing gate before committing it. Never push unless the user asks.
+
 ## Frontend Rules
 
 - Every page must stay usable at the minimum window size, 1100x760, as well as the 1440x960 default (`tauri.conf.json`): text fully visible, truncated on purpose, or wrapped cleanly, with no page-level horizontal scroll.
