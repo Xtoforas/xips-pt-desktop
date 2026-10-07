@@ -172,6 +172,10 @@ export const getUploadJobModifiedAt = (job: LocalUploadJob): number | null => {
   return Number.isFinite(queueUpdatedAt) ? queueUpdatedAt : null;
 };
 
+// Sort comparator: most recently modified job first; jobs without a timestamp sort last.
+export const compareUploadJobsNewestFirst = (left: LocalUploadJob, right: LocalUploadJob): number =>
+  (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0);
+
 export const formatUploadJobModifiedAt = (job: LocalUploadJob): string => {
   const modifiedAt = getUploadJobModifiedAt(job);
   return modifiedAt === null ? '-' : new Date(modifiedAt).toLocaleString();

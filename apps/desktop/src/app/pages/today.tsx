@@ -5,11 +5,11 @@ import { useDesktop } from '../DesktopContext';
 import { BlockedStatusBadge, buildOnboardingSteps, ReadinessCard, SectionHeader } from '../components';
 import {
   blockerPriority,
+  compareUploadJobsNewestFirst,
   formatFileKindLabel,
   formatLifecycleLabel,
   formatQueueStateLabel,
   formatUploadJobModifiedAt,
-  getUploadJobModifiedAt,
   queueLinkForJob,
   summarizeBlockedJob,
   uploadJobFolderName,
@@ -53,7 +53,7 @@ export const TodayPage = (): JSX.Element => {
           if (byReason !== 0) {
             return byReason;
           }
-          return (getUploadJobModifiedAt(right.job) ?? 0) - (getUploadJobModifiedAt(left.job) ?? 0);
+          return compareUploadJobsNewestFirst(left.job, right.job);
         }),
     [snapshot.cachedFormats, snapshot.uploadJobs]
   );
@@ -61,14 +61,14 @@ export const TodayPage = (): JSX.Element => {
     () =>
       snapshot.uploadJobs
         .filter((job) => uploadJobWorkingAutomatically(job) && !uploadJobWaitingOnServer(job))
-        .sort((left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)),
+        .sort(compareUploadJobsNewestFirst),
     [snapshot.uploadJobs]
   );
   const serverProgressJobs = useMemo(
     () =>
       snapshot.uploadJobs
         .filter((job) => uploadJobWaitingOnServer(job))
-        .sort((left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)),
+        .sort(compareUploadJobsNewestFirst),
     [snapshot.uploadJobs]
   );
   const completedCount = useMemo(
@@ -90,7 +90,7 @@ export const TodayPage = (): JSX.Element => {
   const inProgressJobs = useMemo(
     () =>
       [...activeMachineJobs, ...serverProgressJobs].sort(
-        (left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)
+        compareUploadJobsNewestFirst
       ),
     [activeMachineJobs, serverProgressJobs]
   );
@@ -98,7 +98,7 @@ export const TodayPage = (): JSX.Element => {
     () =>
       snapshot.uploadJobs
         .filter((job) => job.localState === 'complete')
-        .sort((left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0))
+        .sort(compareUploadJobsNewestFirst)
         .slice(0, 5),
     [snapshot.uploadJobs]
   );

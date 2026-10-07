@@ -13,13 +13,13 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
 import {
+  compareUploadJobsNewestFirst,
   formatFileKindLabel,
   formatLifecycleLabel,
   formatLocalPresenceLabel,
   formatQueueStateLabel,
   formatUploadJobChecksumStatusLabel,
   formatUploadJobModifiedAt,
-  getUploadJobModifiedAt,
   lifecycleColor,
   localPresenceColor,
   localStateColor,
@@ -684,7 +684,7 @@ export const QueueTable = ({
   renderFilename?: (job: LocalUploadJob) => JSX.Element;
 }): JSX.Element => {
   const orderedJobs = [...jobs].sort(
-    (left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)
+    compareUploadJobsNewestFirst
   );
   const selectionEnabled = Boolean(selectedJobIds && onToggleJobSelection && onToggleAllSelection);
   const selectedIds = new Set(selectedJobIds ?? []);

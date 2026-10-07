@@ -4,6 +4,7 @@ import {
   blockerPriority,
   canDismissUploadJob,
   canIgnoreUploadJob,
+  compareUploadJobsNewestFirst,
   explainFilenameAutoAssignment,
   formatLifecycleLabel,
   formatMatchesTeamCount,
@@ -522,5 +523,22 @@ describe('uploadJobFolderName', () => {
     expect(uploadJobFolderName({ path: 'C:\\Users\\me\\PT27\\data\\D-LS\\1970019.csv' })).toBe('D-LS');
     expect(uploadJobFolderName({ path: '/tmp/watch/Q-Bronze-Bo5-T16/1025202.csv' })).toBe('Q-Bronze-Bo5-T16');
     expect(uploadJobFolderName({ path: '1970019.csv' })).toBe('');
+  });
+});
+
+describe('compareUploadJobsNewestFirst', () => {
+  test('orders by source modified time, then queue update time, with untimed jobs last', () => {
+    const jobs = [
+      makeUploadJob({ id: 'untimed', sourceModifiedAt: '', updatedAt: '' }),
+      makeUploadJob({ id: 'old-source', sourceModifiedAt: '1000', updatedAt: '' }),
+      makeUploadJob({ id: 'queue-only', sourceModifiedAt: '', updatedAt: '2026-10-07T00:00:00.000Z' }),
+      makeUploadJob({ id: 'new-source', sourceModifiedAt: String(Date.parse('2026-10-08T00:00:00.000Z')), updatedAt: '' })
+    ];
+    expect([...jobs].sort(compareUploadJobsNewestFirst).map((job) => job.id)).toEqual([
+      'new-source',
+      'queue-only',
+      'old-source',
+      'untimed'
+    ]);
   });
 });

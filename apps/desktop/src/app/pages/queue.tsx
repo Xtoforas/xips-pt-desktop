@@ -6,6 +6,7 @@ import { BlockedStatusBadge, QueueTable, SectionHeader } from '../components';
 import {
   canDismissUploadJob,
   canIgnoreUploadJob,
+  compareUploadJobsNewestFirst,
   explainFilenameAutoAssignment,
   formatFileKindLabel,
   formatLifecycleLabel,
@@ -17,7 +18,6 @@ import {
   formatUploadJobModifiedAt,
   getIncompleteTeamCountWarning,
   getQueueRowActionKeys,
-  getUploadJobModifiedAt,
   isQueueJobDone,
   parseLegacyQueueWorkspaceView,
   parseQueueWorkspaceView,
@@ -88,7 +88,7 @@ export const UploadQueuePage = (): JSX.Element => {
   const sortedJobs = useMemo(
     () =>
       [...snapshot.uploadJobs].sort(
-        (left, right) => (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0)
+        compareUploadJobsNewestFirst
       ),
     [snapshot.uploadJobs]
   );
