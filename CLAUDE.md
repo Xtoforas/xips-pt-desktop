@@ -1,13 +1,7 @@
-xips-pt-desktop is the Tauri 2 desktop uploader for xips-pt: a React + TypeScript + Mantine renderer, Rust native services (folder watching, CSV detection, upload queue, API client) over local SQLite, and a zod contract package for the xips-pt server's `/api/v1`.
-
 ## When to read what
 
 | Path | When to read |
 |------|--------------|
-| `apps/desktop/src` | Changing pages, components, or the Tauri / browser-mock client |
-| `apps/desktop/src-tauri` | Changing native commands, the watcher, scanner, queue, SQLite schema, CSP, or capabilities |
-| `packages/api-contract` | Changing contract types or checking them against the server's OpenAPI copy |
-| `docs/` | Understanding the redesign sprint phases or past implementation decisions |
 | `README.md` | Cutting a release, updater signing, Windows builds |
 | `plan.md` | Before starting any implementation task |
 
