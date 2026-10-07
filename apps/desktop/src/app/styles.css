@@ -209,6 +209,13 @@ a {
   width: 64px;
 }
 
+/* Mantine badges hide overflow, which lets a table squeeze them to a letter. In the queue table they keep
+   their full label and the table scrolls inside its container instead. */
+.desktop-queue-table .mantine-Badge-root,
+.desktop-queue-table .mantine-Badge-label {
+  overflow: visible;
+}
+
 .desktop-today-mini-list {
   display: grid;
   gap: 10px;

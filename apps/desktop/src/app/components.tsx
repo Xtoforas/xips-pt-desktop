@@ -23,8 +23,10 @@ import {
   lifecycleColor,
   localPresenceColor,
   localStateColor,
+  summarizeBlockedJob,
   uploadJobNeedsAttention,
-  uploadJobWorkingAutomatically
+  uploadJobWorkingAutomatically,
+  type BlockedJobSummary
 } from './queue-model';
 
 const SidebarIcon = ({ path }: { path: string }): JSX.Element => (
@@ -563,6 +565,14 @@ export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind
   </Badge>
 );
 
+// Status for a job that needs attention: orange when only the user can unblock it, blue when the app retries.
+// The reason shows on hover; pages with room show it as text next to the badge.
+export const BlockedStatusBadge = ({ summary }: { summary: BlockedJobSummary }): JSX.Element => (
+  <Badge color={summary.owner === 'user' ? 'orange' : 'blue'} variant="light" title={summary.reason || undefined}>
+    {summary.statusLabel}
+  </Badge>
+);
+
 export const QueueStateBadge = ({
   state,
   fileKind
@@ -633,6 +643,7 @@ export const formatTeamsPerTournamentLabel = (format: TournamentFormat): string 
 export const QueueTable = ({
   jobs,
   formatLabels,
+  formats,
   selectedJobId,
   selectedJobIds,
   onSelect,
@@ -643,6 +654,8 @@ export const QueueTable = ({
 }: {
   jobs: LocalUploadJob[];
   formatLabels?: Record<string, string>;
+  // Cached formats; when given, blocked rows show the same status as the Today page.
+  formats?: TournamentFormat[];
   selectedJobId?: string;
   selectedJobIds?: string[];
   onSelect?: (job: LocalUploadJob) => void;
@@ -670,7 +683,7 @@ export const QueueTable = ({
 
   return (
     <Table.ScrollContainer minWidth={960} type="native">
-      <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
+      <Table className="desktop-queue-table" withTableBorder withColumnBorders highlightOnHover striped="odd">
         <Table.Thead>
           <Table.Tr>
             {selectionEnabled ? (
@@ -740,7 +753,11 @@ export const QueueTable = ({
                   {formatUploadJobChecksumStatusLabel(job)}
                 </Table.Td>
                 <Table.Td>
-                  <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
+                  {formats && uploadJobNeedsAttention(job) ? (
+                    <BlockedStatusBadge summary={summarizeBlockedJob(job, formats)} />
+                  ) : (
+                    <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
+                  )}
                 </Table.Td>
                 <Table.Td>
                   <LifecycleBadge phase={job.lifecyclePhase} fileKind={job.fileKind} />

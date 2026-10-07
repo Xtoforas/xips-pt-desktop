@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Card, Collapse, Group, Select, Stack, Table, Text
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
-import { QueueTable } from '../components';
+import { BlockedStatusBadge, QueueTable } from '../components';
 import {
   canDismissUploadJob,
   canIgnoreUploadJob,
@@ -26,6 +26,7 @@ import {
   queueWorkspaceViewDetail,
   queueWorkspaceViewForJob,
   queueWorkspaceViewLabel,
+  summarizeBlockedJob,
   uploadJobNeedsAttention,
   uploadJobWorkingAutomatically,
   type QueueWorkspaceView
@@ -230,21 +231,19 @@ export const UploadQueuePage = (): JSX.Element => {
   );
   const selectedJobView = selectedJob ? queueWorkspaceViewForJob(selectedJob) : null;
   const selectedJobActions = useMemo(() => (selectedJob ? getQueueRowActionKeys(selectedJob) : []), [selectedJob]);
+  const selectedJobBlocker =
+    selectedJob && uploadJobNeedsAttention(selectedJob) ? summarizeBlockedJob(selectedJob, snapshot.cachedFormats) : null;
   const selectedJobDetail = selectedJob
-    ? selectedJob.localState === 'awaiting_format_assignment'
-      ? 'Awaiting format assignment'
-      : selectedJob.localState === 'failed_retryable'
-        ? 'Needs a retry after a transient failure'
-      : selectedJob.localState === 'auth_blocked'
-          ? 'Blocked until the account signs in again'
-          : selectedJob.localState === 'detected' || selectedJob.localState === 'queued_local'
-            ? 'Queued locally and safe to remove before upload starts'
-          : selectedJob.localState === 'ignored'
-            ? selectedJob.ignoredFromState
-              ? `Ignored ${formatQueueStateLabel(selectedJob.ignoredFromState, selectedJob.fileKind).toLowerCase()} row`
-              : 'Ignored row'
+    ? selectedJobBlocker
+      ? selectedJobBlocker.reason
+      : selectedJob.localState === 'detected' || selectedJob.localState === 'queued_local'
+        ? 'Queued locally and safe to remove before upload starts'
+        : selectedJob.localState === 'ignored'
+          ? selectedJob.ignoredFromState
+            ? `Ignored ${formatQueueStateLabel(selectedJob.ignoredFromState, selectedJob.fileKind).toLowerCase()} row`
+            : 'Ignored row'
           : selectedJobView === 'done'
-            ? 'Finished or terminal queue row'
+            ? 'Finished queue row'
             : 'Automatic progress is still underway'
     : '';
   const currentViewJobs = queueJobsByView[queueView];
@@ -399,30 +398,15 @@ export const UploadQueuePage = (): JSX.Element => {
     }
   };
 
+  // Blocked jobs show BlockedStatusBadge instead; these cover the remaining states.
   const selectedJobActionLabel =
-    selectedJob?.localState === 'awaiting_format_assignment'
-      ? 'Assign format'
-      : selectedJob?.localState === 'failed_retryable'
-        ? 'Retry now'
-        : selectedJob?.localState === 'auth_blocked'
-          ? 'Re-authenticate'
-          : selectedJob?.localState === 'detected' || selectedJob?.localState === 'queued_local'
-            ? 'Dismiss row'
-          : selectedJob?.localState === 'ignored'
-            ? 'Restore row'
-          : 'Inspect row';
+    selectedJob?.localState === 'detected' || selectedJob?.localState === 'queued_local'
+      ? 'Dismiss row'
+      : selectedJob?.localState === 'ignored'
+        ? 'Restore row'
+        : 'Inspect row';
   const selectedJobStateColor =
-    selectedJob?.localState === 'awaiting_format_assignment'
-      ? 'orange'
-      : selectedJob?.localState === 'failed_retryable'
-        ? 'orange'
-        : selectedJob?.localState === 'auth_blocked'
-          ? 'red'
-          : selectedJob?.localState === 'ignored'
-            ? 'gray'
-          : selectedJobView === 'done'
-            ? 'teal'
-            : 'blue';
+    selectedJob?.localState === 'ignored' ? 'gray' : selectedJobView === 'done' ? 'teal' : 'blue';
 
   return (
     <Stack gap="lg">
@@ -500,6 +484,7 @@ export const UploadQueuePage = (): JSX.Element => {
               <QueueTable
                 jobs={currentViewJobs}
                 formatLabels={formatLabelById}
+                formats={snapshot.cachedFormats}
                 selectedJobId={selectedJobId}
                 selectedJobIds={selectedQueueJobIds}
                 onSelect={(job) => {
@@ -719,7 +704,9 @@ export const UploadQueuePage = (): JSX.Element => {
                   {selectedJob ? selectedJobDetail : 'Select a row to inspect its actions and queue metadata.'}
                 </Text>
               </div>
-              {selectedJob ? (
+              {selectedJobBlocker ? (
+                <BlockedStatusBadge summary={selectedJobBlocker} />
+              ) : selectedJob ? (
                 <Badge color={selectedJobStateColor} variant="light">
                   {selectedJobActionLabel}
                 </Badge>

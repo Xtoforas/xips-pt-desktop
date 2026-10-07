@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Card, Group, Stack, Table, Text, Title } from '@m
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
-import { buildOnboardingSteps, ReadinessCard } from '../components';
+import { BlockedStatusBadge, buildOnboardingSteps, ReadinessCard } from '../components';
 import {
   blockerPriority,
   formatFileKindLabel,
@@ -190,9 +190,7 @@ export const TodayPage = (): JSX.Element => {
                           </Text>
                         </Table.Td>
                         <Table.Td>
-                          <Badge color={summary.owner === 'user' ? 'orange' : 'blue'} variant="light">
-                            {summary.statusLabel}
-                          </Badge>
+                          <BlockedStatusBadge summary={summary} />
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" c="dimmed">
