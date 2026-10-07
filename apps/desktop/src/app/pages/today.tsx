@@ -19,6 +19,7 @@ import {
   formatQueueStateLabel,
   formatUploadJobModifiedAt,
   queueLinkForJob,
+  formatUploadFormatLabel,
   summarizeBlockedJob,
   type BlockedJobSummary,
   uploadJobFolderName,
@@ -271,7 +272,7 @@ export const TodayPage = (): JSX.Element => {
                               <BlockedJobDetails
                                 job={job}
                                 summary={summary}
-                                formatName={job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'}
+                                formatName={formatUploadFormatLabel(job.formatId, formatLabelById)}
                               />
                             </HoverCard.Dropdown>
                           </HoverCard>
@@ -383,7 +384,7 @@ export const TodayPage = (): JSX.Element => {
                 <JobSummaryRow
                   key={job.id}
                   job={job}
-                  detail={job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'}
+                  detail={formatUploadFormatLabel(job.formatId, formatLabelById)}
                   statusLabel="Complete"
                   statusColor="teal"
                 />

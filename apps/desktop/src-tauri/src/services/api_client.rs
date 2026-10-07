@@ -9,6 +9,8 @@ use crate::models::api::{
     MyAggResponse, ServiceHealth, TournamentFormat, UploadCreateResponse, UploadDetailResponse,
 };
 
+use crate::services::league;
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn http_client() -> Client {
@@ -147,6 +149,67 @@ pub async fn logout(base_url: &str, access_token: &str) -> Result<ApiResponse<Va
     .await
 }
 
+fn create_upload_body(
+    source_filename: &str,
+    raw_content: &str,
+    file_kind: &str,
+    format_id: &str,
+    tournament_id: &str,
+    game_version: &str,
+    upload_batch_id: Option<&str>,
+    defer_processing: bool,
+) -> Value {
+    let league_id = if file_kind == "stats_export" {
+        league::parse_league_format_id(format_id)
+    } else {
+        None
+    };
+    let mut body = json!({
+      "sourceFilename": source_filename,
+      "mode": if league_id.is_some() { "league" } else { "tournament" },
+      "fileKind": file_kind,
+      "gameVersion": game_version,
+      "rawContent": raw_content
+    });
+    if defer_processing {
+        body["deferProcessing"] = Value::Bool(true);
+    }
+    if let Some(batch_id) = upload_batch_id.filter(|value| !value.trim().is_empty()) {
+        body["uploadBatchId"] = Value::String(batch_id.trim().to_string());
+    }
+    if let Some((year, number)) = league_id {
+        body["formatId"] = Value::String(format_id.to_string());
+        body["leagueYear"] = Value::String(year.to_string());
+        body["leagueNumber"] = Value::String(number.to_string());
+    } else if file_kind == "stats_export" {
+        body["formatId"] = Value::String(format_id.to_string());
+        if !tournament_id.trim().is_empty() {
+            body["tournamentId"] = Value::String(tournament_id.trim().to_string());
+        }
+    }
+    body
+}
+
+fn duplicate_check_body(
+    checksum: &str,
+    file_kind: &str,
+    format_id: &str,
+    game_version: &str,
+) -> Value {
+    let mut body = json!({
+      "checksum": checksum,
+      "fileKind": file_kind,
+      "gameVersion": game_version
+    });
+    if file_kind == "stats_export" {
+        body["formatId"] = Value::String(format_id.to_string());
+        if league::parse_league_format_id(format_id).is_some() {
+            body["mode"] = Value::String(String::from("league"));
+        }
+    }
+    body
+}
+
 pub async fn create_upload(
     base_url: &str,
     access_token: &str,
@@ -159,25 +222,16 @@ pub async fn create_upload(
     upload_batch_id: Option<&str>,
     defer_processing: bool,
 ) -> Result<ApiResponse<UploadCreateResponse>, ApiError> {
-    let mut body = json!({
-      "sourceFilename": source_filename,
-      "mode": "tournament",
-      "fileKind": file_kind,
-      "gameVersion": game_version,
-      "rawContent": raw_content
-    });
-    if defer_processing {
-        body["deferProcessing"] = Value::Bool(true);
-    }
-    if let Some(batch_id) = upload_batch_id.filter(|value| !value.trim().is_empty()) {
-        body["uploadBatchId"] = Value::String(batch_id.trim().to_string());
-    }
-    if file_kind == "stats_export" {
-        body["formatId"] = Value::String(format_id.to_string());
-        if !tournament_id.trim().is_empty() {
-            body["tournamentId"] = Value::String(tournament_id.trim().to_string());
-        }
-    }
+    let body = create_upload_body(
+        source_filename,
+        raw_content,
+        file_kind,
+        format_id,
+        tournament_id,
+        game_version,
+        upload_batch_id,
+        defer_processing,
+    );
     send_json::<UploadCreateResponse>(
         &http_client(),
         Method::POST,
@@ -216,14 +270,7 @@ pub async fn check_duplicate(
     format_id: &str,
     game_version: &str,
 ) -> Result<ApiResponse<DuplicateCheckResponse>, ApiError> {
-    let mut body = json!({
-      "checksum": checksum,
-      "fileKind": file_kind,
-      "gameVersion": game_version
-    });
-    if file_kind == "stats_export" {
-        body["formatId"] = Value::String(format_id.to_string());
-    }
+    let body = duplicate_check_body(checksum, file_kind, format_id, game_version);
     send_json::<DuplicateCheckResponse>(
         &http_client(),
         Method::POST,
@@ -535,7 +582,7 @@ pub fn into_session_user(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_health_payload, ApiError};
+    use super::{create_upload_body, duplicate_check_body, parse_health_payload, ApiError};
 
     fn api_error(status: u16, code: &str) -> ApiError {
         ApiError {
@@ -544,6 +591,71 @@ mod tests {
             request_id: String::new(),
             detail: String::new(),
         }
+    }
+
+    #[test]
+    fn create_body_for_league_export_uses_league_fields() {
+        let body = create_upload_body(
+            "2050.403.csv",
+            "x",
+            "stats_export",
+            "2050.403",
+            "",
+            "ootp27",
+            None,
+            false,
+        );
+        assert_eq!(body["mode"], "league");
+        assert_eq!(body["formatId"], "2050.403");
+        assert_eq!(body["leagueYear"], "2050");
+        assert_eq!(body["leagueNumber"], "403");
+        assert!(body.get("tournamentId").is_none());
+    }
+
+    #[test]
+    fn create_body_for_tournament_export_is_unchanged() {
+        let body = create_upload_body(
+            "120001.csv",
+            "x",
+            "stats_export",
+            "fmt-1",
+            " 120001 ",
+            "ootp27",
+            Some("b1"),
+            true,
+        );
+        assert_eq!(body["mode"], "tournament");
+        assert_eq!(body["formatId"], "fmt-1");
+        assert_eq!(body["tournamentId"], "120001");
+        assert_eq!(body["deferProcessing"], true);
+        assert_eq!(body["uploadBatchId"], "b1");
+        assert!(body.get("leagueYear").is_none());
+    }
+
+    #[test]
+    fn create_body_for_card_catalog_has_no_format() {
+        let body = create_upload_body(
+            "cards.csv",
+            "x",
+            "card_catalog",
+            "2050.403",
+            "",
+            "ootp27",
+            None,
+            false,
+        );
+        assert_eq!(body["mode"], "tournament");
+        assert!(body.get("formatId").is_none());
+    }
+
+    #[test]
+    fn duplicate_body_marks_league_mode_only_for_league_ids() {
+        let league = duplicate_check_body("abc", "stats_export", "2050.403", "ootp27");
+        assert_eq!(league["mode"], "league");
+        assert_eq!(league["formatId"], "2050.403");
+        let tournament = duplicate_check_body("abc", "stats_export", "fmt-1", "ootp27");
+        assert!(tournament.get("mode").is_none());
+        assert_eq!(tournament["formatId"], "fmt-1");
     }
 
     #[test]

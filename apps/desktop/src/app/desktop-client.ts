@@ -174,7 +174,8 @@ const mockUploadJob = (
 };
 
 const mockUploadJobs: LocalUploadJob[] = [
-  mockUploadJob('job-league', 'League', '2050.403.csv', 'awaiting_format_assignment', 0),
+  { ...mockUploadJob('job-league', 'League', '2050.403.csv', 'queued_local', 30), formatId: '2050.403' },
+  mockUploadJob('job-league-blocked', 'League', '2051.452.csv', 'awaiting_format_assignment', 40),
   mockUploadJob('job-deadball', 'PD-D-LTH-Deadball-E1913', '2070146.csv', 'awaiting_format_assignment', 123),
   mockUploadJob(
     'job-cap',

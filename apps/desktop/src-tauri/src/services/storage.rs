@@ -12,6 +12,7 @@ use crate::models::local_state::{
     LocalUploadAttempt, LocalUploadJob, LocalWatchRoot, SaveFormatRuleInput,
     SaveServerProfileInput, SessionUser, UpdatePreferencesInput,
 };
+use crate::services::league;
 use crate::services::scanner::{self, FormatRuleMatch, ScanResult};
 
 fn now_iso() -> String {
@@ -549,6 +550,9 @@ fn format_assignment_matches_team_count(
     format_id: &str,
     team_count: u32,
 ) -> bool {
+    if league::parse_league_format_id(format_id).is_some() {
+        return league::league_team_count_ok(team_count);
+    }
     format_id.is_empty()
         || team_count == 0
         || find_format_by_id(formats, format_id)
@@ -561,6 +565,13 @@ fn ensure_format_matches_team_count(
     format_id: &str,
     team_count: u32,
 ) -> Result<(), String> {
+    if league::parse_league_format_id(format_id).is_some() {
+        return if league::league_team_count_ok(team_count) {
+            Ok(())
+        } else {
+            Err(String::from("league_team_count_mismatch"))
+        };
+    }
     let Some(format) = find_format_by_id(formats, format_id) else {
         return Err(String::from("format_not_found"));
     };
@@ -665,6 +676,16 @@ pub fn save_scan_results(
         } else {
             None
         };
+        // Tournament matching keeps precedence; league inference only fills the gap.
+        let inferred_tournament_assignment = inferred_tournament_assignment.or_else(|| {
+            if row.file_kind != "stats_export" {
+                return None;
+            }
+            league::league_format_id_from_filename(&row.filename)
+                .filter(|_| league::league_team_count_ok(row.team_count))
+                .map(|format_id| (format_id, String::new()))
+                .filter(|(format_id, _)| row.format_id.is_empty() || row.format_id == *format_id)
+        });
         let row_format_id = if format_assignment_matches_team_count(
             &cached_formats,
             &row.format_id,
@@ -2425,6 +2446,93 @@ mod tests {
                 fs::remove_dir_all(parent).expect("temporary directory should be removed");
             }
         }
+    }
+
+    fn remove_test_dir(db_path: &Path) {
+        if let Some(parent) = db_path.parent() {
+            if parent.exists() {
+                fs::remove_dir_all(parent).expect("temporary directory should be removed");
+            }
+        }
+    }
+
+    fn league_fixture(test_name: &str, filename: &str) -> (PathBuf, PathBuf) {
+        let db_path = temp_db_path(test_name);
+        let fixture_root = db_path
+            .parent()
+            .expect("db path should have parent")
+            .join("watch");
+        let csv_path = write_fixture_file(
+            &fixture_root,
+            filename,
+            "POS,CID,VLvl,PA,IP,ERA+,FRM,ARM\nCF,1,1,10,2,100,0,0\n",
+        );
+        ensure_db(&db_path).expect("db should initialize");
+        (db_path, csv_path)
+    }
+
+    #[test]
+    fn auto_assigns_league_export_and_keeps_it_on_rescan() {
+        let (db_path, csv_path) = league_fixture("auto-assigns-league", "2050.403.csv");
+
+        let mut scan = scan_result(&csv_path, "1000");
+        scan.team_count = 30;
+        let snapshot =
+            save_scan_results(&db_path, "profile-1", &[scan.clone()]).expect("scan should succeed");
+        let job = snapshot.upload_jobs.first().expect("upload job should exist");
+        assert_eq!(job.format_id, "2050.403");
+        assert_eq!(job.tournament_id, "");
+        assert_eq!(job.local_state, "queued_local");
+
+        let snapshot =
+            save_scan_results(&db_path, "profile-1", &[scan]).expect("rescan should succeed");
+        let job = snapshot.upload_jobs.first().expect("upload job should exist");
+        assert_eq!(job.format_id, "2050.403");
+        assert_eq!(job.local_state, "queued_local");
+        assert_eq!(
+            snapshot.detected_files.first().expect("detected file").format_id,
+            "2050.403"
+        );
+
+        remove_test_dir(&db_path);
+    }
+
+    #[test]
+    fn league_export_with_too_many_teams_stays_awaiting_assignment() {
+        let (db_path, csv_path) = league_fixture("league-too-many-teams", "2050.403.csv");
+
+        let mut scan = scan_result(&csv_path, "1000");
+        scan.team_count = 40;
+        let snapshot =
+            save_scan_results(&db_path, "profile-1", &[scan]).expect("scan should succeed");
+        let job = snapshot.upload_jobs.first().expect("upload job should exist");
+        assert_eq!(job.format_id, "");
+        assert_eq!(job.local_state, "awaiting_format_assignment");
+
+        remove_test_dir(&db_path);
+    }
+
+    #[test]
+    fn tournament_filename_keeps_tournament_format_over_league_rule() {
+        let (db_path, csv_path) = league_fixture("tournament-over-league", "120001.csv");
+        cache_formats(&db_path, &[format("fmt-1", "12")]).expect("formats should cache");
+
+        let snapshot = save_scan_results(&db_path, "profile-1", &[scan_result(&csv_path, "1000")])
+            .expect("scan should succeed");
+        let job = snapshot.upload_jobs.first().expect("upload job should exist");
+        assert_eq!(job.format_id, "fmt-1");
+        assert_eq!(job.tournament_id, "120001");
+
+        remove_test_dir(&db_path);
+    }
+
+    #[test]
+    fn manual_league_assignment_checks_team_count() {
+        assert!(super::ensure_format_matches_team_count(&[], "2050.403", 30).is_ok());
+        assert_eq!(
+            super::ensure_format_matches_team_count(&[], "2050.403", 40),
+            Err(String::from("league_team_count_mismatch"))
+        );
     }
 
     #[test]

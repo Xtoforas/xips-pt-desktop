@@ -309,7 +309,60 @@ export const extractTournamentIdCandidates = (value: string): string[] => {
 
 type PrefixFormat = { id: string; name: string; tournamentIdPrefix: string; teamsPerTournament: number };
 
+const leagueLevelLabel = (leagueNumber: number): string => {
+  if (leagueNumber === 500) return 'Perfect League';
+  const tier = Math.floor(leagueNumber / 50);
+  const labels: Record<number, string> = {
+    1: 'Iron',
+    2: 'Low Bronze',
+    3: 'High Bronze',
+    4: 'Low Silver',
+    5: 'High Silver',
+    6: 'Low Gold',
+    7: 'High Gold',
+    8: 'Low Diamond',
+    9: 'High Diamond'
+  };
+  return labels[tier] ?? '';
+};
+
+// League format ids are "<year>.<leagueNumber>", year 1900-9999, number 50-500.
+export const parseLeagueFormatId = (
+  id: string
+): { year: number; leagueNumber: number; levelLabel: string } | null => {
+  const match = /^(\d{4})\.(\d{2,3})$/u.exec(id);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const leagueNumber = Number(match[2]);
+  if (year < 1900 || leagueNumber < 50 || leagueNumber > 500) {
+    return null;
+  }
+  return { year, leagueNumber, levelLabel: leagueLevelLabel(leagueNumber) };
+};
+
+// Strict: the whole filename must be "<year>.<number>.csv".
+export const leagueFormatIdFromFilename = (filename: string): string | null => {
+  const match = /^(\d{4}\.\d{2,3})\.csv$/iu.exec(filename);
+  const parsed = match ? parseLeagueFormatId(match[1]) : null;
+  return parsed ? `${parsed.year}.${parsed.leagueNumber}` : null;
+};
+
+export const formatUploadFormatLabel = (formatId: string, formatLabels: Record<string, string>): string => {
+  if (!formatId) {
+    return 'Unassigned';
+  }
+  const league = parseLeagueFormatId(formatId);
+  if (league) {
+    return `League ${formatId} · ${league.levelLabel}`;
+  }
+  return formatLabels[formatId] ?? 'Unknown format';
+};
+
 export type FilenameAutoAssignmentDiagnosis =
+  | { kind: 'league_number_invalid'; leagueNumber: number }
+  | { kind: 'league_team_count'; teamCount: number }
   | { kind: 'no_tournament_id' }
   | { kind: 'no_format_for_team_count'; candidate: string; prefix: string; teamCount: number }
   | { kind: 'ambiguous_prefix'; candidate: string; prefix: string }
@@ -321,6 +374,17 @@ export const diagnoseFilenameAutoAssignment = (
   teamCount: number,
   formats: PrefixFormat[]
 ): FilenameAutoAssignmentDiagnosis => {
+  const leagueName = /^(\d{4})\.(\d{2,3})\.csv$/iu.exec(filename);
+  if (leagueName) {
+    const leagueNumber = Number(leagueName[2]);
+    if (!parseLeagueFormatId(`${leagueName[1]}.${leagueName[2]}`)) {
+      return { kind: 'league_number_invalid', leagueNumber };
+    }
+    if (teamCount !== 0 && (teamCount < 24 || teamCount > 36)) {
+      return { kind: 'league_team_count', teamCount };
+    }
+  }
+
   const candidates = extractTournamentIdCandidates(filename);
   if (candidates.length === 0) {
     return { kind: 'no_tournament_id' };
@@ -358,6 +422,10 @@ export const explainFilenameAutoAssignment = (
 ): string => {
   const diagnosis = diagnoseFilenameAutoAssignment(filename, teamCount, formats);
   switch (diagnosis.kind) {
+    case 'league_number_invalid':
+      return `The filename looks like a league export, but league number ${diagnosis.leagueNumber} is outside the valid 50 to 500 range (or the year is before 1900), so the app will not assign it.`;
+    case 'league_team_count':
+      return `The filename looks like a league export, but league files need 24 to 36 teams and this one has ${diagnosis.teamCount}, so the app will not assign it automatically.`;
     case 'no_tournament_id':
       return 'The filename does not contain a 5 to 7 digit tournament ID, so the app cannot map it automatically.';
     case 'no_format_for_team_count':
@@ -601,6 +669,10 @@ export type BlockedJobSummary = {
 const summarizeFormatMatchProblem = (job: LocalUploadJob, formats: PrefixFormat[]): string => {
   const diagnosis = diagnoseFilenameAutoAssignment(job.filename, job.teamCount, formats);
   switch (diagnosis.kind) {
+    case 'league_number_invalid':
+      return `League number ${diagnosis.leagueNumber} is outside 50-500.`;
+    case 'league_team_count':
+      return `League files need 24-36 teams; this has ${diagnosis.teamCount}.`;
     case 'no_tournament_id':
       return 'No tournament ID in the filename.';
     case 'no_format_for_team_count':

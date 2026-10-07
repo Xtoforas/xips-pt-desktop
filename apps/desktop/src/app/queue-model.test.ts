@@ -5,7 +5,11 @@ import {
   canDismissUploadJob,
   canIgnoreUploadJob,
   compareUploadJobsNewestFirst,
+  diagnoseFilenameAutoAssignment,
   explainFilenameAutoAssignment,
+  formatUploadFormatLabel,
+  leagueFormatIdFromFilename,
+  parseLeagueFormatId,
   formatLifecycleLabel,
   formatMatchesTeamCount,
   formatQueueStateLabel,
@@ -458,7 +462,7 @@ const prefixFormats = [
 
 describe('explainFilenameAutoAssignment', () => {
   test('explains each reason a filename was not auto-assigned', () => {
-    expect(explainFilenameAutoAssignment('2050.403.csv', 0, prefixFormats)).toBe(
+    expect(explainFilenameAutoAssignment('league-roster-export.csv', 0, prefixFormats)).toBe(
       'The filename does not contain a 5 to 7 digit tournament ID, so the app cannot map it automatically.'
     );
     expect(explainFilenameAutoAssignment('2070146.csv', 123, prefixFormats)).toBe(
@@ -473,11 +477,61 @@ describe('explainFilenameAutoAssignment', () => {
   });
 });
 
+describe('league format helpers', () => {
+  test('parseLeagueFormatId validates ranges and names levels', () => {
+    expect(parseLeagueFormatId('2050.403')).toEqual({ year: 2050, leagueNumber: 403, levelLabel: 'Low Diamond' });
+    expect(parseLeagueFormatId('1959.500')?.levelLabel).toBe('Perfect League');
+    expect(parseLeagueFormatId('2050.50')?.levelLabel).toBe('Iron');
+    expect(parseLeagueFormatId('2050.99')?.levelLabel).toBe('Iron');
+    expect(parseLeagueFormatId('2050.100')?.levelLabel).toBe('Low Bronze');
+    expect(parseLeagueFormatId('2050.499')?.levelLabel).toBe('High Diamond');
+    expect(parseLeagueFormatId('2050.49')).toBeNull();
+    expect(parseLeagueFormatId('2050.501')).toBeNull();
+    expect(parseLeagueFormatId('1899.100')).toBeNull();
+    expect(parseLeagueFormatId('f-102')).toBeNull();
+  });
+
+  test('leagueFormatIdFromFilename only accepts the whole-name pattern', () => {
+    expect(leagueFormatIdFromFilename('2050.403.csv')).toBe('2050.403');
+    expect(leagueFormatIdFromFilename('2050.050.CSV')).toBe('2050.50');
+    expect(leagueFormatIdFromFilename('2026-04-03.csv')).toBeNull();
+    expect(leagueFormatIdFromFilename('2070146.csv')).toBeNull();
+    expect(leagueFormatIdFromFilename('Q-Bronze-2026-04-03.csv')).toBeNull();
+    expect(leagueFormatIdFromFilename('2050.501.csv')).toBeNull();
+  });
+
+  test('formatUploadFormatLabel covers unassigned, league, known and unknown ids', () => {
+    const labels = { 'f-102': 'Bronze Quick' };
+    expect(formatUploadFormatLabel('', labels)).toBe('Unassigned');
+    expect(formatUploadFormatLabel('2050.403', labels)).toBe('League 2050.403 · Low Diamond');
+    expect(formatUploadFormatLabel('f-102', labels)).toBe('Bronze Quick');
+    expect(formatUploadFormatLabel('f-999', labels)).toBe('Unknown format');
+  });
+
+  test('diagnoses league files before tournament checks', () => {
+    expect(diagnoseFilenameAutoAssignment('2050.403.csv', 40, prefixFormats)).toEqual({
+      kind: 'league_team_count',
+      teamCount: 40
+    });
+    expect(diagnoseFilenameAutoAssignment('2050.501.csv', 30, prefixFormats)).toEqual({
+      kind: 'league_number_invalid',
+      leagueNumber: 501
+    });
+    expect(diagnoseFilenameAutoAssignment('2050.403.csv', 30, prefixFormats).kind).toBe('no_tournament_id');
+    expect(explainFilenameAutoAssignment('2050.403.csv', 40, prefixFormats)).toContain('24 to 36 teams');
+    expect(explainFilenameAutoAssignment('2050.501.csv', 30, prefixFormats)).toContain('league number 501');
+    const awaiting = (filename: string, teamCount: number) =>
+      summarizeBlockedJob(makeUploadJob({ localState: 'awaiting_format_assignment', filename, teamCount }), prefixFormats);
+    expect(awaiting('2050.403.csv', 40).reason).toBe('League files need 24-36 teams; this has 40.');
+    expect(awaiting('2050.501.csv', 30).reason).toBe('League number 501 is outside 50-500.');
+  });
+});
+
 describe('summarizeBlockedJob', () => {
   test('gives a short format-match reason for files waiting on a format', () => {
     const awaiting = (filename: string, teamCount: number) =>
       summarizeBlockedJob(makeUploadJob({ localState: 'awaiting_format_assignment', filename, teamCount }), prefixFormats);
-    expect(awaiting('2050.403.csv', 0)).toEqual({
+    expect(awaiting('league-roster-export.csv', 0)).toEqual({
       owner: 'user',
       statusLabel: 'Needs format',
       reason: 'No tournament ID in the filename.'

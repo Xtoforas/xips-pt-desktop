@@ -23,6 +23,7 @@ import {
   lifecycleColor,
   localPresenceColor,
   localStateColor,
+  formatUploadFormatLabel,
   summarizeBlockedJob,
   uploadJobNeedsAttention,
   uploadJobWorkingAutomatically,
@@ -765,7 +766,7 @@ export const QueueTable = ({
                 <Table.Td>
                   <FileKindBadge fileKind={job.fileKind} />
                 </Table.Td>
-                <Table.Td>{job.formatId ? (formatLabels?.[job.formatId] ?? 'Unknown format') : 'Unassigned'}</Table.Td>
+                <Table.Td>{formatUploadFormatLabel(job.formatId, formatLabels ?? {})}</Table.Td>
                 <Table.Td>
                   <LocalPresenceBadge presence={job.localPresence} />
                 </Table.Td>

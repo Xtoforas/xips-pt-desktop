@@ -26,6 +26,7 @@ import {
   queueWorkspaceViewDetail,
   queueWorkspaceViewForJob,
   queueWorkspaceViewLabel,
+  formatUploadFormatLabel,
   summarizeBlockedJob,
   uploadJobNeedsAttention,
   uploadJobWorkingAutomatically,
@@ -961,7 +962,7 @@ export const UploadQueuePage = (): JSX.Element => {
                   <Table.Tbody>
                     <Table.Tr><Table.Th>File</Table.Th><Table.Td>{selectedJob.filename}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Kind</Table.Th><Table.Td>{formatFileKindLabel(selectedJob.fileKind)}</Table.Td></Table.Tr>
-                    <Table.Tr><Table.Th>Format</Table.Th><Table.Td>{selectedJobFormat?.name ?? (selectedJob.formatId ? 'Unknown format' : 'Unassigned')}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Format</Table.Th><Table.Td>{selectedJobFormat?.name ?? formatUploadFormatLabel(selectedJob.formatId, formatLabelById)}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Teams</Table.Th><Table.Td>{selectedJob.teamCount > 0 ? selectedJob.teamCount : '-'}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Local state</Table.Th><Table.Td>{formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind)}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Server lifecycle</Table.Th><Table.Td>{formatLifecycleLabel(selectedJob.lifecyclePhase, selectedJob.fileKind)}</Table.Td></Table.Tr>
