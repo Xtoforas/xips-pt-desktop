@@ -503,7 +503,25 @@ const describeUnknownErrorDetail = (detail: ApiErrorDetail): string => {
   return entries.length > 0 ? entries.map(([key, value]) => `${humanizeErrorCode(key)}: ${value}`).join(', ') : '';
 };
 
-// Rust's ApiError Display is `code ({"json":"detail"}) [requestId=...]`; turn that into a sentence.
+type ParsedApiError = { code: string; detailText: string; detail: unknown; requestId: string };
+
+// Rust's ApiError Display is `code (detail) [requestId=...]`, where detail is usually the server's JSON error body.
+const parseApiErrorText = (rawError: string): ParsedApiError | null => {
+  const match = rawError.trim().match(/^([a-zA-Z0-9_]+)\s\((.*)\)(?:\s\[requestId=([^\]]*)\])?$/s);
+  if (!match) {
+    return null;
+  }
+  const [, code, detailText, requestId = ''] = match;
+  let detail: unknown = null;
+  try {
+    detail = JSON.parse(detailText);
+  } catch {
+    detail = null;
+  }
+  return { code, detailText, detail, requestId: requestId.trim() };
+};
+
+// Turn an ApiError string into a sentence.
 export const formatRetryableFailureMessage = (
   rawError: string,
   { includeRequestId = true }: { includeRequestId?: boolean } = {}
@@ -513,19 +531,13 @@ export const formatRetryableFailureMessage = (
     return '';
   }
 
-  const match = trimmed.match(/^([a-zA-Z0-9_]+)\s\((.*)\)(?:\s\[requestId=([^\]]*)\])?$/s);
-  if (!match) {
+  const parsed = parseApiErrorText(trimmed);
+  if (!parsed) {
     return /^[a-zA-Z0-9_]+$/.test(trimmed) ? (describeKnownErrorCode(trimmed, {}) ?? humanizeErrorCode(trimmed)) : trimmed;
   }
 
-  const [, code, detailText, requestId] = match;
+  const { code, detailText, detail: parsedDetail, requestId } = parsed;
   const humanizedCode = humanizeErrorCode(code);
-  let parsedDetail: unknown = null;
-  try {
-    parsedDetail = JSON.parse(detailText);
-  } catch {
-    parsedDetail = null;
-  }
   const detailRecord = asRecord(parsedDetail);
 
   let sentence = '';
@@ -538,7 +550,7 @@ export const formatRetryableFailureMessage = (
 
   const parts = sentence && sentence !== humanizedCode ? [humanizedCode, sentence] : [humanizedCode];
   const message = parts.join(': ');
-  return includeRequestId && requestId && requestId.trim() ? `${message} (request ${requestId.trim()})` : message;
+  return includeRequestId && requestId ? `${message} (request ${requestId})` : message;
 };
 
 export type VariantLimitExceededDetail = {
@@ -553,20 +565,12 @@ export type RetryableFailureDetail = VariantLimitExceededDetail;
 
 // Structured breakdown for failure codes with a details pane, distinct from the one-line summary above.
 export const parseRetryableFailureDetail = (rawError: string): RetryableFailureDetail | null => {
-  const trimmed = rawError.trim();
-  const match = trimmed.match(/^([a-zA-Z0-9_]+)\s\((.*)\)(?:\s\[requestId=([^\]]*)\])?$/s);
-  if (!match || match[1] !== 'variant_limit_exceeded') {
+  const parsed = parseApiErrorText(rawError);
+  if (parsed?.code !== 'variant_limit_exceeded') {
     return null;
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[2]);
-  } catch {
-    return null;
-  }
-
-  const details = asRecord(asRecord(parsed)?.details);
+  const details = asRecord(asRecord(parsed.detail)?.details);
   if (!details) {
     return null;
   }
