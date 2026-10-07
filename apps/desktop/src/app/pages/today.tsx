@@ -2,11 +2,11 @@ import { Alert, Badge, Button, Card, Group, Stack, Table, Text, Title } from '@m
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
-import { BlockedStatusBadge, buildOnboardingSteps, ReadinessCard, SectionHeader } from '../components';
+import type { LocalUploadJob } from '@xips/api-contract';
+import { BlockedStatusBadge, buildOnboardingSteps, FileKindBadge, ReadinessCard, SectionHeader } from '../components';
 import {
   blockerPriority,
   compareUploadJobsNewestFirst,
-  formatFileKindLabel,
   formatLifecycleLabel,
   formatQueueStateLabel,
   formatUploadJobModifiedAt,
@@ -20,6 +20,36 @@ import {
 } from '../queue-model';
 
 const BLOCKER_ROW_LIMIT = 15;
+
+// One line per job in Today's progress and completion lists.
+const JobSummaryRow = ({
+  job,
+  detail,
+  statusLabel,
+  statusColor
+}: {
+  job: LocalUploadJob;
+  detail: string;
+  statusLabel: string;
+  statusColor: string;
+}): JSX.Element => (
+  <div className="desktop-today-job-row">
+    <div>
+      <Text size="sm" fw={600}>
+        {job.filename}
+      </Text>
+      <Text size="xs" c="dimmed">
+        {detail} · {formatUploadJobModifiedAt(job)}
+      </Text>
+    </div>
+    <Group gap="xs" wrap="nowrap">
+      <Badge color={statusColor} variant="light">
+        {statusLabel}
+      </Badge>
+      <FileKindBadge fileKind={job.fileKind} />
+    </Group>
+  </div>
+);
 
 export const TodayPage = (): JSX.Element => {
   const { snapshot, selectedProfile, health, authFlowState, updatePreferences } = useDesktop();
@@ -238,34 +268,24 @@ export const TodayPage = (): JSX.Element => {
               Nothing is uploading right now.
             </Alert>
           ) : (
-            <Stack gap="sm">
+            <div className="desktop-today-job-list">
               {inProgressJobs.slice(0, 6).map((job) => {
                 const onServer = uploadJobWaitingOnServer(job);
                 return (
-                  <div key={job.id} className="desktop-today-mini-row">
-                    <div>
-                      <Text size="sm" fw={600}>
-                        {job.filename}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {onServer
-                          ? formatLifecycleLabel(job.lifecyclePhase, job.fileKind)
-                          : formatQueueStateLabel(job.localState, job.fileKind)}{' '}
-                        · {formatUploadJobModifiedAt(job)}
-                      </Text>
-                    </div>
-                    <Group gap="xs" wrap="nowrap">
-                      <Badge color={onServer ? 'cyan' : 'blue'} variant="light">
-                        {onServer ? 'On server' : 'Local'}
-                      </Badge>
-                      <Badge color={job.fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
-                        {formatFileKindLabel(job.fileKind)}
-                      </Badge>
-                    </Group>
-                  </div>
+                  <JobSummaryRow
+                    key={job.id}
+                    job={job}
+                    detail={
+                      onServer
+                        ? formatLifecycleLabel(job.lifecyclePhase, job.fileKind)
+                        : formatQueueStateLabel(job.localState, job.fileKind)
+                    }
+                    statusLabel={onServer ? 'On server' : 'Local'}
+                    statusColor={onServer ? 'cyan' : 'blue'}
+                  />
                 );
               })}
-            </Stack>
+            </div>
           )}
         </Stack>
       </Card>
@@ -283,26 +303,15 @@ export const TodayPage = (): JSX.Element => {
               No completed uploads have been recorded yet.
             </Alert>
           ) : (
-            <div className="desktop-today-completions">
+            <div className="desktop-today-job-list">
               {completedJobs.map((job) => (
-                <div key={job.id} className="desktop-today-completion-row">
-                  <div>
-                    <Text size="sm" fw={600}>
-                      {job.filename}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'} · {formatUploadJobModifiedAt(job)}
-                    </Text>
-                  </div>
-                  <Group gap="xs" wrap="nowrap">
-                    <Badge color="teal" variant="light">
-                      Complete
-                    </Badge>
-                    <Badge color={job.fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
-                      {formatFileKindLabel(job.fileKind)}
-                    </Badge>
-                  </Group>
-                </div>
+                <JobSummaryRow
+                  key={job.id}
+                  job={job}
+                  detail={job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'}
+                  statusLabel="Complete"
+                  statusColor="teal"
+                />
               ))}
             </div>
           )}

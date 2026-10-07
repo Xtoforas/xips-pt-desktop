@@ -216,28 +216,12 @@ a {
   overflow: visible;
 }
 
-.desktop-today-mini-list {
+.desktop-today-job-list {
   display: grid;
   gap: 10px;
 }
 
-.desktop-today-mini-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 12px 14px;
-  border-radius: 4px;
-  background: var(--surface-2);
-  border: 1px solid var(--line-0);
-}
-
-.desktop-today-completions {
-  display: grid;
-  gap: 10px;
-}
-
-.desktop-today-completion-row {
+.desktop-today-job-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -374,8 +358,7 @@ a {
 }
 
 @media (max-width: 1180px) {
-  .desktop-today-mini-row,
-  .desktop-today-completion-row {
+  .desktop-today-job-row {
     flex-direction: column;
   }
 }

@@ -128,7 +128,7 @@ const mockFormats: TournamentFormat[] = [
   }
 ];
 
-// One blocked job per kind of reason the Today and Queue pages explain.
+// One blocked job per kind of reason the Today and Queue pages explain, plus one job on the server and one done.
 const mockUploadJob = (
   id: string,
   folder: string,
@@ -185,6 +185,8 @@ const mockUploadJobs: LocalUploadJob[] = [
     'cap_limit_exceeded ({"ok":false,"error":"cap_limit_exceeded","details":{"teamName":"Cymru Crushers","allowed":1610,"actual":1667,"formatName":"Daily Low Gold Cap"}}) [requestId=mock-1]'
   ),
   mockUploadJob('job-502', 'D-I-Slots-E1999', '1880115.csv', 'failed_retryable', 31, 'request_failed (error code: 502) [requestId=mock-2]'),
+  { ...mockUploadJob('job-server', 'D-LS', '1970026.csv', 'server_queued', 64), lifecyclePhase: 'queued', formatId: 'format-207' },
+  { ...mockUploadJob('job-done', 'D-LS', '1970023.csv', 'complete', 64), lifecyclePhase: 'complete', formatId: 'format-207' },
   mockUploadJob(
     'job-long-name',
     'breslau_binturings_-_hotl_rosters',
