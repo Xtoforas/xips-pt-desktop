@@ -29,8 +29,9 @@ import {
   type BlockedJobSummary
 } from './queue-model';
 
-const SidebarIcon = ({ path }: { path: string }): JSX.Element => (
-  <svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+// Renders a Material Design Icons path from @mdi/js.
+export const MdiIcon = ({ path, size = 18 }: { path: string; size?: number }): JSX.Element => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path d={path} />
   </svg>
 );
@@ -360,7 +361,7 @@ export const DesktopSidebar = (): JSX.Element => {
       <Paper withBorder radius="md" p={collapsed ? 4 : 'sm'}>
         <Group gap="sm" wrap="nowrap" align="center" justify={collapsed ? 'center' : 'flex-start'}>
           <ThemeIcon size={40} radius="md" variant="gradient" gradient={{ from: 'xipsBlue.5', to: 'xipsBlue.8', deg: 145 }}>
-            <SidebarIcon path={mdiBaseball} />
+            <MdiIcon path={mdiBaseball} />
           </ThemeIcon>
           {collapsed ? null : (
             <div>
@@ -385,7 +386,7 @@ export const DesktopSidebar = (): JSX.Element => {
                 color="xipsBlue"
                 variant="light"
                 active={location.pathname === item.to}
-                leftSection={<SidebarIcon path={item.iconPath} />}
+                leftSection={<MdiIcon path={item.iconPath} />}
                 style={collapsed ? { width: 40, justifyContent: 'center' } : undefined}
               />
             );

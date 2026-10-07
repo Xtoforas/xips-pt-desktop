@@ -206,7 +206,29 @@ a {
 }
 
 .desktop-blocker-col-action {
-  width: 64px;
+  width: 76px;
+}
+
+/* File cell is the hover target for the details card. */
+.desktop-blocker-file {
+  min-width: 0;
+  cursor: help;
+}
+
+.desktop-blocker-file .mantine-Group-root > .mantine-Text-root {
+  min-width: 0;
+}
+
+.desktop-blocker-info {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--mantine-color-dimmed);
+}
+
+.desktop-blocker-details th {
+  width: 110px;
+  vertical-align: top;
+  white-space: nowrap;
 }
 
 /* Mantine badges hide overflow, which lets a table squeeze them to a letter. In the queue table they keep

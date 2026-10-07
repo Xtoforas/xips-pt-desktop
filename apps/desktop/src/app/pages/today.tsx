@@ -1,9 +1,17 @@
-import { Alert, Badge, Button, Card, Group, Stack, Table, Text, Title } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, HoverCard, Stack, Table, Text, Title } from '@mantine/core';
+import { mdiInformationOutline } from '@mdi/js';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
 import type { LocalUploadJob } from '@xips/api-contract';
-import { BlockedStatusBadge, buildOnboardingSteps, FileKindBadge, ReadinessCard, SectionHeader } from '../components';
+import {
+  BlockedStatusBadge,
+  buildOnboardingSteps,
+  FileKindBadge,
+  MdiIcon,
+  ReadinessCard,
+  SectionHeader
+} from '../components';
 import {
   blockerPriority,
   compareUploadJobsNewestFirst,
@@ -12,6 +20,7 @@ import {
   formatUploadJobModifiedAt,
   queueLinkForJob,
   summarizeBlockedJob,
+  type BlockedJobSummary,
   uploadJobFolderName,
   uploadJobNeedsAttention,
   uploadJobWaitingOnServer,
@@ -20,6 +29,43 @@ import {
 } from '../queue-model';
 
 const BLOCKER_ROW_LIMIT = 15;
+
+// Hover card for a blocked row: everything needed to decide whether to fix, open, or ignore it.
+const BlockedJobDetails = ({
+  job,
+  summary,
+  formatName
+}: {
+  job: LocalUploadJob;
+  summary: BlockedJobSummary;
+  formatName: string;
+}): JSX.Element => {
+  const rows: Array<[string, string]> = [
+    ['File', job.filename],
+    ['Path', job.path],
+    ['Teams', job.teamCount > 0 ? String(job.teamCount) : '-'],
+    ['Format', formatName],
+    ['Tournament ID', job.tournamentId || '-'],
+    ['State', formatQueueStateLabel(job.localState, job.fileKind)],
+    ['Reason', summary.reason || '-'],
+    ['Retries', String(job.retries)],
+    ['Last request', job.lastRequestId || '-']
+  ];
+  return (
+    <Table className="desktop-blocker-details" verticalSpacing={4} horizontalSpacing="xs">
+      <Table.Tbody>
+        {rows.map(([label, value]) => (
+          <Table.Tr key={label}>
+            <Table.Th>{label}</Table.Th>
+            <Table.Td className={label === 'Path' || label === 'Last request' ? 'desktop-mono' : 'desktop-wrap-anywhere'}>
+              {value}
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+};
 
 // One line per job in Today's progress and completion lists.
 const JobSummaryRow = ({
@@ -52,7 +98,7 @@ const JobSummaryRow = ({
 );
 
 export const TodayPage = (): JSX.Element => {
-  const { snapshot, selectedProfile, health, authFlowState, updatePreferences } = useDesktop();
+  const { snapshot, selectedProfile, health, authFlowState, updatePreferences, ignoreUploadJob } = useDesktop();
   const onboardingSteps = useMemo(
     () => buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState }),
     [authFlowState, health, selectedProfile, snapshot]
@@ -203,14 +249,32 @@ export const TodayPage = (): JSX.Element => {
                     return (
                       <Table.Tr key={job.id}>
                         <Table.Td>
-                          <Text size="sm" fw={600} truncate="end" title={job.filename}>
-                            {job.filename}
-                          </Text>
-                          {folder ? (
-                            <Text size="xs" c="dimmed" truncate="end" title={folder}>
-                              {folder}
-                            </Text>
-                          ) : null}
+                          <HoverCard width={380} shadow="md" position="bottom-start" withArrow openDelay={250}>
+                            <HoverCard.Target>
+                              <div className="desktop-blocker-file">
+                                <Group gap={4} wrap="nowrap">
+                                  <Text size="sm" fw={600} truncate="end">
+                                    {job.filename}
+                                  </Text>
+                                  <span className="desktop-blocker-info">
+                                    <MdiIcon path={mdiInformationOutline} size={14} />
+                                  </span>
+                                </Group>
+                                {folder ? (
+                                  <Text size="xs" c="dimmed" truncate="end">
+                                    {folder}
+                                  </Text>
+                                ) : null}
+                              </div>
+                            </HoverCard.Target>
+                            <HoverCard.Dropdown>
+                              <BlockedJobDetails
+                                job={job}
+                                summary={summary}
+                                formatName={job.formatId ? (formatLabelById[job.formatId] ?? 'Unknown format') : 'Unassigned'}
+                              />
+                            </HoverCard.Dropdown>
+                          </HoverCard>
                         </Table.Td>
                         <Table.Td>
                           <Text size="sm" className="desktop-wrap-anywhere">
@@ -226,9 +290,20 @@ export const TodayPage = (): JSX.Element => {
                           </Text>
                         </Table.Td>
                         <Table.Td>
-                          <Button component={Link} to={queueLinkForJob(job.id, 'needs_action')} size="compact-xs" variant="light">
-                            Open
-                          </Button>
+                          <Stack gap={4} align="stretch">
+                            <Button component={Link} to={queueLinkForJob(job.id, 'needs_action')} size="compact-xs" variant="light">
+                              Open
+                            </Button>
+                            <Button
+                              size="compact-xs"
+                              variant="subtle"
+                              color="gray"
+                              title="Move to the queue's Ignored tab; restore it there any time."
+                              onClick={() => void ignoreUploadJob(job.id)}
+                            >
+                              Ignore
+                            </Button>
+                          </Stack>
                         </Table.Td>
                       </Table.Tr>
                     );
