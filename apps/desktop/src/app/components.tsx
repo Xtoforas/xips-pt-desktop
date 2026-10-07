@@ -1,4 +1,5 @@
 import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, NavLink, Paper, Select, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Tooltip } from '@mantine/core';
+import { mdiBaseball, mdiCalendarToday, mdiCloudUpload, mdiCog, mdiLightningBolt, mdiWrench } from '@mdi/js';
 import { Link, useLocation } from 'react-router-dom';
 import type {
   DesktopPreferences,
@@ -33,35 +34,11 @@ const SidebarIcon = ({ path }: { path: string }): JSX.Element => (
 );
 
 const navItems: ReadonlyArray<{ to: string; label: string; iconPath: string; support?: boolean }> = [
-  {
-    to: '/today',
-    label: 'Today',
-    iconPath:
-      'M19,3H18V1H16V3H8V1H6V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.9 20.1,3 19,3M19,19H5V8H19V19Z'
-  },
-  {
-    to: '/queue',
-    label: 'Queue',
-    iconPath: 'M19.35 10.04A7.49 7.49 0 0 0 5 8a6 6 0 0 0 .35 12H19a5 5 0 0 0 .35-9.96zM13 13v4h-2v-4H8l4-4 4 4z'
-  },
-  {
-    to: '/automation',
-    label: 'Automation',
-    iconPath: 'M7,2V13H10V22L17,10H13L17,2H7Z'
-  },
-  {
-    to: '/settings',
-    label: 'Settings',
-    iconPath:
-      'M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.22 7.22 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z'
-  },
-  {
-    to: '/diagnostics',
-    label: 'Diagnostics',
-    iconPath:
-      'M22.7,19L13.6,9.9C14.5,7.6 14,4.9 12.1,3C10.1,1 7.1,0.6 4.7,1.7L9,6L6,9L1.6,4.7C0.4,7.1 0.9,10.1 2.9,12.1C4.8,14 7.5,14.5 9.8,13.6L18.9,22.7C19.3,23.1 19.9,23.1 20.3,22.7L22.6,20.4C23.1,20 23.1,19.3 22.7,19Z',
-    support: true
-  }
+  { to: '/today', label: 'Today', iconPath: mdiCalendarToday },
+  { to: '/queue', label: 'Queue', iconPath: mdiCloudUpload },
+  { to: '/automation', label: 'Automation', iconPath: mdiLightningBolt },
+  { to: '/settings', label: 'Settings', iconPath: mdiCog },
+  { to: '/diagnostics', label: 'Diagnostics', iconPath: mdiWrench, support: true }
 ];
 
 const serverOptions = (profiles: LocalServerProfile[]): Array<{ value: string; label: string }> =>
@@ -389,7 +366,7 @@ export const DesktopSidebar = (): JSX.Element => {
       <Paper withBorder radius="md" p={collapsed ? 4 : 'sm'}>
         <Group gap="sm" wrap="nowrap" align="center" justify={collapsed ? 'center' : 'flex-start'}>
           <ThemeIcon size={40} radius="md" variant="gradient" gradient={{ from: 'xipsBlue.5', to: 'xipsBlue.8', deg: 145 }}>
-            <SidebarIcon path="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M7.39,5.72C8.61,7.16 9.34,9.07 9.34,11.17C9.34,13.27 8.61,15.18 7.39,16.62C5.94,15.41 5,13.8 5,12C5,10.19 5.94,8.59 7.39,7.37V5.72M16.61,7.38C18.05,8.59 19,10.2 19,12C19,13.8 18.05,15.41 16.61,16.62C15.39,15.18 14.66,13.27 14.66,11.17C14.66,9.07 15.39,7.16 16.61,5.72V7.38M9.03,4.79C9.88,4.29 10.9,4 12,4C13.1,4 14.12,4.29 14.97,4.79C13.78,6.45 13.09,8.53 13.09,10.76C13.09,12.97 13.78,15.05 14.97,16.71C14.12,17.21 13.1,17.5 12,17.5C10.9,17.5 9.88,17.21 9.03,16.71C10.22,15.05 10.91,12.97 10.91,10.76C10.91,8.53 10.22,6.45 9.03,4.79M8.66,17.95C9.63,18.45 10.77,18.74 12,18.74C13.23,18.74 14.37,18.45 15.34,17.95C14.38,19.2 13.26,20 12,20C10.74,20 9.62,19.2 8.66,17.95Z" />
+            <SidebarIcon path={mdiBaseball} />
           </ThemeIcon>
           {collapsed ? null : (
             <div>
