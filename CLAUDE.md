@@ -37,7 +37,7 @@ Hook tests: `python3 -m unittest discover -s .claude/hooks` and `-s .claude/revi
 
 ## Fat and thin agents
 
-The top-level session is the fat agent when it runs on the most expensive tier available (Fable, or Opus when Fable isn't offered). It plans, makes the judgment calls, verifies, and owns git. Thin agents on cheaper models do the execution. Sonnet or Haiku top-level sessions, and subagents of any model, work directly.
+The top-level session is the fat agent when it runs on Opus or Fable. It plans, makes the judgment calls, verifies, and owns git. Thin agents on cheaper models do the execution. Sonnet or Haiku top-level sessions, and subagents of any model, work directly.
 
 - Set the model explicitly on every Agent call; an omitted model inherits the session's. `haiku` for mechanical bulk work (renames, boilerplate, format conversion, log triage). `sonnet` for well-specified implementation with clear acceptance criteria; this is the default and what the `implementer` agent runs on. `opus` for concurrency, subtle algorithms, gnarly debugging, or judge panels. `fable` only after asking the user. When unsure, pick the cheaper tier and escalate if it fails.
 - Act directly when the work is reading or answering, a change of roughly 30 lines across 1-2 files, a fix inside a review loop you already hold, a task whose brief would cost more than the change, or any git operation.
