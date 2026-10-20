@@ -1,2 +1,4 @@
 # Hook launchers run under sh, which may not tolerate CRLF (e.g. WSL on a Windows checkout)
 *.sh text eol=lf
+# npm always writes LF, so a CRLF checkout shows the lockfile modified after every install
+package-lock.json text eol=lf
