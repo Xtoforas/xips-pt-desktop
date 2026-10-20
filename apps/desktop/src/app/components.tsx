@@ -388,7 +388,17 @@ export const DesktopSidebar = (): JSX.Element => {
                 variant="light"
                 active={location.pathname === item.to}
                 leftSection={<MdiIcon path={item.iconPath} />}
-                style={collapsed ? { width: 40, justifyContent: 'center' } : undefined}
+                // NavLink's default padding and the icon's end margin push a lone icon off
+                // center in the 40px rail button, so drop both and the empty label body.
+                styles={
+                  collapsed
+                    ? {
+                        root: { width: 40, height: 40, padding: 0, justifyContent: 'center' },
+                        section: { marginInlineEnd: 0 },
+                        body: { display: 'none' },
+                      }
+                    : undefined
+                }
               />
             );
             return (
