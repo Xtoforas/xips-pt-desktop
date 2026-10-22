@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Tooltip } from '@mantine/core';
+import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Title, Tooltip } from '@mantine/core';
 import { mdiBaseball, mdiCalendarToday, mdiCloudUpload, mdiCog, mdiLightningBolt, mdiWrench } from '@mdi/js';
 import { Link, useLocation } from 'react-router-dom';
 import type {
@@ -470,7 +470,7 @@ export const DesktopSidebar = (): JSX.Element => {
           )}
         </Group>
       </Paper>
-      <Paper withBorder radius="md" p={collapsed ? 4 : 'xs'} style={{ flex: '1 1 auto' }}>
+      <Paper withBorder radius="md" p={collapsed ? 4 : 'xs'}>
         <Stack gap="xs" align={collapsed ? 'center' : 'stretch'}>
           {navItems.map((item) => {
             const navLink = (
@@ -656,6 +656,20 @@ export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind
   <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
     {formatFileKindLabel(fileKind)}
   </Badge>
+);
+
+// Page title row: the title and, on the right, the page's own controls. No subtitle; the content says the rest.
+export const PageHeader = ({ title, actions }: { title: string; actions?: ReactNode }): JSX.Element => (
+  <Group justify="space-between" align="center" wrap="wrap" gap="xs" className="desktop-page-header">
+    <Title order={2} size="h3">
+      {title}
+    </Title>
+    {actions ? (
+      <Group gap="xs" wrap="wrap">
+        {actions}
+      </Group>
+    ) : null}
+  </Group>
 );
 
 // Card header: small uppercase eyebrow, bold title, optional dimmed description, and an optional aside

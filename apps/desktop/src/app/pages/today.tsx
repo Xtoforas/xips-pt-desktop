@@ -1,4 +1,4 @@
-import { Badge, Button, Card, Group, HoverCard, Stack, Table, Text, Title } from '@mantine/core';
+import { Badge, Button, Card, Group, HoverCard, Stack, Table, Text } from '@mantine/core';
 import { mdiInformationOutline } from '@mdi/js';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
@@ -7,6 +7,7 @@ import type { LocalUploadJob } from '@xips/api-contract';
 import {
   BlockedStatusBadge,
   MdiIcon,
+  PageHeader,
   ReadinessCard,
   SectionHeader
 } from '../components';
@@ -197,22 +198,7 @@ export const TodayPage = (): JSX.Element => {
 
   return (
     <Stack gap="lg">
-      <Stack gap={4}>
-        <Title order={2}>Today</Title>
-        <Text c="dimmed">
-          Files that need your input, and what&apos;s uploading right now.
-          {selectedProfile ? (
-            customServer ? (
-              <>
-                {' '}New exports in your OOTP folder upload to{' '}
-                <span className="desktop-mono">{serverHostLabel(selectedProfile.baseUrl)}</span> automatically.
-              </>
-            ) : (
-              ' New exports in your OOTP folder upload to XiPS automatically.'
-            )
-          ) : null}
-        </Text>
-      </Stack>
+      <PageHeader title="Today" />
       <ReadinessCard variant="today" />
       {blockerRows.length === 0 ? (
         <QuietSection title="Blocked files" message="Nothing needs you right now." />

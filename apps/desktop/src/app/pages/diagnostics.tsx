@@ -1,7 +1,7 @@
-import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
+import { Alert, Button, Card, Group, SimpleGrid, Stack, Table, Text } from '@mantine/core';
 import { useMemo, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
-import { SectionHeader } from '../components';
+import { PageHeader } from '../components';
 
 export const DiagnosticsPage = (): JSX.Element => {
   const { health, refreshHealth, selectedProfile, snapshot, exportDiagnosticsBundle, openAppDataDirectory } = useDesktop();
@@ -17,26 +17,10 @@ export const DiagnosticsPage = (): JSX.Element => {
 
   return (
     <Stack gap="lg" className="desktop-support-page">
-      <Stack gap={4}>
-        <Title order={2}>Diagnostics</Title>
-        <Text c="dimmed">Support-only tooling for exports, app data, and deeper troubleshooting.</Text>
-      </Stack>
-      <Card withBorder className="desktop-card desktop-support-hero">
-        <Stack gap="sm">
-          <SectionHeader
-            eyebrow="Support view"
-            title="Keep this page for investigation and handoff work"
-            description="Normal workflow belongs on Today, Queue, and Automation. Diagnostics keeps the deeper traces and local files you need when something goes wrong."
-            aside={<Group gap="xs" wrap="wrap">
-              <Badge color="gray" variant="light">
-                Support only
-              </Badge>
-              <Badge color="blue" variant="light">
-                {snapshot.diagnostics.length} events
-              </Badge>
-            </Group>}
-          />
-          <Group gap="xs" wrap="wrap">
+      <PageHeader
+        title="Diagnostics"
+        actions={
+          <>
             <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshHealth()}>
               Refresh health snapshot
             </Button>
@@ -52,14 +36,14 @@ export const DiagnosticsPage = (): JSX.Element => {
             <Button size="xs" variant="light" onClick={() => void openAppDataDirectory()}>
               Open app data folder
             </Button>
-          </Group>
-          {lastExportPath ? (
-            <Alert color="teal" title="Export ready">
-              <span className="desktop-mono">{lastExportPath}</span>
-            </Alert>
-          ) : null}
-        </Stack>
-      </Card>
+          </>
+        }
+      />
+      {lastExportPath ? (
+        <Alert color="teal" title="Export ready">
+          <span className="desktop-mono">{lastExportPath}</span>
+        </Alert>
+      ) : null}
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
         <Card withBorder className="desktop-card desktop-support-card">
           <Stack gap="sm">

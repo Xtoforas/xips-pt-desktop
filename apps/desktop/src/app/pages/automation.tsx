@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
 import {
@@ -7,6 +7,7 @@ import {
   formatOvrRangeLabel,
   formatSlotCountsLabel,
   formatTeamsPerTournamentLabel,
+  PageHeader,
   WatchRootForm,
   WatchRootTable
 } from '../components';
@@ -50,56 +51,7 @@ export const AutomationPage = (): JSX.Element => {
 
   return (
     <Stack gap="lg">
-      <Stack gap={4}>
-        <Title order={2}>Automation</Title>
-        <Text c="dimmed">Watch folder, rule, format match, and validation in one workflow for background uploads.</Text>
-      </Stack>
-      <Card withBorder className="desktop-card desktop-automation-hero">
-        <Stack gap="xs">
-          <Group justify="space-between" align="flex-start">
-            <div>
-              <Text fw={700}>Automation flow</Text>
-              <Text size="sm" c="dimmed">
-                The app watches a folder, tries filename-based format detection first, and only needs saved rules when generic filenames need extra help.
-              </Text>
-            </div>
-            <Group gap="xs" wrap="wrap">
-              <Badge color="blue" variant="light">
-                {snapshot.watchRoots.length} watch roots
-              </Badge>
-              <Badge color="teal" variant="light">
-                {snapshot.formatRules.length} rules
-              </Badge>
-              <Badge color="grape" variant="light">
-                {snapshot.cachedFormats.length} formats
-              </Badge>
-            </Group>
-          </Group>
-          <Group gap="xs" wrap="wrap" className="desktop-automation-sequence">
-            <Badge color="blue" variant="light">
-              1 Watch folder
-            </Badge>
-            <Text c="dimmed" size="sm">
-              →
-            </Text>
-            <Badge color="teal" variant="light">
-              2 Rule
-            </Badge>
-            <Text c="dimmed" size="sm">
-              →
-            </Text>
-            <Badge color="grape" variant="light">
-              3 Format match
-            </Badge>
-            <Text c="dimmed" size="sm">
-              →
-            </Text>
-            <Badge color="orange" variant="light">
-              4 Validation
-            </Badge>
-          </Group>
-        </Stack>
-      </Card>
+      <PageHeader title="Automation" />
       <SimpleGrid cols={{ base: 1, xl: 2 }}>
         <Stack gap="lg">
           <WatchRootForm id="watch-folders" />

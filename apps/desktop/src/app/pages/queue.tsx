@@ -1,8 +1,8 @@
-import { Alert, Badge, Button, Card, Collapse, Group, Select, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Badge, Button, Card, Collapse, Group, Select, Stack, Table, Text, TextInput } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
-import { BlockedStatusBadge, QueueStateBadge, QueueTable, SectionHeader } from '../components';
+import { BlockedStatusBadge, PageHeader, QueueStateBadge, QueueTable, SectionHeader } from '../components';
 import {
   canDismissUploadJob,
   canIgnoreUploadJob,
@@ -402,44 +402,38 @@ export const UploadQueuePage = (): JSX.Element => {
 
   return (
     <Stack gap="lg">
-      <Stack gap={4}>
-        <Title order={2}>Upload Queue</Title>
-        <Text c="dimmed">Resolve blockers, track active work, and park ignored rows outside the main action lane.</Text>
-      </Stack>
-      <Group gap="xs" wrap="wrap" className="desktop-queue-view-switcher">
-        {(Object.keys(queueWorkspaceViewLabel) as QueueWorkspaceView[]).map((view) => (
-          <Button
-            key={view}
-            size="xs"
-            variant={queueView === view ? 'filled' : 'light'}
-            color={queueWorkspaceViewColor[view]}
-            onClick={() => {
-              const nextJobId = queueJobsByView[view][0]?.id ?? '';
-              setQueueView(view);
-              setSelectedJobId(nextJobId);
-            }}
-          >
-            {queueWorkspaceViewLabel[view]} ({queueCounts[view]})
-          </Button>
-        ))}
-      </Group>
+      <PageHeader
+        title="Upload Queue"
+        actions={
+          <>
+            {(Object.keys(queueWorkspaceViewLabel) as QueueWorkspaceView[]).map((view) => (
+              <Button
+                key={view}
+                title={queueWorkspaceViewDetail[view]}
+                size="xs"
+                variant={queueView === view ? 'filled' : 'light'}
+                color={queueWorkspaceViewColor[view]}
+                onClick={() => {
+                  const nextJobId = queueJobsByView[view][0]?.id ?? '';
+                  setQueueView(view);
+                  setSelectedJobId(nextJobId);
+                }}
+              >
+                {queueWorkspaceViewLabel[view]} ({queueCounts[view]})
+              </Button>
+            ))}
+          </>
+        }
+      />
       <div className="desktop-queue-layout">
         <Stack gap="lg" className="desktop-queue-main">
           <Card withBorder className="desktop-card">
             <Stack gap="sm">
               <Group justify="space-between" align="center" wrap="wrap">
-                <div>
-                  <Text fw={700}>{queueWorkspaceViewLabel[queueView]}</Text>
-                  <Text size="sm" c="dimmed">
-                    {queueWorkspaceViewDetail[queueView]}
-                  </Text>
-                </div>
+                <Text size="sm" c="dimmed">
+                  {selectedQueueJobIds.length > 0 ? `${selectedQueueJobIds.length} selected` : 'Select rows to ignore or dismiss them together.'}
+                </Text>
                 <Group gap="xs" align="center" wrap="wrap">
-                  {selectedQueueJobIds.length > 0 ? (
-                    <Text size="sm" c="dimmed">
-                      {ignorableSelectedJobs.length} of {selectedQueueJobIds.length} selected can be ignored. {dismissibleSelectedJobs.length} can be dismissed.
-                    </Text>
-                  ) : null}
                   {queueView !== 'ignored' ? (
                     <Button
                       size="xs"

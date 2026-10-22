@@ -1,8 +1,8 @@
-import { Alert, Badge, Button, Card, Collapse, Group, Select, SimpleGrid, Stack, Switch, Table, Text, Title } from '@mantine/core';
+import { Alert, Badge, Button, Card, Collapse, Group, Select, SimpleGrid, Stack, Switch, Table, Text } from '@mantine/core';
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { describeError, useDesktop } from '../DesktopContext';
-import { PreferencesForm, ReadinessCard, ServerProfileForm } from '../components';
+import { PageHeader, PreferencesForm, ReadinessCard, ServerProfileForm } from '../components';
 import { isCustomServer, isSignedInToSelectedServer, serverHostLabel } from '../onboarding';
 import { useScrollToHash } from './shared';
 
@@ -264,21 +264,7 @@ export const SettingsPage = (): JSX.Element => {
 
   return (
     <Stack gap="lg">
-      <Stack gap={4}>
-        <Title order={2}>Settings</Title>
-        <Text c="dimmed">Setup and desktop behavior.</Text>
-      </Stack>
-      <Group gap="xs" wrap="wrap">
-        <Button component={Link} to="/settings#setup" size="xs" variant={settingsHash === '#setup' ? 'filled' : 'light'}>
-          Setup
-        </Button>
-        <Button component={Link} to="/settings#desktop-behavior" size="xs" variant={settingsHash === '#desktop-behavior' ? 'filled' : 'light'}>
-          Desktop behavior
-        </Button>
-        <Button component={Link} to="/settings#advanced" size="xs" variant={settingsHash === '#advanced' ? 'filled' : 'light'}>
-          Advanced
-        </Button>
-      </Group>
+      <PageHeader title="Settings" />
       <ReadinessCard id="setup" variant="settings" />
       <div id="desktop-behavior">
         <PreferencesForm preferences={snapshot.preferences} onSave={updatePreferences} />

@@ -282,10 +282,6 @@ a {
   background: rgba(var(--accent-rgb), 0.16);
 }
 
-.desktop-queue-view-switcher {
-  align-items: center;
-}
-
 .desktop-queue-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
@@ -308,23 +304,12 @@ a {
   background: var(--surface-2);
 }
 
-.desktop-automation-hero {
-  background: var(--surface-1);
-  border: 1px solid var(--line-0);
-}
-
-.desktop-automation-sequence,
 .desktop-automation-relation {
   align-items: center;
 }
 
 .desktop-support-page {
   gap: 12px;
-}
-
-.desktop-support-hero {
-  background: var(--surface-1);
-  border: 1px solid var(--line-0);
 }
 
 .desktop-support-card {
