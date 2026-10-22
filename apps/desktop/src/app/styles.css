@@ -304,8 +304,54 @@ a {
   background: var(--surface-2);
 }
 
-.desktop-automation-relation {
-  align-items: center;
+/* Automation tables on the site table markup: fixed columns, paths clip at the start. */
+.landing-table.observed-table.admin-table.desktop-fixed-table {
+  table-layout: fixed;
+}
+
+.desktop-col-subfolders {
+  width: 100px;
+}
+
+.desktop-col-state {
+  width: 90px;
+}
+
+.desktop-col-date {
+  width: 140px;
+}
+
+.desktop-col-two-actions {
+  width: 150px;
+}
+
+.desktop-col-one-action {
+  width: 84px;
+}
+
+.desktop-col-rule-folder {
+  width: 28%;
+}
+
+.desktop-col-rule-pattern {
+  width: 24%;
+}
+
+.desktop-path-clip {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.desktop-format-name-cell {
+  max-width: 32ch;
+}
+
+.desktop-format-park-cell {
+  max-width: 22ch;
 }
 
 .desktop-support-page {

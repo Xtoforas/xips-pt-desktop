@@ -932,6 +932,27 @@ ${statusTitle}` : statusTitle}>
   );
 };
 
+// Site table frame (site-table.css) shared by the Automation and Diagnostics tables.
+export const SiteTable = ({ className, children }: { className?: string; children: ReactNode }): JSX.Element => (
+  <div className="admin-table-frame">
+    <div className="landing-table-wrap admin-table-wrap">
+      <table className={`landing-table observed-table admin-table${className ? ` ${className}` : ''}`}>{children}</table>
+    </div>
+  </div>
+);
+
+// A path that clips at the start, so the folder name at the end stays visible.
+export const PathText = ({ path }: { path: string }): JSX.Element => (
+  <span className="desktop-path-clip admin-mono" title={path}>
+    <bdi>{path}</bdi>
+  </span>
+);
+
+const formatCompactDate = (value: string): string => {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString(undefined, COMPACT_TIMESTAMP);
+};
+
 export const WatchRootTable = ({
   watchRoots,
   onToggle,
@@ -941,86 +962,109 @@ export const WatchRootTable = ({
   onToggle: (watchRootId: string, paused: boolean) => Promise<void>;
   onDelete: (watchRootId: string) => Promise<void>;
 }): JSX.Element => (
-  <Table.ScrollContainer minWidth={640} type="native">
-    <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Path</Table.Th>
-          <Table.Th>Recursive</Table.Th>
-          <Table.Th>Status</Table.Th>
-          <Table.Th>Updated</Table.Th>
-          <Table.Th>Actions</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {watchRoots.length === 0 ? (
-          <Table.Tr>
-            <Table.Td colSpan={5}>No watched directories configured.</Table.Td>
-          </Table.Tr>
-        ) : (
-          watchRoots.map((root) => (
-            <Table.Tr key={root.id}>
-              <Table.Td className="desktop-mono">{root.path}</Table.Td>
-              <Table.Td>{root.recursive ? 'Yes' : 'No'}</Table.Td>
-              <Table.Td>{root.paused ? 'Paused' : 'Active'}</Table.Td>
-              <Table.Td>{new Date(root.updatedAt).toLocaleString()}</Table.Td>
-              <Table.Td>
-                <Group gap="xs">
-                  <Button size="compact-xs" variant="light" onClick={() => void onToggle(root.id, !root.paused)}>
-                    {root.paused ? 'Resume' : 'Pause'}
-                  </Button>
-                  <Button size="compact-xs" color="red" variant="light" onClick={() => void onDelete(root.id)}>
-                    Remove
-                  </Button>
-                </Group>
-              </Table.Td>
-            </Table.Tr>
-          ))
-        )}
-      </Table.Tbody>
-    </Table>
-  </Table.ScrollContainer>
+  <SiteTable className="desktop-fixed-table">
+    <colgroup>
+      <col />
+      <col className="desktop-col-subfolders" />
+      <col className="desktop-col-state" />
+      <col className="desktop-col-date" />
+      <col className="desktop-col-two-actions" />
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Folder</th>
+        <th>Subfolders</th>
+        <th>Status</th>
+        <th>Updated</th>
+        <th aria-label="Actions" />
+      </tr>
+    </thead>
+    <tbody>
+      {watchRoots.map((root) => (
+        <tr key={root.id} className="landing-row">
+          <td className="landing-cell">
+            <PathText path={root.path} />
+          </td>
+          <td className="landing-cell">{root.recursive ? 'Included' : 'No'}</td>
+          <td className="landing-cell admin-nowrap">
+            <Badge color={root.paused ? 'gray' : 'teal'} variant="light">
+              {root.paused ? 'Paused' : 'Active'}
+            </Badge>
+          </td>
+          <td className="landing-cell admin-nowrap" title={new Date(root.updatedAt).toLocaleString()}>
+            {formatCompactDate(root.updatedAt)}
+          </td>
+          <td className="landing-cell">
+            <Group gap={4} wrap="nowrap">
+              <Button size="compact-xs" variant="light" onClick={() => void onToggle(root.id, !root.paused)}>
+                {root.paused ? 'Resume' : 'Pause'}
+              </Button>
+              <Button size="compact-xs" color="red" variant="subtle" onClick={() => void onDelete(root.id)}>
+                Remove
+              </Button>
+            </Group>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </SiteTable>
 );
 
+// Everything else the server says about a format, for the name cell's hover text.
+const formatDetailTitle = (format: TournamentFormat): string =>
+  [
+    format.name,
+    format.formatType ? `Type: ${format.formatType}` : '',
+    format.eraRestrictions.length > 0 ? `Eras: ${format.eraRestrictions.join(', ')}` : '',
+    format.cardTypeRestrictions.length > 0 ? `Card types: ${format.cardTypeRestrictions.join(', ')}` : '',
+    format.variantLimitValue ? `Variant limit: ${format.variantLimitValue}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
+
 export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.Element => (
-  <Table.ScrollContainer minWidth={760} type="native">
-    <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Name</Table.Th>
-          <Table.Th>Tournament ID</Table.Th>
-          <Table.Th>Teams</Table.Th>
-          <Table.Th>Mode</Table.Th>
-          <Table.Th>Run Environment</Table.Th>
-          <Table.Th>Park</Table.Th>
-          <Table.Th>Cap</Table.Th>
-          <Table.Th>OVR range</Table.Th>
-          <Table.Th>Slots</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {formats.length === 0 ? (
-          <Table.Tr>
-            <Table.Td colSpan={9}>No cached formats yet.</Table.Td>
-          </Table.Tr>
-        ) : (
-          formats.map((format) => (
-            <Table.Tr key={format.id}>
-              <Table.Td>{format.name}</Table.Td>
-              <Table.Td>{format.tournamentIdPrefix ? `${format.tournamentIdPrefix}${'x'.repeat(4)}` : '-'}</Table.Td>
-              <Table.Td>{formatTeamsPerTournamentLabel(format)}</Table.Td>
-              <Table.Td>{format.mode || '-'}</Table.Td>
-              <Table.Td>{format.runEnvironment || '-'}</Table.Td>
-              <Table.Td>{format.parkKey || '-'}</Table.Td>
-              <Table.Td>{format.capValue || '-'}</Table.Td>
-              <Table.Td>{formatOvrRangeLabel(format)}</Table.Td>
-              <Table.Td>{formatSlotCountsLabel(format)}</Table.Td>
-            </Table.Tr>
-          ))
-        )}
-      </Table.Tbody>
-    </Table>
-  </Table.ScrollContainer>
+  <SiteTable>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Tournament ID</th>
+        <th>Teams</th>
+        <th>Mode</th>
+        <th>Run env.</th>
+        <th>Park</th>
+        <th>Cap</th>
+        <th>OVR</th>
+        <th>Slots</th>
+      </tr>
+    </thead>
+    <tbody>
+      {formats.length === 0 ? (
+        <tr className="landing-row">
+          <td className="landing-cell" colSpan={9}>
+            No formats loaded yet. Refresh formats to fetch them.
+          </td>
+        </tr>
+      ) : (
+        formats.map((format) => (
+          <tr key={format.id} className="landing-row">
+            <td className="landing-cell landing-cell-name desktop-format-name-cell" title={formatDetailTitle(format)}>
+              {format.name}
+            </td>
+            <td className="landing-cell admin-mono">{format.tournamentId || (format.tournamentIdPrefix ? `${format.tournamentIdPrefix}xxxx` : '-')}</td>
+            <td className="landing-cell">{formatTeamsPerTournamentLabel(format)}</td>
+            <td className="landing-cell">{format.mode || '-'}</td>
+            <td className="landing-cell">{format.runEnvironment || '-'}</td>
+            <td className="landing-cell desktop-format-park-cell" title={format.parkKey || undefined}>
+              {format.parkKey || '-'}
+            </td>
+            <td className="landing-cell">{format.capValue || '-'}</td>
+            <td className="landing-cell">{formatOvrRangeLabel(format)}</td>
+            <td className="landing-cell">{formatSlotCountsLabel(format)}</td>
+          </tr>
+        ))
+      )}
+    </tbody>
+  </SiteTable>
 );
 
 // Add or edit a custom server (Settings → Advanced). The built-in XiPS server isn't editable here.
@@ -1133,7 +1177,8 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
   );
 };
 
-export const WatchRootForm = ({ id }: { id?: string }): JSX.Element => {
+// One-row form for adding a watched folder, prefilled with the platform's OOTP export folder.
+export const WatchRootForm = ({ onAdded }: { onAdded?: () => void }): JSX.Element => {
   const { selectedProfile, addWatchRoot } = useDesktop();
   const [path, setPath] = useState('');
   const [recursive, setRecursive] = useState(false);
@@ -1155,94 +1200,105 @@ export const WatchRootForm = ({ id }: { id?: string }): JSX.Element => {
   }, [selectedProfile?.id]);
 
   return (
-    <Card withBorder className="desktop-card" id={id}>
-      <Stack gap="sm">
-        <Text fw={700}>Add watch folder</Text>
-        <TextInput
-          label="Folder path"
-          placeholder="Paste your OOTP export folder"
-          value={path}
-          onChange={(event) => setPath(event.currentTarget.value)}
-        />
-        <Text size="xs" c="dimmed">
-          Starts with the folder where OOTP 27 saves exports.
-        </Text>
-        <Checkbox
-          label="Include subfolders"
-          description="Scan and watch nested folders under this path, not just files directly inside it."
-          checked={recursive}
-          onChange={(event) => setRecursive(event.currentTarget.checked)}
-        />
-        <Group justify="flex-end">
-          <Button
-            disabled={!selectedProfile || !path.trim()}
-            onClick={() => {
-              if (!selectedProfile || !path.trim()) {
-                return;
-              }
-              void addWatchRoot({
-                profileId: selectedProfile.id,
-                path: path.trim(),
-                recursive
-              }).then(() => {
-                void desktopClient.getDefaultWatchRoot().then((defaultPath) => {
-                  setPath(defaultPath);
-                }).catch(() => {
-                  setPath('');
-                });
-                setRecursive(false);
-              });
-            }}
-          >
-            Add folder
-          </Button>
-        </Group>
-      </Stack>
-    </Card>
+    <Group gap="xs" align="flex-end" wrap="nowrap">
+      <TextInput
+        size="xs"
+        style={{ flex: '1 1 auto', minWidth: 0 }}
+        label="Folder to watch"
+        placeholder="Paste your OOTP export folder"
+        classNames={{ input: 'desktop-mono' }}
+        value={path}
+        title={path}
+        onChange={(event) => setPath(event.currentTarget.value)}
+      />
+      <Checkbox
+        size="xs"
+        mb={6}
+        label="Include subfolders"
+        title="Also watch the folders inside this one."
+        checked={recursive}
+        onChange={(event) => setRecursive(event.currentTarget.checked)}
+      />
+      <Button
+        size="xs"
+        disabled={!selectedProfile || !path.trim()}
+        onClick={() => {
+          if (!selectedProfile || !path.trim()) {
+            return;
+          }
+          void addWatchRoot({
+            profileId: selectedProfile.id,
+            path: path.trim(),
+            recursive
+          }).then(() => {
+            void desktopClient.getDefaultWatchRoot().then((defaultPath) => {
+              setPath(defaultPath);
+            }).catch(() => {
+              setPath('');
+            });
+            setRecursive(false);
+            onAdded?.();
+          });
+        }}
+      >
+        Add folder
+      </Button>
+    </Group>
   );
 };
 
 export const FormatRuleTable = ({
   rules,
+  watchRoots,
   onDelete
 }: {
   rules: LocalFormatRule[];
+  watchRoots: LocalWatchRoot[];
   onDelete: (formatRuleId: string) => Promise<void>;
 }): JSX.Element => (
-  <Table.ScrollContainer minWidth={640} type="native">
-    <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Match</Table.Th>
-          <Table.Th>Pattern</Table.Th>
-          <Table.Th>Format</Table.Th>
-          <Table.Th>Updated</Table.Th>
-          <Table.Th>Actions</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {rules.length === 0 ? (
-          <Table.Tr>
-            <Table.Td colSpan={5}>No saved format rules yet.</Table.Td>
-          </Table.Tr>
-        ) : (
-          rules.map((rule) => (
-            <Table.Tr key={rule.id}>
-              <Table.Td>{rule.matchType}</Table.Td>
-              <Table.Td className="desktop-mono">{rule.pattern}</Table.Td>
-              <Table.Td>{rule.formatName}</Table.Td>
-              <Table.Td>{new Date(rule.updatedAt).toLocaleString()}</Table.Td>
-              <Table.Td>
-                <Button size="compact-xs" color="red" variant="light" onClick={() => void onDelete(rule.id)}>
-                  Remove
-                </Button>
-              </Table.Td>
-            </Table.Tr>
-          ))
-        )}
-      </Table.Tbody>
-    </Table>
-  </Table.ScrollContainer>
+  <SiteTable className="desktop-fixed-table">
+    <colgroup>
+      <col className="desktop-col-rule-folder" />
+      <col className="desktop-col-rule-pattern" />
+      <col />
+      <col className="desktop-col-date" />
+      <col className="desktop-col-one-action" />
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Folder</th>
+        <th>Match</th>
+        <th>Format</th>
+        <th>Updated</th>
+        <th aria-label="Actions" />
+      </tr>
+    </thead>
+    <tbody>
+      {rules.map((rule) => {
+        const root = watchRoots.find((item) => item.id === rule.watchRootId) ?? null;
+        return (
+          <tr key={rule.id} className="landing-row">
+            <td className="landing-cell">{root ? <PathText path={root.path} /> : 'Any folder'}</td>
+            <td className="landing-cell" title={rule.pattern}>
+              {rule.matchType === 'folder' ? 'Folder ' : 'Name contains '}
+              <span className="admin-mono">{rule.pattern}</span>
+            </td>
+            <td className="landing-cell" title={rule.formatName}>
+              {rule.formatName}
+            </td>
+            <td className="landing-cell admin-nowrap" title={new Date(rule.updatedAt).toLocaleString()}>
+              {formatCompactDate(rule.updatedAt)}
+            </td>
+            <td className="landing-cell">
+              <Button size="compact-xs" color="red" variant="subtle" onClick={() => void onDelete(rule.id)}>
+                Remove
+              </Button>
+            </td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </SiteTable>
 );
 
 export const PreferencesForm = ({
