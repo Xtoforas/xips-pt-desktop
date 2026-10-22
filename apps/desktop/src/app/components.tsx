@@ -22,8 +22,10 @@ import {
   type OnboardingStepState
 } from './onboarding';
 import {
+  COMPACT_TIMESTAMP,
   compareUploadJobsNewestFirst,
   formatFileKindLabel,
+  formatRetryableFailureMessage,
   formatLifecycleLabel,
   formatLocalPresenceLabel,
   formatQueueStateLabel,
@@ -806,95 +808,120 @@ export const QueueTable = ({
     selectAllRef.current.indeterminate = selectionEnabled && someVisibleSelected;
   }, [selectionEnabled, someVisibleSelected]);
 
+  const columnCount = selectionEnabled ? 6 : 5;
+
+  // Site table markup: one line per row; full text, paths and server detail sit in titles.
   return (
-    <Table.ScrollContainer minWidth={960} type="native">
-      <Table className="desktop-queue-table" withTableBorder withColumnBorders highlightOnHover striped="odd">
-        <Table.Thead>
-          <Table.Tr>
-            {selectionEnabled ? (
-              <Table.Th>
-                <input
-                  ref={selectAllRef}
-                  type="checkbox"
-                  aria-label="Select all queue entries"
-                  checked={allVisibleSelected}
-                  onChange={(event) => {
-                    onToggleAllSelection?.(event.currentTarget.checked);
-                  }}
-                />
-              </Table.Th>
-            ) : null}
-            <Table.Th>Modified</Table.Th>
-            <Table.Th>File</Table.Th>
-            <Table.Th>Kind</Table.Th>
-            <Table.Th>Format</Table.Th>
-            <Table.Th>Local file</Table.Th>
-            <Table.Th>Checksum</Table.Th>
-            <Table.Th>Local state</Table.Th>
-            <Table.Th>Server state</Table.Th>
-            <Table.Th>Retry attempts</Table.Th>
-            <Table.Th>Actions</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {orderedJobs.length === 0 ? (
-            <Table.Tr>
-              <Table.Td colSpan={selectionEnabled ? 11 : 10}>No queued uploads yet.</Table.Td>
-            </Table.Tr>
-          ) : (
-            orderedJobs.map((job) => (
-              <Table.Tr
-                key={job.id}
-                className={selectedJobId === job.id ? 'desktop-row-selected' : ''}
-                style={{ cursor: onSelect ? 'pointer' : undefined }}
-                onClick={() => onSelect?.(job)}
-              >
-                {selectionEnabled ? (
-                  <Table.Td>
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${job.filename}`}
-                      checked={selectedIds.has(job.id)}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                      }}
-                      onChange={(event) => {
-                        event.stopPropagation();
-                        onToggleJobSelection?.(job, event.currentTarget.checked);
-                      }}
-                    />
-                  </Table.Td>
-                ) : null}
-                <Table.Td>{formatUploadJobModifiedAt(job)}</Table.Td>
-                <Table.Td>{renderFilename ? renderFilename(job) : job.filename}</Table.Td>
-                <Table.Td>
-                  <FileKindBadge fileKind={job.fileKind} />
-                </Table.Td>
-                <Table.Td>{formatUploadFormatLabel(job.formatId, formatLabels ?? {})}</Table.Td>
-                <Table.Td>
-                  <LocalPresenceBadge presence={job.localPresence} />
-                </Table.Td>
-                <Table.Td className="desktop-mono">
-                  {formatUploadJobChecksumStatusLabel(job)}
-                </Table.Td>
-                <Table.Td>
-                  {formats && uploadJobNeedsAttention(job) ? (
-                    <BlockedStatusBadge summary={summarizeBlockedJob(job, formats)} />
-                  ) : (
-                    <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  <LifecycleBadge phase={job.lifecyclePhase} fileKind={job.fileKind} />
-                </Table.Td>
-                <Table.Td>{job.retries}</Table.Td>
-                <Table.Td>{actions ? actions(job) : '-'}</Table.Td>
-              </Table.Tr>
-            ))
-          )}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+    <div className="admin-table-frame">
+      <div className="landing-table-wrap admin-table-wrap">
+        <table className="landing-table observed-table admin-table desktop-queue-table">
+          <colgroup>
+            {selectionEnabled ? <col className="desktop-queue-col-select" /> : null}
+            <col className="desktop-queue-col-file" />
+            <col className="desktop-queue-col-format" />
+            <col />
+            <col className="desktop-queue-col-updated" />
+            <col className="desktop-queue-col-actions" />
+          </colgroup>
+          <thead>
+            <tr>
+              {selectionEnabled ? (
+                <th>
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    aria-label="Select all queue entries"
+                    checked={allVisibleSelected}
+                    onChange={(event) => {
+                      onToggleAllSelection?.(event.currentTarget.checked);
+                    }}
+                  />
+                </th>
+              ) : null}
+              <th>File</th>
+              <th>Format</th>
+              <th>Status</th>
+              <th>Updated</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orderedJobs.length === 0 ? (
+              <tr className="landing-row">
+                <td className="landing-cell" colSpan={columnCount}>No queued uploads yet.</td>
+              </tr>
+            ) : (
+              orderedJobs.map((job) => {
+                const blocked = formats && uploadJobNeedsAttention(job) ? summarizeBlockedJob(job, formats) : null;
+                const issue =
+                  blocked?.reason ||
+                  job.duplicateReason ||
+                  (job.error ? formatRetryableFailureMessage(job.error, { includeRequestId: false }) : '');
+                const formatLabel = formatUploadFormatLabel(job.formatId, formatLabels ?? {});
+                const statusTitle = [
+                  `Server: ${formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}`,
+                  `Upload: ${formatUploadJobChecksumStatusLabel(job)}`,
+                  job.retries > 0 ? `Retries: ${job.retries}` : ''
+                ]
+                  .filter(Boolean)
+                  .join('\n');
+                return (
+                  <tr
+                    key={job.id}
+                    className={`landing-row${selectedJobId === job.id ? ' desktop-row-selected' : ''}`}
+                    style={{ cursor: onSelect ? 'pointer' : undefined }}
+                    onClick={() => onSelect?.(job)}
+                  >
+                    {selectionEnabled ? (
+                      <td className="landing-cell">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${job.filename}`}
+                          checked={selectedIds.has(job.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                          onChange={(event) => {
+                            event.stopPropagation();
+                            onToggleJobSelection?.(job, event.currentTarget.checked);
+                          }}
+                        />
+                      </td>
+                    ) : null}
+                    <td className="landing-cell landing-cell-name" title={job.path}>
+                      <div className="admin-cell-inline">
+                        {renderFilename ? renderFilename(job) : <span className="admin-cell-clip">{job.filename}</span>}
+                        {job.localPresence === 'missing' ? <LocalPresenceBadge presence={job.localPresence} /> : null}
+                      </div>
+                    </td>
+                    <td className="landing-cell">
+                      <span className="admin-cell-clip" title={formatLabel}>
+                        {formatLabel}
+                      </span>
+                    </td>
+                    <td className="landing-cell" title={issue ? `${issue}
+${statusTitle}` : statusTitle}>
+                      <div className="admin-cell-inline admin-nowrap">
+                        {blocked ? (
+                          <BlockedStatusBadge summary={blocked} />
+                        ) : (
+                          <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
+                        )}
+                        {issue ? <span className="admin-cell-clip">{issue}</span> : null}
+                      </div>
+                    </td>
+                    <td className="landing-cell admin-nowrap" title={formatUploadJobModifiedAt(job)}>
+                      {formatUploadJobModifiedAt(job, COMPACT_TIMESTAMP)}
+                    </td>
+                    <td className="landing-cell admin-nowrap">{actions ? actions(job) : '-'}</td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };
 

@@ -219,7 +219,7 @@ a {
 }
 
 .desktop-blocker-col-file {
-  width: 28%;
+  width: 25%;
 }
 
 .desktop-blocker-col-status {
@@ -256,11 +256,39 @@ a {
   white-space: nowrap;
 }
 
-/* Mantine badges hide overflow, which lets a table squeeze them to a letter. In the queue table they keep
-   their full label and the table scrolls inside its container instead. */
-.desktop-queue-table .mantine-Badge-root,
-.desktop-queue-table .mantine-Badge-label {
-  overflow: visible;
+/* Queue table on the site table markup (site-table.css). Fixed columns keep every row on one line in the
+   narrow queue pane: File and Format clip, Status (badge plus reason) takes the rest. */
+.landing-table.observed-table.admin-table.desktop-queue-table {
+  table-layout: fixed;
+}
+
+.desktop-queue-col-select {
+  width: 36px;
+}
+
+.desktop-queue-table td:first-child {
+  text-overflow: clip;
+}
+
+.desktop-queue-col-file {
+  width: 25%;
+}
+
+.desktop-queue-col-format {
+  width: 14%;
+}
+
+.desktop-queue-col-updated {
+  width: 140px;
+}
+
+.desktop-queue-col-actions {
+  width: 92px;
+}
+
+.landing-row.desktop-row-selected,
+.landing-row.desktop-row-selected:hover {
+  background: rgba(var(--accent-rgb), 0.16);
 }
 
 .desktop-today-job-list {

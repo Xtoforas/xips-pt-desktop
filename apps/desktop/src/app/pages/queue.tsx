@@ -19,6 +19,7 @@ import {
   formatUploadJobModifiedAt,
   getIncompleteTeamCountWarning,
   getQueueRowActionKeys,
+  getQueueRowPrimaryAction,
   isQueueJobDone,
   parseLegacyQueueWorkspaceView,
   parseQueueWorkspaceView,
@@ -530,10 +531,10 @@ export const UploadQueuePage = (): JSX.Element => {
                     );
                   }
                   return (
-                    <Group gap="xs" wrap="nowrap">
+                    <>
                       <button
                         type="button"
-                        className="desktop-link-button"
+                        className="desktop-link-button admin-cell-clip"
                         onClick={(event) => {
                           event.stopPropagation();
                           setSelectedJobId(job.id);
@@ -556,24 +557,14 @@ export const UploadQueuePage = (): JSX.Element => {
                           {teamCountWarning.badgeLabel}
                         </Badge>
                       ) : null}
-                    </Group>
+                    </>
                   );
                 }}
                 actions={(job) => {
-                  const rowActions = getQueueRowActionKeys(job);
+                  const rowAction = getQueueRowPrimaryAction(job);
                   return (
-                  <Group gap="xs">
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void openUploadFileLocation(job.id);
-                      }}
-                    >
-                      Reveal
-                    </Button>
-                    {rowActions.includes('assign') ? (
+                  <Group gap={4} wrap="nowrap">
+                    {rowAction === 'assign' ? (
                       <Button
                         size="compact-xs"
                         variant="light"
@@ -587,7 +578,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Assign
                       </Button>
                     ) : null}
-                    {rowActions.includes('retry') ? (
+                    {rowAction === 'retry' ? (
                       <Button
                         size="compact-xs"
                         variant="light"
@@ -600,7 +591,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Retry
                       </Button>
                     ) : null}
-                    {rowActions.includes('reauth') && selectedProfile ? (
+                    {rowAction === 'reauth' && selectedProfile ? (
                       <Button
                         size="compact-xs"
                         variant="light"
@@ -613,20 +604,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Re-auth
                       </Button>
                     ) : null}
-                    {rowActions.includes('ignore') ? (
-                      <Button
-                        size="compact-xs"
-                        variant="subtle"
-                        color="gray"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void ignoreUploadJob(job.id);
-                        }}
-                      >
-                        Ignore
-                      </Button>
-                    ) : null}
-                    {rowActions.includes('dismissWorking') ? (
+                    {rowAction === 'dismissWorking' ? (
                       <Button
                         size="compact-xs"
                         variant="subtle"
@@ -639,7 +617,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Dismiss
                       </Button>
                     ) : null}
-                    {rowActions.includes('restore') ? (
+                    {rowAction === 'restore' ? (
                       <Button
                         size="compact-xs"
                         variant="subtle"
@@ -652,7 +630,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         Restore
                       </Button>
                     ) : null}
-                    {rowActions.includes('dismissDuplicate') ? (
+                    {rowAction === 'dismissDuplicate' ? (
                       <Button
                         size="compact-xs"
                         variant="subtle"
@@ -662,19 +640,6 @@ export const UploadQueuePage = (): JSX.Element => {
                         }}
                       >
                         Dismiss
-                      </Button>
-                    ) : null}
-                    {rowActions.includes('removeAwaiting') ? (
-                      <Button
-                        size="compact-xs"
-                        variant="subtle"
-                        color="red"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void removeAwaitingUploadJob(job.id);
-                        }}
-                      >
-                        Remove
                       </Button>
                     ) : null}
                   </Group>

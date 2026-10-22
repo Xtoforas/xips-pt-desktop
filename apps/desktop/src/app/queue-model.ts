@@ -176,9 +176,12 @@ export const getUploadJobModifiedAt = (job: LocalUploadJob): number | null => {
 export const compareUploadJobsNewestFirst = (left: LocalUploadJob, right: LocalUploadJob): number =>
   (getUploadJobModifiedAt(right) ?? 0) - (getUploadJobModifiedAt(left) ?? 0);
 
-export const formatUploadJobModifiedAt = (job: LocalUploadJob): string => {
+// Short date and time that fits one table line, as the xips-pt site's admin tables show them.
+export const COMPACT_TIMESTAMP: Intl.DateTimeFormatOptions = { dateStyle: 'short', timeStyle: 'short' };
+
+export const formatUploadJobModifiedAt = (job: LocalUploadJob, options?: Intl.DateTimeFormatOptions): string => {
   const modifiedAt = getUploadJobModifiedAt(job);
-  return modifiedAt === null ? '-' : new Date(modifiedAt).toLocaleString();
+  return modifiedAt === null ? '-' : new Date(modifiedAt).toLocaleString(undefined, options);
 };
 
 export const formatSourceModifiedAt = (sourceModifiedAt: string): string => {
@@ -536,6 +539,14 @@ export const getQueueRowActionKeys = (job: LocalUploadJob): QueueRowActionKey[] 
     keys.push('restore');
   }
   return keys;
+};
+
+// The one action a queue row shows inline; the inspector and the bulk bar hold the rest (ignore, remove).
+const QUEUE_ROW_PRIMARY_ACTIONS: readonly QueueRowActionKey[] = ['assign', 'retry', 'reauth', 'restore', 'dismissDuplicate', 'dismissWorking'];
+
+export const getQueueRowPrimaryAction = (job: LocalUploadJob): QueueRowActionKey | null => {
+  const keys = getQueueRowActionKeys(job);
+  return QUEUE_ROW_PRIMARY_ACTIONS.find((key) => keys.includes(key)) ?? null;
 };
 
 type ApiErrorDetail = Record<string, unknown>;

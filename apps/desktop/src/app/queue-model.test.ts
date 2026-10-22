@@ -17,6 +17,7 @@ import {
   formatUploadJobChecksumStatusLabel,
   getIncompleteTeamCountWarning,
   getQueueRowActionKeys,
+  getQueueRowPrimaryAction,
   isQueueJobDone,
   matchFormatsForTournamentId,
   parseRetryableFailureDetail,
@@ -226,6 +227,21 @@ describe('getQueueRowActionKeys', () => {
   test.each(ALL_LOCAL_STATES)('returns the expected action set for %s', (localState) => {
     const job = makeUploadJob({ localState });
     expect(getQueueRowActionKeys(job).sort()).toEqual([...expectedActions[localState]].sort());
+  });
+});
+
+describe('getQueueRowPrimaryAction', () => {
+  test('prefers the fix over ignore or remove', () => {
+    expect(getQueueRowPrimaryAction(makeUploadJob({ localState: 'awaiting_format_assignment' }))).toBe('assign');
+    expect(getQueueRowPrimaryAction(makeUploadJob({ localState: 'failed_terminal' }))).toBe('retry');
+    expect(getQueueRowPrimaryAction(makeUploadJob({ localState: 'auth_blocked' }))).toBe('reauth');
+    expect(getQueueRowPrimaryAction(makeUploadJob({ localState: 'ignored' }))).toBe('restore');
+  });
+
+  test('falls back to dismiss for rows with no fix and none for server-side work', () => {
+    expect(getQueueRowPrimaryAction(makeUploadJob({ localState: 'queued_local' }))).toBe('dismissWorking');
+    expect(getQueueRowPrimaryAction(makeUploadJob({ localState: 'duplicate_skipped_local' }))).toBe('dismissDuplicate');
+    expect(getQueueRowPrimaryAction(makeUploadJob({ localState: 'server_processing' }))).toBeNull();
   });
 });
 
