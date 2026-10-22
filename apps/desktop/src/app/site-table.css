@@ -1,6 +1,6 @@
 /* Copied from the xips-pt site so desktop tables look like the site's admin tables.
    Source: xips-pt apps/frontend/app/globals.css (landing-table, observed-table, landing-row, landing-cell)
-   and apps/frontend/app/admin/admin.css (admin-table, admin-cell-*, admin-mono, admin-nowrap) at 943a3b5.
+   and apps/frontend/app/admin/admin.css (admin-table, admin-cell-*, admin-mono, admin-nowrap, admin-metric-*) at 943a3b5.
    Keep class names and values in step with the site; put desktop-only tweaks in styles.css. */
 
 .admin-table-frame {
@@ -161,4 +161,28 @@
 .admin-nowrap .mantine-Badge-root,
 .admin-nowrap .mantine-Badge-label {
   overflow: visible;
+}
+
+.admin-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 6px;
+}
+
+.admin-metric-cell {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--line-0);
+  border-radius: 4px;
+  background: var(--surface-1);
+}
+
+.admin-metric-cell__label {
+  display: block;
+  max-width: 100%;
+}
+
+.admin-metric-cell__value {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }

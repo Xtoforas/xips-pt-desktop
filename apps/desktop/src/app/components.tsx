@@ -1301,6 +1301,7 @@ export const FormatRuleTable = ({
   </SiteTable>
 );
 
+// Desktop preferences save as they change: toggles at once, numbers when the field loses focus.
 export const PreferencesForm = ({
   preferences,
   onSave
@@ -1308,66 +1309,72 @@ export const PreferencesForm = ({
   preferences: DesktopPreferences;
   onSave: (preferences: DesktopPreferences) => Promise<void>;
 }): JSX.Element => {
-  const [launchAtLogin, setLaunchAtLogin] = useState(preferences.launchAtLogin);
-  const [closeToTray, setCloseToTray] = useState(preferences.closeToTray);
   const [pollingIntervalSeconds, setPollingIntervalSeconds] = useState(String(preferences.pollingIntervalSeconds));
   const [diagnosticsRetentionDays, setDiagnosticsRetentionDays] = useState(String(preferences.diagnosticsRetentionDays));
-  const [dismissAutomationRuleReadiness, setDismissAutomationRuleReadiness] = useState(preferences.dismissAutomationRuleReadiness);
+
+  useEffect(() => {
+    setPollingIntervalSeconds(String(preferences.pollingIntervalSeconds));
+  }, [preferences.pollingIntervalSeconds]);
+  useEffect(() => {
+    setDiagnosticsRetentionDays(String(preferences.diagnosticsRetentionDays));
+  }, [preferences.diagnosticsRetentionDays]);
+
+  const save = (patch: Partial<DesktopPreferences>): void => {
+    void onSave({ ...preferences, ...patch });
+  };
+  // A blank or non-positive number puts the saved value back instead of saving it.
+  const saveNumber = (key: 'pollingIntervalSeconds' | 'diagnosticsRetentionDays', raw: string, reset: (value: string) => void): void => {
+    const value = Number.parseInt(raw, 10);
+    if (!Number.isFinite(value) || value < 1) {
+      reset(String(preferences[key]));
+      return;
+    }
+    if (value !== preferences[key]) {
+      save({ [key]: value });
+    }
+  };
 
   return (
     <Card withBorder className="desktop-card">
-      <Stack gap="sm">
+      <Stack gap="xs">
         <Text fw={700}>Desktop behavior</Text>
-        <label className="desktop-checkbox-row">
-          <input
-            type="checkbox"
-            checked={launchAtLogin}
-            onChange={(event) => setLaunchAtLogin(event.currentTarget.checked)}
-          />
-          <span>Launch at login</span>
-        </label>
-        <label className="desktop-checkbox-row">
-          <input type="checkbox" checked={closeToTray} onChange={(event) => setCloseToTray(event.currentTarget.checked)} />
-          <span>Keep running in the background</span>
-        </label>
-        <label className="desktop-checkbox-row">
-          <input
-            type="checkbox"
-            checked={!dismissAutomationRuleReadiness}
-            onChange={(event) => setDismissAutomationRuleReadiness(!event.currentTarget.checked)}
-          />
-          <span>Show &apos;Help with oddly named files&apos; in setup</span>
-        </label>
-        <TextInput
-          label="Polling interval (seconds)"
-          value={pollingIntervalSeconds}
-          onChange={(event) => setPollingIntervalSeconds(event.currentTarget.value)}
+        <Checkbox
+          label="Launch at login"
+          checked={preferences.launchAtLogin}
+          onChange={(event) => save({ launchAtLogin: event.currentTarget.checked })}
         />
-        <TextInput
-          label="Diagnostics retention (days)"
-          value={diagnosticsRetentionDays}
-          onChange={(event) => setDiagnosticsRetentionDays(event.currentTarget.value)}
+        <Checkbox
+          label="Keep running in the background"
+          checked={preferences.closeToTray}
+          onChange={(event) => save({ closeToTray: event.currentTarget.checked })}
         />
-        <Group justify="flex-end">
-          <Button
-            onClick={() => {
-              const polling = Number.parseInt(pollingIntervalSeconds, 10);
-              const retention = Number.parseInt(diagnosticsRetentionDays, 10);
-              if (!Number.isFinite(polling) || !Number.isFinite(retention)) {
-                return;
-              }
-              void onSave({
-                launchAtLogin,
-                closeToTray,
-                pollingIntervalSeconds: polling,
-                diagnosticsRetentionDays: retention,
-                dismissAutomationRuleReadiness,
-                dismissCompletedReadinessCard: preferences.dismissCompletedReadinessCard
-              });
-            }}
-          >
-            Save preferences
-          </Button>
+        <Checkbox
+          label="Show 'Help with oddly named files' in setup"
+          checked={!preferences.dismissAutomationRuleReadiness}
+          onChange={(event) => save({ dismissAutomationRuleReadiness: !event.currentTarget.checked })}
+        />
+        <Group gap="md" align="flex-end" wrap="wrap" mt={4}>
+          <TextInput
+            size="xs"
+            w={170}
+            label="Polling interval (seconds)"
+            inputMode="numeric"
+            value={pollingIntervalSeconds}
+            onChange={(event) => setPollingIntervalSeconds(event.currentTarget.value.replace(/[^0-9]/gu, ''))}
+            onBlur={() => saveNumber('pollingIntervalSeconds', pollingIntervalSeconds, setPollingIntervalSeconds)}
+          />
+          <TextInput
+            size="xs"
+            w={170}
+            label="Keep diagnostics (days)"
+            inputMode="numeric"
+            value={diagnosticsRetentionDays}
+            onChange={(event) => setDiagnosticsRetentionDays(event.currentTarget.value.replace(/[^0-9]/gu, ''))}
+            onBlur={() => saveNumber('diagnosticsRetentionDays', diagnosticsRetentionDays, setDiagnosticsRetentionDays)}
+          />
+          <Text size="xs" c="dimmed" pb={6}>
+            Changes save as you make them.
+          </Text>
         </Group>
       </Stack>
     </Card>
