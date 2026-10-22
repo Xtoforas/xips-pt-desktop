@@ -52,7 +52,7 @@ type DesktopClient = {
   saveServerProfile: (input: SaveServerProfileInput) => Promise<SaveServerProfileResult>;
   deleteServerProfile: (profileId: string) => Promise<void>;
   selectServerProfile: (profileId: string) => Promise<void>;
-  useDefaultServer: () => Promise<void>;
+  switchToDefaultServer: () => Promise<void>;
   checkServerHealth: (profileId: string) => Promise<ServiceHealth>;
   fetchFormats: (profileId: string) => Promise<TournamentFormat[]>;
   fetchCards: (profileId: string, formatId: string) => Promise<CardsResponse>;
@@ -347,7 +347,7 @@ const browserClient: DesktopClient = {
   async selectServerProfile(profileId) {
     updateMockState((current) => ({ ...current, selectedProfileId: profileId }));
   },
-  async useDefaultServer() {
+  async switchToDefaultServer() {
     updateMockState((current) => ({ ...current, selectedProfileId: mockDefaultProfile.id }));
   },
   async checkServerHealth() {
@@ -443,7 +443,7 @@ const tauriClient: DesktopClient = {
   saveServerProfile: (input) => invoke<SaveServerProfileResult>('desktop_save_server_profile', { input }),
   deleteServerProfile: (profileId) => invoke<void>('desktop_delete_server_profile', { profileId }),
   selectServerProfile: (profileId) => invoke<void>('desktop_select_server_profile', { profileId }),
-  useDefaultServer: () => invoke<void>('desktop_use_default_server'),
+  switchToDefaultServer: () => invoke<void>('desktop_use_default_server'),
   checkServerHealth: (profileId) => invoke<ServiceHealth>('desktop_check_server_health', { profileId }),
   fetchFormats: (profileId) => invoke<TournamentFormat[]>('desktop_fetch_formats', { profileId }),
   fetchCards: (profileId, formatId) => invoke<CardsResponse>('desktop_fetch_cards', { profileId, formatId }),

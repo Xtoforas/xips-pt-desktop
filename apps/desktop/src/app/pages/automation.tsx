@@ -310,7 +310,7 @@ export const AutomationPage = (): JSX.Element => {
                 <div>
                   <Text fw={700}>Cached formats</Text>
                   <Text size="sm" c="dimmed">
-                    Refresh from the selected server to update the automation match set.
+                    Refresh to get the latest tournament list for matching files.
                   </Text>
                 </div>
                 <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshFormats()}>

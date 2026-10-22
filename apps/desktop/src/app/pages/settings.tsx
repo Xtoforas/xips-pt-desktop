@@ -1,212 +1,289 @@
-import { Alert, Button, Card, Group, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
-import { useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { useDesktop } from '../DesktopContext';
-import { buildOnboardingSteps, PreferencesForm, ReadinessCard, ServerProfileForm } from '../components';
+import { Alert, Badge, Button, Card, Collapse, Group, Select, SimpleGrid, Stack, Switch, Table, Text, Title } from '@mantine/core';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { describeError, useDesktop } from '../DesktopContext';
+import { PreferencesForm, ReadinessCard, ServerProfileForm } from '../components';
+import { isCustomServer, isSignedInToSelectedServer, serverHostLabel } from '../onboarding';
 import { useScrollToHash } from './shared';
 
-export const SettingsPage = (): JSX.Element => {
-  const location = useLocation();
+// Old deep links from before the Advanced section existed.
+const LEGACY_HASHES: Record<string, string> = {
+  '#readiness': '#setup',
+  '#server-profile': '#advanced',
+  '#server-health': '#advanced'
+};
+
+const connectionLabel = { checking: 'Connecting…', connected: 'Connected', unreachable: "Can't reach" } as const;
+
+// Everything about which server the app talks to. Collapsed by default; opens on its own while a
+// custom server is in use so it's never hidden.
+const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Element => {
   const {
     snapshot,
     selectedProfile,
     health,
-    authFlowState,
-    authFlowError,
+    connection,
+    selectServerProfile,
+    switchToDefaultServer,
     deleteServerProfile,
     refreshHealth,
-    openAuthWindow,
-    redeemAuthCode,
-    refreshMe,
-    selectServerProfile,
-    updatePreferences
+    refreshMe
   } = useDesktop();
-  useScrollToHash();
-  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
-  const onboardingSteps = useMemo(
-    () => buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState }),
-    [authFlowState, health, selectedProfile, snapshot]
-  );
-  const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
-  const settingsHash = location.hash || '#server-profile';
-  const [authCode, setAuthCode] = useState('');
+  const customServer = isCustomServer(selectedProfile);
+  const [opened, setOpened] = useState(customServer || forceOpen);
+  const [pickingOther, setPickingOther] = useState(false);
+  const [confirmRemoveId, setConfirmRemoveId] = useState('');
+  const [error, setError] = useState('');
+  const customProfiles = snapshot.profiles.filter((profile) => !profile.isDefault);
+  const signedIn = isSignedInToSelectedServer(snapshot);
 
-  const submitCode = async (code: string): Promise<void> => {
-    if (!selectedProfile || !code.trim()) {
-      return;
+  useEffect(() => {
+    if (customServer || forceOpen) {
+      setOpened(true);
     }
-    try {
-      await redeemAuthCode(selectedProfile.id, code.trim());
-      setAuthCode('');
-    } catch {
-      // authFlowError already reflects the failure for display below.
-    }
+  }, [customServer, forceOpen]);
+
+  const run = (action: () => Promise<void>, fallback: string): void => {
+    setError('');
+    action().catch((actionError: unknown) => setError(describeError(actionError, fallback)));
   };
 
-  const handleRedeemCode = (): Promise<void> => submitCode(authCode);
+  const backToDefault = (): void => {
+    setPickingOther(false);
+    run(switchToDefaultServer, "Couldn't switch back to XiPS.");
+  };
+
+  const detailRows: Array<[string, string]> = selectedProfile
+    ? [
+        ['Name', selectedProfile.name],
+        ['Address', selectedProfile.baseUrl],
+        ['Game version', selectedProfile.gameVersion || 'ootp27'],
+        ['Connection', connectionLabel[connection]],
+        ['Service', health?.service ?? '-'],
+        ['Server queue', health?.queueDepth !== undefined ? `${health.queueDepth} queued, ${health.failedJobs ?? 0} failed` : '-'],
+        ['Last checked', health?.timestamp ? new Date(health.timestamp).toLocaleString() : '-'],
+        ['Signed in as', signedIn ? snapshot.authUser?.displayName ?? '-' : 'Not signed in'],
+        ['Sign-in expires', signedIn && snapshot.tokenExpiresAt ? new Date(snapshot.tokenExpiresAt).toLocaleString() : '-']
+      ]
+    : [];
+
+  return (
+    <Card withBorder className="desktop-card desktop-support-card" id="advanced">
+      <Stack gap="sm">
+        <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+          <div>
+            <Text fw={700}>Advanced: connect to a different server</Text>
+            <Text size="sm" c="dimmed">
+              For developers. Most people never need this.
+            </Text>
+          </div>
+          <Button size="xs" variant="light" color="gray" aria-expanded={opened} onClick={() => setOpened((current) => !current)}>
+            {opened ? 'Hide' : 'Show'}
+          </Button>
+        </Group>
+        <Collapse in={opened}>
+          <Stack gap="md">
+            {customServer && selectedProfile ? (
+              <Alert color="orange" variant="light" title={`Uploading to a custom server: ${serverHostLabel(selectedProfile.baseUrl)}`}>
+                <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+                  <Text size="sm">New exports go to this server, not XiPS.</Text>
+                  <Button size="xs" color="orange" onClick={backToDefault}>
+                    Back to XiPS (default)
+                  </Button>
+                </Group>
+              </Alert>
+            ) : null}
+            <Switch
+              label="Upload to XiPS (default)"
+              description="Turn off to send uploads to a server you choose below."
+              checked={!customServer && !pickingOther}
+              onChange={(event) => {
+                if (event.currentTarget.checked) {
+                  if (customServer) {
+                    backToDefault();
+                  } else {
+                    setPickingOther(false);
+                  }
+                } else {
+                  setPickingOther(true);
+                }
+              }}
+            />
+            {customServer || pickingOther ? (
+              <Select
+                label="Upload to a different server"
+                placeholder={customProfiles.length > 0 ? 'Choose a server' : 'Add a server below first'}
+                disabled={customProfiles.length === 0}
+                allowDeselect={false}
+                value={customServer && selectedProfile ? selectedProfile.id : null}
+                data={customProfiles.map((profile) => ({
+                  value: profile.id,
+                  label: `${profile.name} · ${serverHostLabel(profile.baseUrl)}`
+                }))}
+                onChange={(value) => {
+                  if (value) {
+                    setPickingOther(false);
+                    run(() => selectServerProfile(value), "Couldn't switch to that server.");
+                  }
+                }}
+              />
+            ) : null}
+            {error ? (
+              <Alert color="red" variant="light">
+                {error}
+              </Alert>
+            ) : null}
+            <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="md">
+              <Card withBorder className="desktop-card desktop-subcard">
+                <Stack gap="sm">
+                  <Text fw={700}>Current server</Text>
+                  <Table verticalSpacing={4} horizontalSpacing="xs">
+                    <Table.Tbody>
+                      {detailRows.map(([label, value]) => (
+                        <Table.Tr key={label}>
+                          <Table.Th style={{ whiteSpace: 'nowrap', width: 1 }}>{label}</Table.Th>
+                          <Table.Td className={label === 'Address' ? 'desktop-mono desktop-wrap-anywhere' : 'desktop-wrap-anywhere'}>
+                            {value}
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                  <Group gap="xs" wrap="wrap">
+                    <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => run(refreshHealth, "Couldn't check the connection.")}>
+                      Check connection
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      disabled={!selectedProfile || !signedIn}
+                      onClick={() => run(() => refreshMe(selectedProfile?.id ?? ''), "Couldn't check sign-in.")}
+                    >
+                      Check sign-in
+                    </Button>
+                  </Group>
+                </Stack>
+              </Card>
+              <ServerProfileForm />
+            </SimpleGrid>
+            <Card withBorder className="desktop-card desktop-subcard">
+              <Stack gap="sm">
+                <Text fw={700}>Saved servers</Text>
+                {snapshot.profiles.map((profile) => {
+                  const inUse = snapshot.selectedProfileId === profile.id;
+                  const folderCount = snapshot.watchRoots.filter((root) => root.profileId === profile.id).length;
+                  return (
+                    <Group key={profile.id} justify="space-between" align="flex-start" wrap="wrap" gap="xs">
+                      <div style={{ minWidth: 0 }}>
+                        <Group gap="xs" wrap="wrap">
+                          <Text fw={600}>{profile.name}</Text>
+                          {profile.isDefault ? (
+                            <Badge color="gray" variant="light">
+                              Built-in
+                            </Badge>
+                          ) : null}
+                          {inUse ? (
+                            <Badge color={profile.isDefault ? 'teal' : 'orange'} variant="light">
+                              In use
+                            </Badge>
+                          ) : null}
+                        </Group>
+                        <Text size="sm" c="dimmed" className="desktop-mono desktop-wrap-anywhere">
+                          {profile.baseUrl}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {profile.gameVersion || 'ootp27'} · {folderCount} watch folder{folderCount === 1 ? '' : 's'}
+                        </Text>
+                      </div>
+                      {confirmRemoveId === profile.id ? (
+                        <Group gap="xs" wrap="wrap">
+                          <Text size="sm">
+                            Remove {profile.name}? This also removes its {folderCount} watch folder{folderCount === 1 ? '' : 's'}.
+                          </Text>
+                          <Button
+                            size="xs"
+                            color="red"
+                            onClick={() => {
+                              setConfirmRemoveId('');
+                              run(() => deleteServerProfile(profile.id), "Couldn't remove this server.");
+                            }}
+                          >
+                            Remove
+                          </Button>
+                          <Button size="xs" variant="subtle" color="gray" onClick={() => setConfirmRemoveId('')}>
+                            Cancel
+                          </Button>
+                        </Group>
+                      ) : (
+                        <Group gap="xs" wrap="wrap">
+                          {!inUse ? (
+                            <Button
+                              size="xs"
+                              variant="light"
+                              onClick={() =>
+                                profile.isDefault
+                                  ? backToDefault()
+                                  : run(() => selectServerProfile(profile.id), "Couldn't switch to that server.")
+                              }
+                            >
+                              Use
+                            </Button>
+                          ) : null}
+                          {!profile.isDefault ? (
+                            <Button size="xs" color="red" variant="light" onClick={() => setConfirmRemoveId(profile.id)}>
+                              Remove
+                            </Button>
+                          ) : null}
+                        </Group>
+                      )}
+                    </Group>
+                  );
+                })}
+              </Stack>
+            </Card>
+          </Stack>
+        </Collapse>
+      </Stack>
+    </Card>
+  );
+};
+
+export const SettingsPage = (): JSX.Element => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { snapshot, updatePreferences } = useDesktop();
+  useScrollToHash();
+  const settingsHash = location.hash || '#setup';
+
+  useEffect(() => {
+    const replacement = LEGACY_HASHES[location.hash];
+    if (replacement) {
+      navigate(`/settings${replacement}`, { replace: true });
+    }
+  }, [location.hash, navigate]);
 
   return (
     <Stack gap="lg">
       <Stack gap={4}>
         <Title order={2}>Settings</Title>
-        <Text c="dimmed">Server profiles and desktop behavior configuration.</Text>
+        <Text c="dimmed">Setup and desktop behavior.</Text>
       </Stack>
       <Group gap="xs" wrap="wrap">
-        <Button component={Link} to="/settings#server-profile" size="xs" variant={settingsHash === '#server-profile' ? 'filled' : 'light'}>
-          Server
-        </Button>
-        <Button component={Link} to="/settings#readiness" size="xs" variant={settingsHash === '#readiness' ? 'filled' : 'light'}>
-          Readiness
+        <Button component={Link} to="/settings#setup" size="xs" variant={settingsHash === '#setup' ? 'filled' : 'light'}>
+          Setup
         </Button>
         <Button component={Link} to="/settings#desktop-behavior" size="xs" variant={settingsHash === '#desktop-behavior' ? 'filled' : 'light'}>
           Desktop behavior
         </Button>
+        <Button component={Link} to="/settings#advanced" size="xs" variant={settingsHash === '#advanced' ? 'filled' : 'light'}>
+          Advanced
+        </Button>
       </Group>
-      <SimpleGrid cols={{ base: 1, xl: 2 }}>
-        <ServerProfileForm id="server-profile" />
-        <div id="desktop-behavior">
-          <PreferencesForm preferences={snapshot.preferences} onSave={updatePreferences} />
-        </div>
-      </SimpleGrid>
-      <ReadinessCard
-        id="readiness"
-        onboardingSteps={onboardingSteps}
-        nextStep={nextStep}
-        selectedProfileName={selectedProfile ? `${selectedProfile.name} is active.` : 'No server profile selected yet.'}
-        dismissCompletedReadinessCard={snapshot.preferences.dismissCompletedReadinessCard}
-        onDismissCompletedReadinessCard={(dismissed) => {
-          void updatePreferences({
-            ...snapshot.preferences,
-            dismissCompletedReadinessCard: dismissed
-          });
-        }}
-        onDismissAutomationReminder={() => {
-          void updatePreferences({
-            ...snapshot.preferences,
-            dismissAutomationRuleReadiness: true
-          });
-        }}
-        variant="settings"
-      />
-      <Card withBorder className="desktop-card desktop-support-card" id="server-health">
-        <Stack gap="sm">
-          <Text fw={700}>Connection checks</Text>
-          <Text size="sm" c="dimmed">
-            Current server health and signed-in desktop identity state.
-          </Text>
-          <Alert color={health?.ok ? 'teal' : 'gray'} title="Health">
-            {health?.ok ? 'Server reachable' : 'Server not checked yet.'}
-          </Alert>
-          <Text size="sm">Selected server: {selectedProfile?.name ?? 'No server selected'}</Text>
-          <Text size="sm">Signed in user: {isAuthenticated ? snapshot.authUser?.displayName : 'Not signed in'}</Text>
-          <Text size="sm">Token expiry: {isAuthenticated ? snapshot.tokenExpiresAt : 'No token issued'}</Text>
-          <Text size="sm">Detected files: {snapshot.detectedFiles.length}</Text>
-          <Group>
-            <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void refreshHealth()}>
-              Check health
-            </Button>
-            <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => void openAuthWindow(selectedProfile?.id ?? '')}>
-              Open sign-in
-            </Button>
-          </Group>
-          {!isAuthenticated ? (
-            <>
-              <Text size="sm" c="dimmed">
-                After signing in in the popup, copy the short code it shows. This device will pick it up from your
-                clipboard automatically, or you can paste it below.
-              </Text>
-              <Group align="flex-end" wrap="wrap">
-                <TextInput
-                  label="Sign-in code"
-                  placeholder="ABCD2345"
-                  value={authCode}
-                  disabled={!selectedProfile}
-                  onChange={(event) => setAuthCode(event.currentTarget.value.toUpperCase())}
-                />
-                <Button
-                  size="sm"
-                  disabled={!selectedProfile || !authCode.trim()}
-                  loading={authFlowState === 'waiting'}
-                  onClick={() => void handleRedeemCode()}
-                >
-                  Redeem code
-                </Button>
-              </Group>
-              {authFlowError ? (
-                <Alert color="red" title="Sign-in problem">
-                  {authFlowError}
-                </Alert>
-              ) : null}
-            </>
-          ) : null}
-        </Stack>
-      </Card>
-      <Card withBorder className="desktop-card desktop-support-card">
-        <Stack gap="sm">
-          <Text fw={700}>Where routine actions live</Text>
-          <Text size="sm" c="dimmed">
-            Settings stays focused on server profiles and desktop behavior. Routine refreshes now live on Today and Automation so the main workflow keeps its own tools.
-          </Text>
-          <Group gap="xs" wrap="wrap">
-            <Button component={Link} to="/today" size="xs" variant="light">
-              Open Today
-            </Button>
-            <Button component={Link} to="/automation#cached-formats" size="xs" variant="light">
-              Open Automation
-            </Button>
-          </Group>
-        </Stack>
-      </Card>
-      <Card withBorder className="desktop-card">
-        <Stack gap="sm">
-          <Text fw={700}>Saved server profiles</Text>
-          {snapshot.profiles.length === 0 ? (
-            <Alert color="gray">No server profiles configured.</Alert>
-          ) : (
-            snapshot.profiles.map((profile) => (
-              <Card key={profile.id} withBorder className="desktop-subcard">
-                <Group justify="space-between" align="flex-start">
-                  <div>
-                    <Text fw={600}>{profile.name}</Text>
-                    <Text size="sm" c="dimmed" className="desktop-mono">
-                      {profile.baseUrl}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {snapshot.selectedProfileId === profile.id ? 'Selected server' : 'Saved server'}
-                      {' · '}
-                      {profile.gameVersion || 'ootp27'}
-                    </Text>
-                  </div>
-                  <Group gap="xs">
-                    <Button
-                      size="xs"
-                      variant="light"
-                      onClick={() => {
-                        void selectServerProfile(profile.id).then(() => refreshHealth());
-                      }}
-                    >
-                      Check health
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="light"
-                      disabled={snapshot.authProfileId !== profile.id || !snapshot.authUser}
-                      onClick={() => {
-                        void selectServerProfile(profile.id).then(() => refreshMe(profile.id));
-                      }}
-                    >
-                      Check auth
-                    </Button>
-                    <Button size="xs" color="red" variant="light" onClick={() => void deleteServerProfile(profile.id)}>
-                      Remove
-                    </Button>
-                  </Group>
-                </Group>
-              </Card>
-            ))
-          )}
-        </Stack>
-      </Card>
+      <ReadinessCard id="setup" variant="settings" />
+      <div id="desktop-behavior">
+        <PreferencesForm preferences={snapshot.preferences} onSave={updatePreferences} />
+      </div>
+      <AdvancedServerSection forceOpen={settingsHash === '#advanced'} />
     </Stack>
   );
 };

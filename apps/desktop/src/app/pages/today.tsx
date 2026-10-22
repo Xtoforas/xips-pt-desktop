@@ -6,7 +6,6 @@ import { useDesktop } from '../DesktopContext';
 import type { LocalUploadJob } from '@xips/api-contract';
 import {
   BlockedStatusBadge,
-  buildOnboardingSteps,
   FileKindBadge,
   MdiIcon,
   ReadinessCard,
@@ -28,6 +27,7 @@ import {
   uploadJobWorkingAutomatically,
   type TodayBlockerState
 } from '../queue-model';
+import { isCustomServer, serverHostLabel } from '../onboarding';
 
 const BLOCKER_ROW_LIMIT = 15;
 
@@ -99,18 +99,13 @@ const JobSummaryRow = ({
 );
 
 export const TodayPage = (): JSX.Element => {
-  const { snapshot, selectedProfile, health, authFlowState, updatePreferences, ignoreUploadJob } = useDesktop();
-  const onboardingSteps = useMemo(
-    () => buildOnboardingSteps({ snapshot, health, selectedProfile, authFlowState }),
-    [authFlowState, health, selectedProfile, snapshot]
-  );
-  const nextStep = onboardingSteps.find((step) => !step.complete) ?? null;
+  const { snapshot, selectedProfile, ignoreUploadJob } = useDesktop();
+  const customServer = isCustomServer(selectedProfile);
   const formatLabelById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
     [snapshot.cachedFormats]
   );
-  const readinessItems = onboardingSteps;
   // Blocked files waiting on the user come first, then ones the app will retry; similar reasons sit together.
   const blockerRows = useMemo(
     () =>
@@ -187,31 +182,18 @@ export const TodayPage = (): JSX.Element => {
         <Text c="dimmed">
           Files that need your input, and what&apos;s uploading right now.
           {selectedProfile ? (
-            <>
-              {' '}Watched folders are uploaded to <span className="desktop-mono">{selectedProfile.baseUrl}</span> automatically.
-            </>
+            customServer ? (
+              <>
+                {' '}New exports in your OOTP folder upload to{' '}
+                <span className="desktop-mono">{serverHostLabel(selectedProfile.baseUrl)}</span> automatically.
+              </>
+            ) : (
+              ' New exports in your OOTP folder upload to XiPS automatically.'
+            )
           ) : null}
         </Text>
       </Stack>
-      <ReadinessCard
-        onboardingSteps={readinessItems}
-        nextStep={nextStep}
-        selectedProfileName={selectedProfile ? `${selectedProfile.name} is active.` : 'No server profile selected yet.'}
-        dismissCompletedReadinessCard={snapshot.preferences.dismissCompletedReadinessCard}
-        onDismissCompletedReadinessCard={(dismissed) => {
-          void updatePreferences({
-            ...snapshot.preferences,
-            dismissCompletedReadinessCard: dismissed
-          });
-        }}
-        onDismissAutomationReminder={() => {
-          void updatePreferences({
-            ...snapshot.preferences,
-            dismissAutomationRuleReadiness: true
-          });
-        }}
-        variant="today"
-      />
+      <ReadinessCard variant="today" />
       <Card withBorder className="desktop-card desktop-today-section">
         <Stack gap="md">
           <SectionHeader
@@ -223,7 +205,7 @@ export const TodayPage = (): JSX.Element => {
           />
           {blockerRows.length === 0 ? (
             <Alert color="teal" variant="light">
-              No files are blocked right now. The queue is clear of user-driven work.
+              Nothing needs you right now.
             </Alert>
           ) : (
             <>
@@ -376,7 +358,7 @@ export const TodayPage = (): JSX.Element => {
           />
           {completedJobs.length === 0 ? (
             <Alert color="gray" variant="light">
-              No completed uploads have been recorded yet.
+              No uploads have finished yet.
             </Alert>
           ) : (
             <div className="desktop-today-job-list">

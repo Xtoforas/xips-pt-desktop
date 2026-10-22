@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { DesktopProvider } from './DesktopContext';
-import { DesktopSidebar, DesktopTopbar } from './components';
+import { ConnectionBanner, DesktopSidebar, DesktopTopbar } from './components';
 import { UpdatePrompt } from './UpdatePrompt';
 import {
   AutomationPage,
@@ -23,7 +23,10 @@ const DesktopShell = (): JSX.Element => {
     <div className="desktop-shell">
       <DesktopSidebar />
       <div className="desktop-main">
-        <DesktopTopbar />
+        <div className="desktop-sticky-header">
+          <DesktopTopbar />
+          <ConnectionBanner />
+        </div>
         <main className="desktop-content">
           <Routes>
             <Route path="/" element={<Navigate to="/today" replace />} />

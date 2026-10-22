@@ -120,8 +120,57 @@ a {
   min-width: 0;
 }
 
-.desktop-topbar-alert {
-  max-width: 320px;
+/* Topbar plus the connection banner stay pinned while .desktop-main scrolls, so the
+   custom-server badge and an unreachable warning are visible on every page. */
+.desktop-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-shrink: 0;
+  background: var(--surface-0);
+}
+
+/* On the default server the left column has nothing in it; drop it so the actions don't wrap. */
+.desktop-topbar-left:empty {
+  display: none;
+}
+
+.desktop-connection-banner {
+  border-radius: 0;
+  border-bottom: 1px solid var(--line-0);
+}
+
+.desktop-custom-server-badge {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.desktop-setup-card {
+  background: var(--surface-1);
+  border: 1px solid var(--line-0);
+}
+
+.desktop-setup-step {
+  background: var(--surface-2);
+  border: 1px solid var(--line-0);
+}
+
+.desktop-setup-step.complete {
+  border-color: var(--accent-green);
+}
+
+.desktop-setup-optional {
+  padding-top: 4px;
+  border-top: 1px solid var(--line-0);
+}
+
+.desktop-setup-done {
+  background: var(--surface-1);
+  border: 1px solid var(--accent-green);
+}
+
+.desktop-sign-in-steps {
+  padding-left: 2px;
 }
 
 .desktop-content {
@@ -155,30 +204,6 @@ a {
 
 .desktop-today-summary {
   max-width: 78ch;
-}
-
-.desktop-today-strip {
-  background: var(--surface-1);
-  border: 1px solid var(--line-0);
-}
-
-.desktop-today-strip-item {
-  min-height: 100%;
-  background: var(--surface-2);
-  border: 1px solid var(--line-0);
-}
-
-.desktop-today-strip-item.complete {
-  border-color: var(--accent-green);
-}
-
-.desktop-today-strip-action {
-  justify-self: start;
-}
-
-.desktop-today-readiness-compact {
-  background: var(--surface-1);
-  border: 1px solid var(--accent-green);
 }
 
 .desktop-today-section {
@@ -336,6 +361,7 @@ a {
 .desktop-topbar-actions {
   justify-content: flex-end;
   align-items: center;
+  margin-left: auto;
 }
 
 .desktop-row-selected {

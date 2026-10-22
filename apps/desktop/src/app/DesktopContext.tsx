@@ -72,7 +72,7 @@ type DesktopContextValue = {
   saveServerProfile: (input: SaveServerProfileInput) => Promise<SaveServerProfileResult>;
   deleteServerProfile: (profileId: string) => Promise<void>;
   selectServerProfile: (profileId: string) => Promise<void>;
-  useDefaultServer: () => Promise<void>;
+  switchToDefaultServer: () => Promise<void>;
   refreshHealth: () => Promise<void>;
   refreshFormats: () => Promise<void>;
   refreshCards: (formatId: string) => Promise<void>;
@@ -383,8 +383,8 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setHealth(null);
   }, []);
 
-  const useDefaultServer = useCallback(async (): Promise<void> => {
-    await desktopClient.useDefaultServer();
+  const switchToDefaultServer = useCallback(async (): Promise<void> => {
+    await desktopClient.switchToDefaultServer();
     setHealth(null);
   }, []);
 
@@ -394,7 +394,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       setHealth(null);
       return;
     }
-    setConnection('checking');
+    // No 'checking' here: a manual retry keeps the current message (and its Retry button) on screen.
     try {
       const result = await desktopClient.checkServerHealth(selectedProfile.id);
       setHealth(result);
@@ -618,7 +618,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       saveServerProfile,
       deleteServerProfile,
       selectServerProfile,
-      useDefaultServer,
+      switchToDefaultServer,
       refreshHealth,
       refreshFormats,
       refreshCards,
@@ -665,7 +665,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       saveServerProfile,
       deleteServerProfile,
       selectServerProfile,
-      useDefaultServer,
+      switchToDefaultServer,
       refreshHealth,
       refreshFormats,
       refreshCards,

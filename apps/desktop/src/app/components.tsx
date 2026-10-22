@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, NavLink, Paper, Select, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Tooltip } from '@mantine/core';
+import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, List, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Tooltip } from '@mantine/core';
 import { mdiBaseball, mdiCalendarToday, mdiCloudUpload, mdiCog, mdiLightningBolt, mdiWrench } from '@mdi/js';
 import { Link, useLocation } from 'react-router-dom';
 import type {
@@ -9,9 +9,18 @@ import type {
   LocalUploadJob,
   TournamentFormat
 } from '@xips/api-contract';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { useDesktop } from './DesktopContext';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { describeError, useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
+import {
+  buildOnboardingSteps,
+  isCustomServer,
+  isSignedInToSelectedServer,
+  nextOnboardingStep,
+  requiredOnboardingSteps,
+  serverHostLabel,
+  type OnboardingStepState
+} from './onboarding';
 import {
   compareUploadJobsNewestFirst,
   formatFileKindLabel,
@@ -45,238 +54,322 @@ const navItems: ReadonlyArray<{ to: string; label: string; iconPath: string; sup
   { to: '/diagnostics', label: 'Diagnostics', iconPath: mdiWrench, support: true }
 ];
 
-const serverOptions = (profiles: LocalServerProfile[]): Array<{ value: string; label: string }> =>
+export const serverOptions = (profiles: LocalServerProfile[]): Array<{ value: string; label: string }> =>
   profiles.map((profile) => ({
     value: profile.id,
-    label: profile.name
+    label: profile.isDefault ? `${profile.name} (default)` : profile.name
   }));
 
-type OnboardingStep = {
-  key: string;
-  label: string;
-  status: string;
-  detail: string;
-  href: string;
-  actionLabel: string;
-  complete: boolean;
-  dismissible?: boolean;
+const stepBadges: Record<OnboardingStepState, { label: string; color: string }> = {
+  done: { label: 'Done', color: 'teal' },
+  waiting_on_you: { label: 'Waiting on you', color: 'orange' },
+  working: { label: 'Working…', color: 'blue' },
+  optional: { label: 'Optional', color: 'gray' }
 };
 
-export const buildOnboardingSteps = ({
-  snapshot,
-  health,
-  selectedProfile,
-  authFlowState
-}: {
-  snapshot: ReturnType<typeof useDesktop>['snapshot'];
-  health: ReturnType<typeof useDesktop>['health'];
-  selectedProfile: ReturnType<typeof useDesktop>['selectedProfile'];
-  authFlowState: ReturnType<typeof useDesktop>['authFlowState'];
-}): OnboardingStep[] => {
-  const selectedProfileId = selectedProfile?.id ?? '';
-  const watchRoots = selectedProfileId ? snapshot.watchRoots.filter((root) => root.profileId === selectedProfileId) : [];
-  const formatRules = selectedProfileId ? snapshot.formatRules.filter((rule) => rule.profileId === selectedProfileId) : [];
-  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
-  const automationReminderDismissed = snapshot.preferences.dismissAutomationRuleReadiness;
+export const OnboardingStepBadge = ({ state }: { state: OnboardingStepState }): JSX.Element => (
+  <Badge color={stepBadges[state].color} variant="light" style={{ flexShrink: 0 }}>
+    {stepBadges[state].label}
+  </Badge>
+);
 
-  return [
-    {
-      key: 'server',
-      label: 'Server profile',
-      status: selectedProfile ? `Using ${selectedProfile.name}` : snapshot.profiles.length > 0 ? 'Choose the server to use' : 'No server profile yet',
-      detail: selectedProfile
-        ? 'Server settings and health checks live in Settings.'
-        : 'Add a server profile first so the desktop app knows which xips-pt instance to talk to.',
-      href: '/settings#server-profile',
-      actionLabel: selectedProfile ? 'Review server setup' : 'Open server setup',
-      complete: Boolean(selectedProfile)
-    },
-    {
-      key: 'health',
-      label: 'Health check',
-      status: !selectedProfile
-        ? 'Choose a server first'
-        : health?.ok
-          ? 'Server responded'
-          : health
-            ? 'Server needs attention'
-            : 'Not checked yet',
-      detail: !selectedProfile
-        ? 'Pick a server profile before running the health check.'
-        : health?.ok
-          ? 'A healthy response means the app can reach the selected server.'
-          : 'Run the check from Settings to confirm the server URL and backend are reachable.',
-      href: '/settings#server-health',
-      actionLabel: 'Check server',
-      complete: Boolean(selectedProfile && health?.ok)
-    },
-    {
-      key: 'auth',
-      label: 'Discord sign-in',
-      status: isAuthenticated
-        ? `Signed in as ${snapshot.authUser?.displayName ?? 'the selected user'}`
-        : authFlowState === 'waiting'
-          ? 'Waiting for sign-in callback'
-          : 'Sign-in still needed',
-      detail: isAuthenticated
-        ? 'Once signed in, the queue can use your account and the card views can switch to live personal data.'
-        : 'Open sign-in, then paste the short code it shows on the Settings page to finish connecting this device.',
-      href: '/settings#server-health',
-      actionLabel: 'Open sign-in',
-      complete: isAuthenticated
-    },
-    {
-      key: 'watch-folders',
-      label: 'Watch folders',
-      status: watchRoots.length > 0 ? `${watchRoots.length} watched folder${watchRoots.length === 1 ? '' : 's'}` : 'No watched folder yet',
-      detail: watchRoots.length > 0
-        ? 'The app can discover new files automatically from watched folders.'
-        : 'Add a watch folder so the desktop app can notice new exports without manual uploads.',
-      href: '/automation#watch-folders',
-      actionLabel: 'Add watch folder',
-      complete: watchRoots.length > 0
-    },
-    {
-      key: 'rules',
-      label: 'Automation rule',
-      status: formatRules.length > 0
-        ? `${formatRules.length} rule${formatRules.length === 1 ? '' : 's'} saved`
-        : automationReminderDismissed
-          ? 'Reminder dismissed'
-          : 'Optional',
-      detail: formatRules.length > 0
-        ? 'Rules help generic filenames map faster.'
-        : automationReminderDismissed
-          ? 'Watch folders still work without a saved rule. The app keeps using filename-based detection from cached server formats.'
-          : 'Rules are optional. Add one when generic filenames need extra help.',
-      href: '/automation#format-rules',
-      actionLabel: formatRules.length > 0 ? 'Review automation' : 'Open automation',
-      complete: formatRules.length > 0 || automationReminderDismissed,
-      dismissible: formatRules.length === 0 && !automationReminderDismissed
+// Sign-in button, the pairing-code explanation, and the paste box, all in one place so sign-in
+// finishes on the screen that started it.
+export const SignInPanel = (): JSX.Element => {
+  const { selectedProfile, authFlowState, authFlowError, openAuthWindow, redeemAuthCode } = useDesktop();
+  const [code, setCode] = useState('');
+  const profileId = selectedProfile?.id ?? '';
+
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (!profileId || !code.trim()) {
+      return;
     }
-  ];
+    try {
+      await redeemAuthCode(profileId, code.trim());
+      setCode('');
+    } catch {
+      // authFlowError already holds the plain-language message shown below.
+    }
+  };
+
+  return (
+    <Stack gap="xs">
+      <Group>
+        <Button
+          disabled={!profileId || authFlowState === 'waiting'}
+          onClick={() => {
+            openAuthWindow(profileId).catch(() => {});
+          }}
+        >
+          Sign in with Discord
+        </Button>
+      </Group>
+      <List type="ordered" size="xs" spacing={2} className="desktop-sign-in-steps">
+        <List.Item>Click Sign in with Discord. A sign-in window opens.</List.Item>
+        <List.Item>Sign in with your Discord account.</List.Item>
+        <List.Item>If the window shows a code, copy it.</List.Item>
+        <List.Item>Paste the code below and click Finish sign-in.</List.Item>
+      </List>
+      <Text size="xs" c="dimmed">
+        Often this finishes by itself right after you sign in.
+      </Text>
+      <form onSubmit={(event) => void submit(event)}>
+        <Group gap="xs" wrap="nowrap" align="flex-end">
+          <TextInput
+            aria-label="Sign-in code"
+            placeholder="Paste code"
+            value={code}
+            disabled={!profileId}
+            style={{ flex: '1 1 auto', minWidth: 0 }}
+            onChange={(event) => setCode(event.currentTarget.value.toUpperCase())}
+          />
+          <Button type="submit" variant="light" disabled={!profileId || !code.trim()} loading={authFlowState === 'waiting' && Boolean(code.trim())}>
+            Finish sign-in
+          </Button>
+        </Group>
+      </form>
+      {authFlowState === 'waiting' ? (
+        <Text size="xs" c="blue">
+          Finishing sign-in…
+        </Text>
+      ) : null}
+      {authFlowError ? (
+        <Alert color="red" variant="light">
+          {authFlowError}
+        </Alert>
+      ) : null}
+    </Stack>
+  );
 };
 
-export const ReadinessCard = ({
-  id,
-  onboardingSteps,
-  nextStep,
-  selectedProfileName,
-  dismissCompletedReadinessCard,
-  onDismissCompletedReadinessCard,
-  onDismissAutomationReminder,
-  variant
-}: {
-  id?: string;
-  onboardingSteps: ReturnType<typeof buildOnboardingSteps>;
-  nextStep: ReturnType<typeof buildOnboardingSteps>[number] | null;
-  selectedProfileName: string;
-  dismissCompletedReadinessCard: boolean;
-  onDismissCompletedReadinessCard: (dismissed: boolean) => void;
-  onDismissAutomationReminder: () => void;
-  variant: 'today' | 'settings';
-}): JSX.Element | null => {
-  if (!nextStep && variant === 'today' && dismissCompletedReadinessCard) {
-    return null;
-  }
+// The OOTP export folder, prefilled with the platform default so most people only confirm it.
+export const ExportFolderPicker = (): JSX.Element => {
+  const { selectedProfile, addWatchRoot } = useDesktop();
+  const [path, setPath] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void desktopClient.getDefaultWatchRoot().then((defaultPath) => {
+      if (active && defaultPath) {
+        setPath((current) => (current.trim() ? current : defaultPath));
+      }
+    }).catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const save = async (): Promise<void> => {
+    if (!selectedProfile || !path.trim()) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await addWatchRoot({ profileId: selectedProfile.id, path: path.trim(), recursive: false });
+    } catch {
+      setError("Couldn't use that folder. Check the path and try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Stack gap="xs">
+      <Text size="xs" c="dimmed">
+        This is where OOTP saves your exports. Confirm it, or paste a different folder.
+      </Text>
+      <TextInput
+        aria-label="OOTP export folder"
+        placeholder="Paste your OOTP export folder"
+        classNames={{ input: 'desktop-mono' }}
+        value={path}
+        title={path}
+        onChange={(event) => setPath(event.currentTarget.value)}
+      />
+      <Group justify="space-between" wrap="wrap" gap="xs">
+        <Button component={Link} to="/automation#watch-folders" size="compact-xs" variant="subtle" color="gray">
+          More folder options
+        </Button>
+        <Button disabled={!selectedProfile || !path.trim()} loading={saving} onClick={() => void save()}>
+          Use this folder
+        </Button>
+      </Group>
+      {error ? (
+        <Alert color="red" variant="light">
+          {error}
+        </Alert>
+      ) : null}
+    </Stack>
+  );
+};
+
+// First-run setup on Today and in Settings: two required steps with their actions inline, one optional
+// step, and a one-line note once setup is done.
+export const ReadinessCard = ({ id, variant }: { id?: string; variant: 'today' | 'settings' }): JSX.Element | null => {
+  const { snapshot, selectedProfile, authFlowState, updatePreferences } = useDesktop();
+  const steps = useMemo(
+    () => buildOnboardingSteps({ snapshot, selectedProfile, authFlowState }),
+    [authFlowState, selectedProfile, snapshot]
+  );
+  const nextStep = nextOnboardingStep(steps);
+  const requiredSteps = requiredOnboardingSteps(steps);
+  const doneCount = requiredSteps.filter((step) => step.complete).length;
+  const rulesStep = steps.find((step) => step.key === 'rules') ?? null;
+  const hideDoneNote = snapshot.preferences.dismissCompletedReadinessCard;
+  const savePreferences = (patch: Partial<DesktopPreferences>): void => {
+    void updatePreferences({ ...snapshot.preferences, ...patch });
+  };
 
   if (!nextStep) {
+    if (variant === 'today' && hideDoneNote) {
+      return null;
+    }
     return (
-      <Card withBorder className="desktop-card desktop-today-readiness-compact" id={id}>
-        <Stack gap="sm">
-          <SectionHeader
-            eyebrow="Readiness"
-            title="Operationally ready"
-            aside={<Text size="sm" c="dimmed">{selectedProfileName}</Text>}
-          />
+      <Card withBorder className="desktop-card desktop-setup-done" id={id}>
+        <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+          <Text size="sm">
+            <Text span fw={700} c="teal">
+              Setup complete.
+            </Text>{' '}
+            New exports in your OOTP folder upload automatically.
+          </Text>
           <Group gap="xs" wrap="wrap">
-            {onboardingSteps.map((step) => (
-              <Badge key={step.key} color="teal" variant="light">
-                {step.label}
-              </Badge>
-            ))}
+            {rulesStep && !rulesStep.complete && rulesStep.href ? (
+              <Button component={Link} to={rulesStep.href} size="compact-xs" variant="subtle">
+                {rulesStep.label}
+              </Button>
+            ) : null}
+            {variant === 'today' ? (
+              <Button size="compact-xs" variant="subtle" color="gray" onClick={() => savePreferences({ dismissCompletedReadinessCard: true })}>
+                Dismiss
+              </Button>
+            ) : (
+              <Button
+                size="compact-xs"
+                variant="light"
+                color="gray"
+                onClick={() => savePreferences({ dismissCompletedReadinessCard: !hideDoneNote })}
+              >
+                {hideDoneNote ? 'Show on Today' : 'Hide from Today'}
+              </Button>
+            )}
           </Group>
-          <Group gap="xs" wrap="wrap" justify="space-between">
-            <Text size="sm" c="dimmed">
-              The desktop app is ready for normal operation.
-            </Text>
-            <Group gap="xs" wrap="wrap">
-              {variant === 'today' ? (
-                <Button size="compact-xs" variant="subtle" color="gray" onClick={() => onDismissCompletedReadinessCard(true)}>
-                  Dismiss
-                </Button>
-              ) : (
-                <Button
-                  size="compact-xs"
-                  variant="light"
-                  color="gray"
-                  onClick={() => onDismissCompletedReadinessCard(!dismissCompletedReadinessCard)}
-                >
-                  {dismissCompletedReadinessCard ? 'Show on Today' : 'Hide from Today'}
-                </Button>
-              )}
-              {variant === 'today' ? (
-                <Button component={Link} to="/settings#readiness" size="compact-xs" variant="light">
-                  Manage readiness
-                </Button>
-              ) : (
-                <Button component={Link} to="/today" size="compact-xs" variant="light">
-                  Open Today
-                </Button>
-              )}
-            </Group>
-          </Group>
-        </Stack>
+        </Group>
       </Card>
     );
   }
 
   return (
-    <Card withBorder className="desktop-card desktop-today-strip" id={id}>
+    <Card withBorder className="desktop-card desktop-setup-card" id={id}>
       <Stack gap="sm">
         <SectionHeader
-          eyebrow="Readiness"
-          title="Finish setup"
-          aside={<Text size="sm" c="dimmed">{selectedProfileName}</Text>}
+          eyebrow="Setup"
+          title="Get your exports uploading"
+          description="Two quick steps. After that, the app uploads new exports by itself."
+          aside={
+            <Badge color="gray" variant="light">
+              {doneCount} of {requiredSteps.length} done
+            </Badge>
+          }
         />
-        <SimpleGrid cols={{ base: 1, md: 2, xl: variant === 'today' ? 3 : 2 }} spacing="sm">
-          {onboardingSteps.map((step, index) => (
-            <Card key={step.key} withBorder className={`desktop-card desktop-today-strip-item${step.complete ? ' complete' : ''}`}>
-              <Stack gap={6}>
+        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="sm">
+          {requiredSteps.map((step, index) => (
+            <Card key={step.key} withBorder className={`desktop-card desktop-setup-step${step.complete ? ' complete' : ''}`}>
+              <Stack gap="xs">
                 <Group justify="space-between" align="flex-start" wrap="nowrap">
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <Text size="sm" fw={700}>
                       {index + 1}. {step.label}
                     </Text>
-                    <Text size="xs" c="dimmed">
-                      {step.status}
-                    </Text>
-                  </div>
-                  <Badge color={step.complete ? 'teal' : step === nextStep ? 'orange' : 'gray'} variant="light">
-                    {step.complete ? 'Ready' : 'Pending'}
-                  </Badge>
-                </Group>
-                <Text size="xs" c="dimmed">
-                  {step === nextStep ? step.detail : step.complete ? 'Ready for normal operation.' : 'Still needs setup.'}
-                </Text>
-                {!step.complete ? (
-                  <Group gap="xs" wrap="wrap">
-                    <Button component={Link} to={step.href} size="compact-xs" variant="light" className="desktop-today-strip-action">
-                      {step.actionLabel}
-                    </Button>
-                    {step.dismissible ? (
-                      <Button size="compact-xs" variant="subtle" color="gray" onClick={onDismissAutomationReminder}>
-                        Dismiss
-                      </Button>
+                    {step.state !== 'waiting_on_you' ? (
+                      <Text size="xs" c="dimmed" truncate="end">
+                        {step.status}
+                      </Text>
                     ) : null}
-                  </Group>
-                ) : null}
+                  </div>
+                  <OnboardingStepBadge state={step.state} />
+                </Group>
+                {step.complete ? (
+                  <Text size="xs" c="dimmed">
+                    {step.detail}
+                  </Text>
+                ) : step.key === 'auth' ? (
+                  <SignInPanel />
+                ) : (
+                  <ExportFolderPicker />
+                )}
               </Stack>
             </Card>
           ))}
         </SimpleGrid>
+        {rulesStep && !rulesStep.complete ? (
+          <Group justify="space-between" align="center" wrap="wrap" gap="xs" className="desktop-setup-optional">
+            <div style={{ minWidth: 0 }}>
+              <Group gap="xs" wrap="nowrap">
+                <Text size="sm" fw={600}>
+                  {rulesStep.label}
+                </Text>
+                <OnboardingStepBadge state={rulesStep.state} />
+              </Group>
+              <Text size="xs" c="dimmed">
+                {rulesStep.detail}
+              </Text>
+            </div>
+            <Group gap="xs" wrap="wrap">
+              {rulesStep.href ? (
+                <Button component={Link} to={rulesStep.href} size="compact-xs" variant="light">
+                  {rulesStep.actionLabel}
+                </Button>
+              ) : null}
+              <Button size="compact-xs" variant="subtle" color="gray" onClick={() => savePreferences({ dismissAutomationRuleReadiness: true })}>
+                Not now
+              </Button>
+            </Group>
+          </Group>
+        ) : null}
       </Stack>
     </Card>
+  );
+};
+
+// Shown under the topbar on every page while the selected server can't be reached. Uploads wait, nothing is lost.
+export const ConnectionBanner = (): JSX.Element | null => {
+  const { connection, selectedProfile, refreshHealth } = useDesktop();
+  const [retrying, setRetrying] = useState(false);
+  if (connection !== 'unreachable' || !selectedProfile) {
+    return null;
+  }
+  const custom = isCustomServer(selectedProfile);
+  return (
+    <Alert className="desktop-connection-banner" color="red" variant="light">
+      <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+        <div style={{ minWidth: 0 }}>
+          <Text size="sm" fw={700}>
+            {custom ? `Can't reach the custom server (${serverHostLabel(selectedProfile.baseUrl)}) right now.` : "Can't reach XiPS right now."}
+          </Text>
+          <Text size="sm">
+            {custom ? 'Check that the server is running.' : 'Check your internet connection.'} Your exports are kept and upload once the
+            connection is back.
+          </Text>
+        </div>
+        <Button
+          size="xs"
+          variant="light"
+          color="red"
+          loading={retrying}
+          onClick={() => {
+            setRetrying(true);
+            void refreshHealth().finally(() => setRetrying(false));
+          }}
+        >
+          Retry
+        </Button>
+      </Group>
+    </Alert>
   );
 };
 
@@ -285,7 +378,8 @@ const SIDEBAR_EXPAND_HOVER_DELAY_MS = 3000;
 
 export const DesktopSidebar = (): JSX.Element => {
   const location = useLocation();
-  const { snapshot, health } = useDesktop();
+  const { selectedProfile, connection } = useDesktop();
+  const customServer = isCustomServer(selectedProfile);
   const [collapsed, setCollapsed] = useState(false);
   const sidebarRef = useRef<HTMLDivElement | null>(null);
   const collapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -370,7 +464,7 @@ export const DesktopSidebar = (): JSX.Element => {
                 xips-pt Desktop
               </Text>
               <Text size="xs" c="dimmed">
-                Local CSV uploader for xips-pt
+                Uploads your OOTP exports
               </Text>
             </div>
           )}
@@ -423,22 +517,24 @@ export const DesktopSidebar = (): JSX.Element => {
       {collapsed ? null : (
         <Card withBorder className="desktop-server-status-card">
           <Stack gap={6}>
-            <Text className="desktop-micro-label">Server status</Text>
-            <Group justify="space-between">
-              <Text size="sm">{health?.service ?? 'Not checked'}</Text>
-              <Badge color={health?.ok ? 'teal' : 'gray'} variant="light">
-                {health?.ok ? 'Healthy' : 'Idle'}
+            <Text className="desktop-micro-label">Connection</Text>
+            <Group justify="space-between" wrap="nowrap" gap="xs">
+              <Text size="sm" truncate="end">
+                {customServer ? 'Custom' : 'XiPS'}
+              </Text>
+              <Badge
+                color={connection === 'connected' ? 'teal' : connection === 'unreachable' ? 'red' : 'gray'}
+                variant="light"
+                style={{ flexShrink: 0 }}
+              >
+                {connection === 'connected' ? 'Connected' : connection === 'unreachable' ? "Can't reach" : 'Connecting…'}
               </Badge>
             </Group>
-            <Text size="xs" c="dimmed">
-              Queue depth: {health?.queueDepth ?? 0}
-            </Text>
-            <Text size="xs" c="dimmed">
-              Failed jobs: {health?.failedJobs ?? 0}
-            </Text>
-            <Text size="xs" c="dimmed">
-              Profiles: {snapshot.profiles.length}
-            </Text>
+            {customServer && selectedProfile ? (
+              <Text size="xs" c="orange" className="desktop-mono" truncate="end" title={selectedProfile.baseUrl}>
+                {serverHostLabel(selectedProfile.baseUrl)}
+              </Text>
+            ) : null}
           </Stack>
         </Card>
       )}
@@ -452,56 +548,59 @@ export const DesktopTopbar = (): JSX.Element => {
     authFlowState,
     selectedProfile,
     selectServerProfile,
-    openAuthWindow,
     logout,
     processUploadQueue
   } = useDesktop();
-  const isAuthenticated = snapshot.authUser !== null && snapshot.authProfileId === snapshot.selectedProfileId;
+  const isAuthenticated = isSignedInToSelectedServer(snapshot);
+  const customServer = isCustomServer(selectedProfile);
+  const setupWaiting = useMemo(
+    () => nextOnboardingStep(buildOnboardingSteps({ snapshot, selectedProfile, authFlowState })) !== null,
+    [authFlowState, selectedProfile, snapshot]
+  );
   const needsAttentionCount = snapshot.uploadJobs.filter(uploadJobNeedsAttention).length;
   const automaticQueueCount = snapshot.uploadJobs.filter(uploadJobWorkingAutomatically).length;
 
   return (
     <header className="desktop-topbar">
       <div className="desktop-topbar-left">
-        <Group gap="xs" wrap="nowrap" className="desktop-topbar-primary">
-          <Text size="sm" fw={600}>
-            Server
-          </Text>
-          <Select
-            value={snapshot.selectedProfileId || null}
-            data={serverOptions(snapshot.profiles)}
-            placeholder="Select a server"
-            className="desktop-select-wrap"
-            onChange={(value) => {
-              if (value) {
-                void selectServerProfile(value);
-              }
-            }}
-          />
-        </Group>
-        <Group gap="sm" wrap="wrap" className="desktop-topbar-meta">
-          {selectedProfile ? (
-            <Text size="sm" c="dimmed">
-              Uploading to <span className="desktop-mono">{selectedProfile.baseUrl}</span>
-            </Text>
-          ) : null}
-          {snapshot.tokenExpiresAt && isAuthenticated ? (
-            <Text size="xs" c="dimmed">
-              Token {new Date(snapshot.tokenExpiresAt).toLocaleString()}
-            </Text>
-          ) : null}
-          {authFlowState === 'waiting' ? (
-            <Badge color="orange" variant="light">
-              Completing sign-in...
-            </Badge>
-          ) : null}
-        </Group>
+        {customServer && selectedProfile ? (
+          <>
+            {/* Server switching is a developer feature, so it only shows up while a custom server is in use. */}
+            <Group gap="xs" wrap="nowrap" className="desktop-topbar-primary">
+              <Badge color="orange" variant="filled" size="lg" className="desktop-custom-server-badge" title={selectedProfile.baseUrl}>
+                Custom server: {serverHostLabel(selectedProfile.baseUrl)}
+              </Badge>
+              <Select
+                aria-label="Server"
+                value={snapshot.selectedProfileId || null}
+                data={serverOptions(snapshot.profiles)}
+                className="desktop-select-wrap"
+                allowDeselect={false}
+                onChange={(value) => {
+                  if (value) {
+                    void selectServerProfile(value);
+                  }
+                }}
+              />
+            </Group>
+            <Group gap="sm" wrap="wrap" className="desktop-topbar-meta">
+              <Text size="sm" c="dimmed">
+                Uploading to <span className="desktop-mono">{selectedProfile.baseUrl}</span>
+              </Text>
+            </Group>
+          </>
+        ) : null}
+        {authFlowState === 'waiting' ? (
+          <Badge color="blue" variant="light">
+            Finishing sign-in…
+          </Badge>
+        ) : null}
       </div>
       <Group gap="sm" wrap="wrap" className="desktop-topbar-actions">
-        {!selectedProfile ? (
-          <Alert className="desktop-topbar-alert" color="blue" variant="light" title="Setup in progress">
-            Use the checklist to add a server, check health, sign in, and finish watch-folder setup.
-          </Alert>
+        {setupWaiting ? (
+          <Button component={Link} to="/today" size="xs" color="orange" variant="light">
+            Setup: waiting on you
+          </Button>
         ) : null}
         {needsAttentionCount > 0 ? (
           <Badge color="orange" variant="light">
@@ -520,19 +619,14 @@ export const DesktopTopbar = (): JSX.Element => {
         {selectedProfile ? (
           <>
             {!isAuthenticated ? (
-              <>
-                <Badge color="gray" variant="light">
-                  Signed out
-                </Badge>
-                <Button
-                  size="xs"
-                  variant="light"
-                  disabled={authFlowState === 'waiting'}
-                  onClick={() => void openAuthWindow(selectedProfile.id)}
-                >
-                  Sign in
-                </Button>
-              </>
+              <Popover width={360} position="bottom-end" withArrow shadow="md">
+                <Popover.Target>
+                  <Button size="xs">Sign in</Button>
+                </Popover.Target>
+                <Popover.Dropdown>
+                  <SignInPanel />
+                </Popover.Dropdown>
+              </Popover>
             ) : null}
             <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void processUploadQueue(selectedProfile.id)}>
               Run queue now
@@ -550,7 +644,7 @@ export const DesktopTopbar = (): JSX.Element => {
                       {snapshot.authUser.displayName}
                     </Text>
                     <Button size="xs" color="red" variant="light" onClick={() => void logout(selectedProfile.id)}>
-                      Logout
+                      Sign out
                     </Button>
                   </Stack>
                 </HoverCard.Dropdown>
@@ -895,62 +989,109 @@ export const FormatsTable = ({ formats }: { formats: TournamentFormat[] }): JSX.
   </Table.ScrollContainer>
 );
 
+// Add or edit a custom server (Settings → Advanced). The built-in XiPS server isn't editable here.
 export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
   const { snapshot, saveServerProfile } = useDesktop();
+  const customProfiles = snapshot.profiles.filter((profile) => !profile.isDefault);
   const [editingId, setEditingId] = useState('');
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [gameVersion, setGameVersion] = useState('ootp27');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
+
+  const reset = (): void => {
+    setEditingId('');
+    setName('');
+    setBaseUrl('');
+    setGameVersion('ootp27');
+  };
+
+  const save = async (): Promise<void> => {
+    if (!name.trim() || !baseUrl.trim()) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setWarning('');
+    try {
+      const result = await saveServerProfile({
+        id: editingId || undefined,
+        name: name.trim(),
+        baseUrl: baseUrl.trim(),
+        gameVersion: gameVersion.trim() || 'ootp27'
+      });
+      setWarning(result.warning);
+      reset();
+    } catch (saveError) {
+      // Rust validation errors are written for people ("Server address must start with ...").
+      setError(describeError(saveError, "Couldn't save this server."));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <Card withBorder className="desktop-card" id={id}>
+    <Card withBorder className="desktop-card desktop-subcard" id={id}>
       <Stack gap="sm">
-        <Text fw={700}>Add server profile</Text>
-        <Select
-          label="Edit existing profile"
-          placeholder="Create a new profile"
-          value={editingId || null}
-          data={[
-            { value: '', label: 'Create new profile' },
-            ...snapshot.profiles.map((profile) => ({ value: profile.id, label: profile.name }))
-          ]}
-          onChange={(value) => {
-            const nextId = value ?? '';
-            setEditingId(nextId);
-            const profile = snapshot.profiles.find((item) => item.id === nextId) ?? null;
-            setName(profile?.name ?? '');
-            setBaseUrl(profile?.baseUrl ?? '');
-            setGameVersion(profile?.gameVersion ?? 'ootp27');
-          }}
+        <div>
+          <Text fw={700}>Add or edit a server</Text>
+          <Text size="xs" c="dimmed">
+            Saving switches uploads to that server.
+          </Text>
+        </div>
+        {customProfiles.length > 0 ? (
+          <Select
+            label="Edit a saved server"
+            placeholder="Add a new server"
+            value={editingId || null}
+            data={[
+              { value: '', label: 'Add a new server' },
+              ...customProfiles.map((profile) => ({ value: profile.id, label: profile.name }))
+            ]}
+            onChange={(value) => {
+              const nextId = value ?? '';
+              setEditingId(nextId);
+              const profile = customProfiles.find((item) => item.id === nextId) ?? null;
+              setName(profile?.name ?? '');
+              setBaseUrl(profile?.baseUrl ?? '');
+              setGameVersion(profile?.gameVersion ?? 'ootp27');
+            }}
+          />
+        ) : null}
+        <TextInput label="Name" placeholder="Local dev" value={name} onChange={(event) => setName(event.currentTarget.value)} />
+        <TextInput
+          label="Server address"
+          placeholder="http://localhost:8080"
+          classNames={{ input: 'desktop-mono' }}
+          value={baseUrl}
+          onChange={(event) => setBaseUrl(event.currentTarget.value)}
         />
-        <TextInput label="Profile name" value={name} onChange={(event) => setName(event.currentTarget.value)} />
-        <TextInput label="Base URL" value={baseUrl} onChange={(event) => setBaseUrl(event.currentTarget.value)} />
         <TextInput
           label="Game version"
           description="OOTP game version this server tracks, e.g. ootp27. Leave as ootp27 unless the server says otherwise."
           value={gameVersion}
           onChange={(event) => setGameVersion(event.currentTarget.value)}
         />
+        {error ? (
+          <Alert color="red" variant="light">
+            {error}
+          </Alert>
+        ) : null}
+        {warning ? (
+          <Alert color="yellow" variant="light">
+            {warning}
+          </Alert>
+        ) : null}
         <Group justify="flex-end">
-          <Button
-            onClick={() => {
-              if (!name.trim() || !baseUrl.trim()) {
-                return;
-              }
-              void saveServerProfile({
-                id: editingId || undefined,
-                name: name.trim(),
-                baseUrl: baseUrl.trim(),
-                gameVersion: gameVersion.trim() || 'ootp27'
-              }).then(() => {
-                setEditingId('');
-                setName('');
-                setBaseUrl('');
-                setGameVersion('ootp27');
-              });
-            }}
-          >
-            {editingId ? 'Update profile' : 'Save profile'}
+          {editingId ? (
+            <Button variant="subtle" color="gray" onClick={reset}>
+              Cancel
+            </Button>
+          ) : null}
+          <Button disabled={!name.trim() || !baseUrl.trim()} loading={saving} onClick={() => void save()}>
+            {editingId ? 'Update server' : 'Save server'}
           </Button>
         </Group>
       </Stack>
@@ -985,12 +1126,12 @@ export const WatchRootForm = ({ id }: { id?: string }): JSX.Element => {
         <Text fw={700}>Add watch folder</Text>
         <TextInput
           label="Folder path"
-          placeholder="Default OOTP 27 online_data path"
+          placeholder="Paste your OOTP export folder"
           value={path}
           onChange={(event) => setPath(event.currentTarget.value)}
         />
         <Text size="xs" c="dimmed">
-          Defaults to the current platform&apos;s OOTP Baseball 27 `online_data` directory.
+          Starts with the folder where OOTP 27 saves exports.
         </Text>
         <Checkbox
           label="Include subfolders"
@@ -1106,7 +1247,7 @@ export const PreferencesForm = ({
             checked={!dismissAutomationRuleReadiness}
             onChange={(event) => setDismissAutomationRuleReadiness(!event.currentTarget.checked)}
           />
-          <span>Keep automation rule in the readiness checklist</span>
+          <span>Show &apos;Help with oddly named files&apos; in setup</span>
         </label>
         <label className="desktop-checkbox-row">
           <input
@@ -1114,7 +1255,7 @@ export const PreferencesForm = ({
             checked={!dismissCompletedReadinessCard}
             onChange={(event) => setDismissCompletedReadinessCard(!event.currentTarget.checked)}
           />
-          <span>Keep the completed readiness card on Today</span>
+          <span>Show the setup-complete note on Today</span>
         </label>
         <TextInput
           label="Polling interval (seconds)"
