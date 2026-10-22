@@ -293,6 +293,10 @@ a {
   min-width: 0;
 }
 
+.desktop-queue-layout.no-inspector {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .desktop-queue-inspector {
   position: sticky;
   top: 16px;
