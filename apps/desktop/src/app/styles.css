@@ -155,8 +155,9 @@ a {
   border: 1px solid var(--line-0);
 }
 
-.desktop-setup-step.complete {
-  border-color: var(--accent-green);
+.desktop-setup-done-step {
+  min-width: 0;
+  padding: 0 2px;
 }
 
 .desktop-setup-optional {
@@ -167,10 +168,6 @@ a {
 .desktop-setup-done {
   background: var(--surface-1);
   border: 1px solid var(--accent-green);
-}
-
-.desktop-sign-in-steps {
-  padding-left: 2px;
 }
 
 .desktop-content {

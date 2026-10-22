@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, List, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Tooltip } from '@mantine/core';
+import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Tooltip } from '@mantine/core';
 import { mdiBaseball, mdiCalendarToday, mdiCloudUpload, mdiCog, mdiLightningBolt, mdiWrench } from '@mdi/js';
 import { Link, useLocation } from 'react-router-dom';
 import type {
@@ -80,7 +80,9 @@ export const OnboardingStepBadge = ({ state }: { state: OnboardingStepState }): 
 export const SignInPanel = (): JSX.Element => {
   const { selectedProfile, authFlowState, authFlowError, openAuthWindow, redeemAuthCode } = useDesktop();
   const [code, setCode] = useState('');
+  const [showCodeEntry, setShowCodeEntry] = useState(false);
   const profileId = selectedProfile?.id ?? '';
+  const codeEntryOpen = showCodeEntry || authFlowState === 'waiting' || Boolean(authFlowError);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -97,7 +99,7 @@ export const SignInPanel = (): JSX.Element => {
 
   return (
     <Stack gap="xs">
-      <Group>
+      <Group gap="xs" wrap="wrap">
         <Button
           disabled={!profileId || authFlowState === 'waiting'}
           onClick={() => {
@@ -106,16 +108,16 @@ export const SignInPanel = (): JSX.Element => {
         >
           Sign in with Discord
         </Button>
+        {codeEntryOpen ? null : (
+          <Button size="compact-xs" variant="subtle" color="gray" onClick={() => setShowCodeEntry(true)}>
+            Have a code? Paste it
+          </Button>
+        )}
       </Group>
-      <List type="ordered" size="xs" spacing={2} className="desktop-sign-in-steps">
-        <List.Item>Click Sign in with Discord. A sign-in window opens.</List.Item>
-        <List.Item>Sign in with your Discord account.</List.Item>
-        <List.Item>If the window shows a code, copy it.</List.Item>
-        <List.Item>Paste the code below and click Finish sign-in.</List.Item>
-      </List>
       <Text size="xs" c="dimmed">
-        Often this finishes by itself right after you sign in.
+        A Discord window opens, and sign-in usually finishes by itself. If the window shows a code, paste it here.
       </Text>
+      {codeEntryOpen ? (
       <form onSubmit={(event) => void submit(event)}>
         <Group gap="xs" wrap="nowrap" align="flex-end">
           <TextInput
@@ -131,6 +133,7 @@ export const SignInPanel = (): JSX.Element => {
           </Button>
         </Group>
       </form>
+      ) : null}
       {authFlowState === 'waiting' ? (
         <Text size="xs" c="blue">
           Finishing sign-in…
@@ -220,14 +223,14 @@ export const ReadinessCard = ({ id, variant }: { id?: string; variant: 'today' |
   const nextStep = nextOnboardingStep(steps);
   const requiredSteps = requiredOnboardingSteps(steps);
   const doneCount = requiredSteps.filter((step) => step.complete).length;
+  const pendingSteps = requiredSteps.filter((step) => !step.complete);
   const rulesStep = steps.find((step) => step.key === 'rules') ?? null;
-  const hideDoneNote = snapshot.preferences.dismissCompletedReadinessCard;
   const savePreferences = (patch: Partial<DesktopPreferences>): void => {
     void updatePreferences({ ...snapshot.preferences, ...patch });
   };
 
   if (!nextStep) {
-    if (variant === 'today' && hideDoneNote) {
+    if (variant === 'today') {
       return null;
     }
     return (
@@ -245,20 +248,6 @@ export const ReadinessCard = ({ id, variant }: { id?: string; variant: 'today' |
                 {rulesStep.label}
               </Button>
             ) : null}
-            {variant === 'today' ? (
-              <Button size="compact-xs" variant="subtle" color="gray" onClick={() => savePreferences({ dismissCompletedReadinessCard: true })}>
-                Dismiss
-              </Button>
-            ) : (
-              <Button
-                size="compact-xs"
-                variant="light"
-                color="gray"
-                onClick={() => savePreferences({ dismissCompletedReadinessCard: !hideDoneNote })}
-              >
-                {hideDoneNote ? 'Show on Today' : 'Hide from Today'}
-              </Button>
-            )}
           </Group>
         </Group>
       </Card>
@@ -278,14 +267,14 @@ export const ReadinessCard = ({ id, variant }: { id?: string; variant: 'today' |
             </Badge>
           }
         />
-        <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="sm">
-          {requiredSteps.map((step, index) => (
-            <Card key={step.key} withBorder className={`desktop-card desktop-setup-step${step.complete ? ' complete' : ''}`}>
+        <SimpleGrid cols={{ base: 1, lg: pendingSteps.length > 1 ? 2 : 1 }} spacing="sm">
+          {pendingSteps.map((step) => (
+            <Card key={step.key} withBorder className="desktop-card desktop-setup-step">
               <Stack gap="xs">
                 <Group justify="space-between" align="flex-start" wrap="nowrap">
                   <div style={{ minWidth: 0 }}>
                     <Text size="sm" fw={700}>
-                      {index + 1}. {step.label}
+                      {requiredSteps.indexOf(step) + 1}. {step.label}
                     </Text>
                     {step.state !== 'waiting_on_you' ? (
                       <Text size="xs" c="dimmed" truncate="end">
@@ -295,11 +284,7 @@ export const ReadinessCard = ({ id, variant }: { id?: string; variant: 'today' |
                   </div>
                   <OnboardingStepBadge state={step.state} />
                 </Group>
-                {step.complete ? (
-                  <Text size="xs" c="dimmed">
-                    {step.detail}
-                  </Text>
-                ) : step.key === 'auth' ? (
+                {step.key === 'auth' ? (
                   <SignInPanel />
                 ) : (
                   <ExportFolderPicker />
@@ -308,6 +293,19 @@ export const ReadinessCard = ({ id, variant }: { id?: string; variant: 'today' |
             </Card>
           ))}
         </SimpleGrid>
+        {requiredSteps
+          .filter((step) => step.complete)
+          .map((step) => (
+            <Group key={step.key} gap="xs" wrap="nowrap" className="desktop-setup-done-step">
+              <OnboardingStepBadge state={step.state} />
+              <Text size="sm" fw={600}>
+                {requiredSteps.indexOf(step) + 1}. {step.label}
+              </Text>
+              <Text size="xs" c="dimmed" truncate="end">
+                {step.status}
+              </Text>
+            </Group>
+          ))}
         {rulesStep && !rulesStep.complete ? (
           <Group justify="space-between" align="center" wrap="wrap" gap="xs" className="desktop-setup-optional">
             <div style={{ minWidth: 0 }}>
@@ -1250,7 +1248,6 @@ export const PreferencesForm = ({
   const [pollingIntervalSeconds, setPollingIntervalSeconds] = useState(String(preferences.pollingIntervalSeconds));
   const [diagnosticsRetentionDays, setDiagnosticsRetentionDays] = useState(String(preferences.diagnosticsRetentionDays));
   const [dismissAutomationRuleReadiness, setDismissAutomationRuleReadiness] = useState(preferences.dismissAutomationRuleReadiness);
-  const [dismissCompletedReadinessCard, setDismissCompletedReadinessCard] = useState(preferences.dismissCompletedReadinessCard);
 
   return (
     <Card withBorder className="desktop-card">
@@ -1276,14 +1273,6 @@ export const PreferencesForm = ({
           />
           <span>Show &apos;Help with oddly named files&apos; in setup</span>
         </label>
-        <label className="desktop-checkbox-row">
-          <input
-            type="checkbox"
-            checked={!dismissCompletedReadinessCard}
-            onChange={(event) => setDismissCompletedReadinessCard(!event.currentTarget.checked)}
-          />
-          <span>Show the setup-complete note on Today</span>
-        </label>
         <TextInput
           label="Polling interval (seconds)"
           value={pollingIntervalSeconds}
@@ -1308,7 +1297,7 @@ export const PreferencesForm = ({
                 pollingIntervalSeconds: polling,
                 diagnosticsRetentionDays: retention,
                 dismissAutomationRuleReadiness,
-                dismissCompletedReadinessCard
+                dismissCompletedReadinessCard: preferences.dismissCompletedReadinessCard
               });
             }}
           >

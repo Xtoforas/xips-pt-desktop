@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Group, HoverCard, Stack, Table, Text, Title } from '@mantine/core';
+import { Badge, Button, Card, Group, HoverCard, Stack, Table, Text, Title } from '@mantine/core';
 import { mdiInformationOutline } from '@mdi/js';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
@@ -126,6 +126,20 @@ const JobTable = ({
   </div>
 );
 
+// An empty Today section: one line instead of a header plus an empty-state box.
+const QuietSection = ({ title, message }: { title: string; message: string }): JSX.Element => (
+  <Card withBorder className="desktop-card desktop-today-section" py="xs">
+    <Group gap="sm" wrap="nowrap">
+      <Text size="sm" fw={700}>
+        {title}
+      </Text>
+      <Text size="sm" c="dimmed" truncate="end">
+        {message}
+      </Text>
+    </Group>
+  </Card>
+);
+
 export const TodayPage = (): JSX.Element => {
   const { snapshot, selectedProfile, ignoreUploadJob } = useDesktop();
   const customServer = isCustomServer(selectedProfile);
@@ -200,162 +214,152 @@ export const TodayPage = (): JSX.Element => {
         </Text>
       </Stack>
       <ReadinessCard variant="today" />
-      <Card withBorder className="desktop-card desktop-today-section">
-        <Stack gap="md">
-          <SectionHeader
-            eyebrow="Needs attention"
-            title="Blocked files"
-            aside={<Badge color={needsAttentionCount > 0 ? 'orange' : 'gray'} variant="light">
-              {needsAttentionCount} file{needsAttentionCount === 1 ? '' : 's'}
-            </Badge>}
-          />
-          {blockerRows.length === 0 ? (
-            <Alert color="teal" variant="light">
-              Nothing needs you right now.
-            </Alert>
-          ) : (
-            <>
-              <div className="admin-table-frame">
-                <div className="landing-table-wrap admin-table-wrap">
-                  <table className="landing-table observed-table admin-table desktop-today-table">
-                    <colgroup>
-                      <col className="desktop-today-col-file" />
-                      <col />
-                      <col className="desktop-today-col-updated" />
-                      <col className="desktop-today-col-actions" />
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th>File</th>
-                        <th>Status</th>
-                        <th>Updated</th>
-                        <th aria-label="Actions" />
+      {blockerRows.length === 0 ? (
+        <QuietSection title="Blocked files" message="Nothing needs you right now." />
+      ) : (
+        <Card withBorder className="desktop-card desktop-today-section">
+          <Stack gap="md">
+            <SectionHeader
+              eyebrow="Needs attention"
+              title="Blocked files"
+              aside={<Badge color="orange" variant="light">
+                {needsAttentionCount} file{needsAttentionCount === 1 ? '' : 's'}
+              </Badge>}
+            />
+            <div className="admin-table-frame">
+              <div className="landing-table-wrap admin-table-wrap">
+                <table className="landing-table observed-table admin-table desktop-today-table">
+                  <colgroup>
+                    <col className="desktop-today-col-file" />
+                    <col />
+                    <col className="desktop-today-col-updated" />
+                    <col className="desktop-today-col-actions" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>File</th>
+                      <th>Status</th>
+                      <th>Updated</th>
+                      <th aria-label="Actions" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {blockerRows.slice(0, BLOCKER_ROW_LIMIT).map(({ job, summary }) => (
+                      <tr key={job.id} className="landing-row">
+                        <td className="landing-cell landing-cell-name">
+                          <HoverCard width={380} shadow="md" position="bottom-start" withArrow openDelay={250}>
+                            <HoverCard.Target>
+                              <div className="admin-cell-inline desktop-blocker-file">
+                                <span className="admin-cell-clip">{job.filename}</span>
+                                <span className="desktop-blocker-info">
+                                  <MdiIcon path={mdiInformationOutline} size={14} />
+                                </span>
+                              </div>
+                            </HoverCard.Target>
+                            <HoverCard.Dropdown>
+                              <BlockedJobDetails
+                                job={job}
+                                summary={summary}
+                                formatName={formatUploadFormatLabel(job.formatId, formatLabelById)}
+                              />
+                            </HoverCard.Dropdown>
+                          </HoverCard>
+                        </td>
+                        <td className="landing-cell" title={summary.reason || undefined}>
+                          <div className="admin-cell-inline admin-nowrap">
+                            <BlockedStatusBadge summary={summary} />
+                            <span className="admin-cell-clip">{summary.reason}</span>
+                          </div>
+                        </td>
+                        <UpdatedCell job={job} />
+                        <td className="landing-cell">
+                          <Group gap={4} wrap="nowrap">
+                            <Button component={Link} to={queueLinkForJob(job.id, 'needs_action')} size="compact-xs" variant="light">
+                              Open
+                            </Button>
+                            <Button
+                              size="compact-xs"
+                              variant="subtle"
+                              color="gray"
+                              title="Move to the queue's Ignored tab; restore it there any time."
+                              onClick={() => void ignoreUploadJob(job.id)}
+                            >
+                              Ignore
+                            </Button>
+                          </Group>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {blockerRows.slice(0, BLOCKER_ROW_LIMIT).map(({ job, summary }) => (
-                        <tr key={job.id} className="landing-row">
-                          <td className="landing-cell landing-cell-name">
-                            <HoverCard width={380} shadow="md" position="bottom-start" withArrow openDelay={250}>
-                              <HoverCard.Target>
-                                <div className="admin-cell-inline desktop-blocker-file">
-                                  <span className="admin-cell-clip">{job.filename}</span>
-                                  <span className="desktop-blocker-info">
-                                    <MdiIcon path={mdiInformationOutline} size={14} />
-                                  </span>
-                                </div>
-                              </HoverCard.Target>
-                              <HoverCard.Dropdown>
-                                <BlockedJobDetails
-                                  job={job}
-                                  summary={summary}
-                                  formatName={formatUploadFormatLabel(job.formatId, formatLabelById)}
-                                />
-                              </HoverCard.Dropdown>
-                            </HoverCard>
-                          </td>
-                          <td className="landing-cell" title={summary.reason || undefined}>
-                            <div className="admin-cell-inline admin-nowrap">
-                              <BlockedStatusBadge summary={summary} />
-                              <span className="admin-cell-clip">{summary.reason}</span>
-                            </div>
-                          </td>
-                          <UpdatedCell job={job} />
-                          <td className="landing-cell">
-                            <Group gap={4} wrap="nowrap">
-                              <Button component={Link} to={queueLinkForJob(job.id, 'needs_action')} size="compact-xs" variant="light">
-                                Open
-                              </Button>
-                              <Button
-                                size="compact-xs"
-                                variant="subtle"
-                                color="gray"
-                                title="Move to the queue's Ignored tab; restore it there any time."
-                                onClick={() => void ignoreUploadJob(job.id)}
-                              >
-                                Ignore
-                              </Button>
-                            </Group>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              {blockerRows.length > BLOCKER_ROW_LIMIT ? (
-                <Group justify="space-between" align="center" wrap="wrap">
-                  <Text size="sm" c="dimmed">
-                    Showing {BLOCKER_ROW_LIMIT} of {blockerRows.length} blocked files.
-                  </Text>
-                  <Button component={Link} to="/queue?view=needs_action" size="xs" variant="light">
-                    Show all in the queue
-                  </Button>
-                </Group>
-              ) : null}
-            </>
-          )}
-        </Stack>
-      </Card>
-      <Card withBorder className="desktop-card desktop-today-section">
-        <Stack gap="md">
-          <SectionHeader
-            eyebrow="In progress"
-            title="Uploading now"
-            aside={<Badge color="blue" variant="light">
-              {inProgressJobs.length} in progress
-            </Badge>}
-          />
-          {inProgressJobs.length === 0 ? (
-            <Alert color="gray" variant="light">
-              Nothing is uploading right now.
-            </Alert>
-          ) : (
-            <>
-              <JobTable
-                jobs={inProgressJobs.slice(0, PROGRESS_ROW_LIMIT)}
-                formatLabels={formatLabelById}
-                status={(job) =>
-                  uploadJobWaitingOnServer(job) ? (
-                    <Badge color="cyan" variant="light">
-                      {formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}
-                    </Badge>
-                  ) : (
-                    <Badge color="blue" variant="light">
-                      {formatQueueStateLabel(job.localState, job.fileKind)}
-                    </Badge>
-                  )
-                }
-              />
-              {inProgressJobs.length > PROGRESS_ROW_LIMIT ? (
-                <Group justify="flex-end">
-                  <Button component={Link} to="/queue?view=working" size="compact-xs" variant="subtle">
-                    Show all {inProgressJobs.length} in the queue
-                  </Button>
-                </Group>
-              ) : null}
-            </>
-          )}
-        </Stack>
-      </Card>
-      <Card withBorder className="desktop-card desktop-today-section">
-        <Stack gap="md">
-          <SectionHeader
-            eyebrow="Recently completed"
-            title="Latest finished uploads"
-            aside={<Badge color="teal" variant="light">
-              {completedCount} total
-            </Badge>}
-          />
-          {completedJobs.length === 0 ? (
-            <Alert color="gray" variant="light">
-              No uploads have finished yet.
-            </Alert>
-          ) : (
+            </div>
+            {blockerRows.length > BLOCKER_ROW_LIMIT ? (
+              <Group justify="space-between" align="center" wrap="wrap">
+                <Text size="sm" c="dimmed">
+                  Showing {BLOCKER_ROW_LIMIT} of {blockerRows.length} blocked files.
+                </Text>
+                <Button component={Link} to="/queue?view=needs_action" size="xs" variant="light">
+                  Show all in the queue
+                </Button>
+              </Group>
+            ) : null}
+          </Stack>
+        </Card>
+      )}
+      {inProgressJobs.length === 0 ? (
+        <QuietSection title="Uploading now" message="Nothing is uploading right now." />
+      ) : (
+        <Card withBorder className="desktop-card desktop-today-section">
+          <Stack gap="md">
+            <SectionHeader
+              eyebrow="In progress"
+              title="Uploading now"
+              aside={<Badge color="blue" variant="light">
+                {inProgressJobs.length} in progress
+              </Badge>}
+            />
+            <JobTable
+              jobs={inProgressJobs.slice(0, PROGRESS_ROW_LIMIT)}
+              formatLabels={formatLabelById}
+              status={(job) =>
+                uploadJobWaitingOnServer(job) ? (
+                  <Badge color="cyan" variant="light">
+                    {formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}
+                  </Badge>
+                ) : (
+                  <Badge color="blue" variant="light">
+                    {formatQueueStateLabel(job.localState, job.fileKind)}
+                  </Badge>
+                )
+              }
+            />
+            {inProgressJobs.length > PROGRESS_ROW_LIMIT ? (
+              <Group justify="flex-end">
+                <Button component={Link} to="/queue?view=working" size="compact-xs" variant="subtle">
+                  Show all {inProgressJobs.length} in the queue
+                </Button>
+              </Group>
+            ) : null}
+          </Stack>
+        </Card>
+      )}
+      {completedJobs.length === 0 ? (
+        <QuietSection title="Finished uploads" message="No uploads have finished yet." />
+      ) : (
+        <Card withBorder className="desktop-card desktop-today-section">
+          <Stack gap="md">
+            <SectionHeader
+              eyebrow="Recently completed"
+              title="Latest finished uploads"
+              aside={<Badge color="teal" variant="light">
+                {completedCount} total
+              </Badge>}
+            />
             <JobTable jobs={completedJobs} formatLabels={formatLabelById} />
-          )}
-        </Stack>
-      </Card>
+          </Stack>
+        </Card>
+      )}
     </Stack>
   );
 };
