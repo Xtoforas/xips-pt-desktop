@@ -485,3 +485,10 @@ a {
     width: 100%;
   }
 }
+
+.desktop-inspector-facts th {
+  width: 110px;
+  color: var(--text-label);
+  font-weight: 600;
+  white-space: nowrap;
+}
