@@ -29,6 +29,14 @@ pub struct LocalServerProfile {
     pub created_at: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+    #[serde(rename = "isDefault", default)]
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SaveServerProfileResult {
+    /// Empty when the saved address needs no warning.
+    pub warning: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

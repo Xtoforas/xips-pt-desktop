@@ -251,7 +251,10 @@ export type LocalServerProfile = {
   gameVersion: string;
   createdAt: string;
   updatedAt: string;
+  isDefault: boolean;
 };
+
+export type SaveServerProfileResult = { warning: string };
 
 export type LocalWatchRoot = {
   id: string;

@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::db::INITIAL_MIGRATION_SQL;
 use crate::models::api::TournamentFormat;
+use crate::models::{DEFAULT_GAME_VERSION, DEFAULT_SERVER_NAME, DEFAULT_SERVER_PROFILE_ID, DEFAULT_SERVER_URL};
 use crate::models::local_state::{
     AddDiagnosticEventInput, AddWatchRootInput, DesktopPreferences, DesktopSnapshot,
     LocalDetectedFile, LocalDiagnosticEvent, LocalFormatRule, LocalServerProfile,
@@ -26,7 +27,102 @@ pub fn ensure_db(db_path: &Path) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     let connection = Connection::open(db_path).map_err(|error| error.to_string())?;
-    migrate(&connection).map_err(|error| error.to_string())
+    migrate(&connection).map_err(|error| error.to_string())?;
+    ensure_default_server_profile(&connection)?;
+    Ok(())
+}
+
+/// True when `value` is the built-in XiPS server address, ignoring case,
+/// surrounding whitespace, and trailing slashes.
+pub fn is_default_server_url(value: &str) -> bool {
+    value
+        .trim()
+        .trim_end_matches('/')
+        .eq_ignore_ascii_case(DEFAULT_SERVER_URL)
+}
+
+/// Id of the profile holding the default server URL (oldest first), if any.
+fn find_default_profile_id(connection: &Connection) -> Result<Option<String>, String> {
+    let mut statement = connection
+        .prepare("SELECT profile_id, base_url FROM server_profiles ORDER BY created_at ASC")
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|error| error.to_string())?
+        .collect::<SqlResult<Vec<(String, String)>>>()
+        .map_err(|error| error.to_string())?;
+    Ok(rows
+        .into_iter()
+        .find(|(_, base_url)| is_default_server_url(base_url))
+        .map(|(profile_id, _)| profile_id))
+}
+
+/// Makes sure the built-in XiPS profile exists and that the selection points
+/// at a real profile. Idempotent; never touches other profiles or their data.
+/// Returns the default profile id.
+pub fn ensure_default_server_profile(connection: &Connection) -> Result<String, String> {
+    let default_id = match find_default_profile_id(connection)? {
+        Some(profile_id) => profile_id,
+        None => {
+            let now = now_iso();
+            connection
+                .execute(
+                    "
+          INSERT INTO server_profiles (profile_id, profile_name, base_url, game_version, created_at, updated_at)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+          ",
+                    params![
+                        DEFAULT_SERVER_PROFILE_ID,
+                        DEFAULT_SERVER_NAME,
+                        DEFAULT_SERVER_URL,
+                        DEFAULT_GAME_VERSION,
+                        now
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            DEFAULT_SERVER_PROFILE_ID.to_string()
+        }
+    };
+    let selected = load_setting(connection, "selected_profile_id")
+        .map_err(|error| error.to_string())?;
+    let selection_valid = !selected.is_empty()
+        && connection
+            .query_row(
+                "SELECT 1 FROM server_profiles WHERE profile_id = ?1",
+                params![selected],
+                |_| Ok(()),
+            )
+            .is_ok();
+    if !selection_valid {
+        save_setting(connection, "selected_profile_id", &default_id)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(default_id)
+}
+
+/// Validates a server address. Returns the normalized URL and an optional
+/// warning to show the user.
+pub fn validate_server_url(value: &str) -> Result<(String, Option<String>), String> {
+    let normalized = normalize_base_url(value);
+    let parsed = reqwest::Url::parse(&normalized)
+        .map_err(|_| "Server address must start with http:// or https://.".to_string())?;
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err("Server address must start with http:// or https://.".to_string());
+    }
+    let host = parsed
+        .host_str()
+        .filter(|host| !host.is_empty())
+        .ok_or_else(|| "Server address needs a host name.".to_string())?;
+    let warning = if scheme == "http" && host != "localhost" && host != "127.0.0.1" {
+        Some(
+            "This server uses plain http, so your sign-in isn't encrypted in transit. Use https unless this is a local test server."
+                .to_string(),
+        )
+    } else {
+        None
+    };
+    Ok((normalized, warning))
 }
 
 pub fn open_db(db_path: &Path) -> Result<Connection, String> {
@@ -158,9 +254,28 @@ pub fn load_snapshot(db_path: &Path) -> Result<DesktopSnapshot, String> {
 pub fn save_server_profile(
     db_path: &Path,
     input: SaveServerProfileInput,
-) -> Result<DesktopSnapshot, String> {
+) -> Result<(DesktopSnapshot, Option<String>), String> {
     let connection = open_db(db_path)?;
+    let (base_url, warning) = validate_server_url(&input.base_url)?;
+    if input.name.trim().is_empty() {
+        return Err("Server name can't be empty.".to_string());
+    }
     let profile_id = input.id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let existing_url = connection
+        .query_row(
+            "SELECT base_url FROM server_profiles WHERE profile_id = ?1",
+            params![profile_id],
+            |row| row.get::<_, String>(0),
+        )
+        .ok();
+    if existing_url.is_some_and(|url| is_default_server_url(&url))
+        && !is_default_server_url(&base_url)
+    {
+        return Err(
+            "The built-in XiPS server's address can't be changed. Add a new server instead."
+                .to_string(),
+        );
+    }
     let now = now_iso();
     let existing_created_at = connection
         .query_row(
@@ -185,7 +300,7 @@ pub fn save_server_profile(
             params![
                 profile_id,
                 input.name.trim(),
-                normalize_base_url(&input.base_url),
+                base_url,
                 game_version,
                 created_at,
                 now
@@ -194,11 +309,21 @@ pub fn save_server_profile(
         .map_err(|error| error.to_string())?;
     save_setting(&connection, "selected_profile_id", &profile_id)
         .map_err(|error| error.to_string())?;
-    load_snapshot(db_path)
+    Ok((load_snapshot(db_path)?, warning))
 }
 
 pub fn delete_server_profile(db_path: &Path, profile_id: &str) -> Result<DesktopSnapshot, String> {
     let connection = open_db(db_path)?;
+    let target_url = connection
+        .query_row(
+            "SELECT base_url FROM server_profiles WHERE profile_id = ?1",
+            params![profile_id],
+            |row| row.get::<_, String>(0),
+        )
+        .ok();
+    if target_url.is_some_and(|url| is_default_server_url(&url)) {
+        return Err("The built-in XiPS server can't be removed.".to_string());
+    }
     connection
         .execute(
             "DELETE FROM server_profiles WHERE profile_id = ?1",
@@ -214,8 +339,18 @@ pub fn delete_server_profile(db_path: &Path, profile_id: &str) -> Result<Desktop
     let selected_profile_id =
         load_setting(&connection, "selected_profile_id").map_err(|error| error.to_string())?;
     if selected_profile_id == profile_id {
-        save_setting(&connection, "selected_profile_id", "").map_err(|error| error.to_string())?;
+        let default_id = ensure_default_server_profile(&connection)?;
+        save_setting(&connection, "selected_profile_id", &default_id)
+            .map_err(|error| error.to_string())?;
     }
+    load_snapshot(db_path)
+}
+
+pub fn use_default_server_profile(db_path: &Path) -> Result<DesktopSnapshot, String> {
+    let connection = open_db(db_path)?;
+    let default_id = ensure_default_server_profile(&connection)?;
+    save_setting(&connection, "selected_profile_id", &default_id)
+        .map_err(|error| error.to_string())?;
     load_snapshot(db_path)
 }
 
@@ -1835,10 +1970,12 @@ fn load_profiles(connection: &Connection) -> Result<Vec<LocalServerProfile>, Str
         .map_err(|error| error.to_string())?;
     let mapped = statement
         .query_map([], |row| {
+            let base_url: String = row.get(2)?;
             Ok(LocalServerProfile {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                base_url: row.get(2)?,
+                is_default: is_default_server_url(&base_url),
+                base_url,
                 game_version: normalize_game_version(Some(&row.get::<_, String>(3)?)),
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
@@ -2276,8 +2413,10 @@ mod tests {
         assign_detected_file_format, cache_formats, clear_upload_batch_id_for_profile_batch,
         ensure_db, list_pending_upload_batch_ids_for_profile, load_profile_game_version,
         load_snapshot, match_format_for_tournament_id, save_scan_results, save_server_profile,
+        add_watch_root, delete_server_profile, open_db, select_server_profile,
+        use_default_server_profile, validate_server_url,
     };
-    use crate::models::local_state::SaveServerProfileInput;
+    use crate::models::local_state::{AddWatchRootInput, SaveServerProfileInput};
     use crate::models::api::TournamentFormat;
     use crate::services::scanner::ScanResult;
     use std::fs;
@@ -2337,7 +2476,8 @@ mod tests {
                 game_version: None,
             },
         )
-        .expect("profile without game version should save");
+        .expect("profile without game version should save")
+        .0;
         let default_profile = snapshot
             .profiles
             .iter()
@@ -2358,7 +2498,8 @@ mod tests {
                 game_version: Some(String::from(" ootp28 ")),
             },
         )
-        .expect("profile with explicit game version should save");
+        .expect("profile with explicit game version should save")
+        .0;
         let next_profile = snapshot
             .profiles
             .iter()
@@ -2369,6 +2510,157 @@ mod tests {
             load_profile_game_version(&db_path, "profile-28").expect("lookup should succeed"),
             "ootp28"
         );
+    }
+
+    fn profile_input(id: Option<&str>, name: &str, url: &str) -> SaveServerProfileInput {
+        SaveServerProfileInput {
+            id: id.map(String::from),
+            name: String::from(name),
+            base_url: String::from(url),
+            game_version: None,
+        }
+    }
+
+    #[test]
+    fn fresh_db_gets_selected_default_profile() {
+        let db_path = temp_db_path("default-fresh");
+        ensure_db(&db_path).expect("db should initialize");
+        let snapshot = load_snapshot(&db_path).expect("snapshot should load");
+        assert_eq!(snapshot.profiles.len(), 1);
+        assert!(snapshot.profiles[0].is_default);
+        assert_eq!(snapshot.profiles[0].id, "xips-default");
+        assert_eq!(snapshot.selected_profile_id, "xips-default");
+
+        ensure_db(&db_path).expect("second init should succeed");
+        let snapshot = load_snapshot(&db_path).expect("snapshot should load");
+        assert_eq!(snapshot.profiles.len(), 1);
+    }
+
+    #[test]
+    fn existing_default_url_profile_is_adopted() {
+        let db_path = temp_db_path("default-adopt");
+        ensure_db(&db_path).expect("db should initialize");
+        let connection = open_db(&db_path).expect("open");
+        connection
+            .execute("DELETE FROM server_profiles", [])
+            .expect("clear");
+        drop(connection);
+        save_server_profile(
+            &db_path,
+            profile_input(Some("custom-id"), "My XiPS", "https://xips.xtoforas.com/"),
+        )
+        .expect("save");
+        ensure_db(&db_path).expect("rerun");
+        let snapshot = load_snapshot(&db_path).expect("snapshot");
+        assert_eq!(snapshot.profiles.len(), 1);
+        assert_eq!(snapshot.profiles[0].id, "custom-id");
+        assert_eq!(snapshot.profiles[0].name, "My XiPS");
+        assert!(snapshot.profiles[0].is_default);
+    }
+
+    #[test]
+    fn selected_custom_profile_survives_rerun() {
+        let db_path = temp_db_path("default-custom-selected");
+        ensure_db(&db_path).expect("db should initialize");
+        save_server_profile(
+            &db_path,
+            profile_input(Some("local"), "Local", "http://localhost:8080"),
+        )
+        .expect("save");
+        add_watch_root(
+            &db_path,
+            AddWatchRootInput {
+                profile_id: String::from("local"),
+                path: String::from("C:/data"),
+                recursive: true,
+            },
+        )
+        .expect("watch root");
+        ensure_db(&db_path).expect("rerun");
+        let snapshot = load_snapshot(&db_path).expect("snapshot");
+        assert_eq!(snapshot.selected_profile_id, "local");
+        assert_eq!(snapshot.profiles.len(), 2);
+        assert_eq!(snapshot.watch_roots.len(), 1);
+    }
+
+    #[test]
+    fn missing_selection_falls_back_to_default() {
+        let db_path = temp_db_path("default-missing-selection");
+        ensure_db(&db_path).expect("db should initialize");
+        select_server_profile(&db_path, "gone").expect("select");
+        ensure_db(&db_path).expect("rerun");
+        let snapshot = load_snapshot(&db_path).expect("snapshot");
+        assert_eq!(snapshot.selected_profile_id, "xips-default");
+    }
+
+    #[test]
+    fn delete_guards_default_and_reselects_default() {
+        let db_path = temp_db_path("default-delete");
+        ensure_db(&db_path).expect("db should initialize");
+        assert!(delete_server_profile(&db_path, "xips-default").is_err());
+        assert_eq!(load_snapshot(&db_path).expect("snapshot").profiles.len(), 1);
+
+        save_server_profile(
+            &db_path,
+            profile_input(Some("local"), "Local", "http://localhost:8080"),
+        )
+        .expect("save");
+        add_watch_root(
+            &db_path,
+            AddWatchRootInput {
+                profile_id: String::from("local"),
+                path: String::from("C:/data"),
+                recursive: true,
+            },
+        )
+        .expect("watch root");
+        let snapshot = delete_server_profile(&db_path, "local").expect("delete custom");
+        assert!(snapshot.watch_roots.is_empty());
+        assert_eq!(snapshot.selected_profile_id, "xips-default");
+        assert_eq!(snapshot.profiles.len(), 1);
+    }
+
+    #[test]
+    fn use_default_server_selects_default() {
+        let db_path = temp_db_path("default-use");
+        ensure_db(&db_path).expect("db should initialize");
+        save_server_profile(
+            &db_path,
+            profile_input(Some("local"), "Local", "http://localhost:8080"),
+        )
+        .expect("save");
+        let snapshot = use_default_server_profile(&db_path).expect("use default");
+        assert_eq!(snapshot.selected_profile_id, "xips-default");
+    }
+
+    #[test]
+    fn save_rejects_default_url_change_and_bad_input() {
+        let db_path = temp_db_path("default-save-guard");
+        ensure_db(&db_path).expect("db should initialize");
+        assert!(save_server_profile(
+            &db_path,
+            profile_input(Some("xips-default"), "XiPS", "https://other.test")
+        )
+        .is_err());
+        assert!(save_server_profile(
+            &db_path,
+            profile_input(Some("xips-default"), "Renamed", "https://xips.xtoforas.com/")
+        )
+        .is_ok());
+        assert!(save_server_profile(&db_path, profile_input(None, "  ", "https://x.test")).is_err());
+    }
+
+    #[test]
+    fn validate_server_url_rules() {
+        assert!(validate_server_url("ftp://x.test").is_err());
+        assert!(validate_server_url("not a url").is_err());
+        assert_eq!(
+            validate_server_url("http://localhost:8080/").expect("ok"),
+            (String::from("http://localhost:8080"), None)
+        );
+        assert!(validate_server_url("http://127.0.0.1:8080").expect("ok").1.is_none());
+        assert!(validate_server_url("http://staging.example.com").expect("ok").1.is_some());
+        assert!(validate_server_url("https://x.test").expect("ok").1.is_none());
     }
 
     fn scan_result(path: &Path, source_modified_at: &str) -> ScanResult {

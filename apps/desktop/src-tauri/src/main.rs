@@ -18,7 +18,7 @@ use commands::desktop::{
     desktop_poll_active_uploads, desktop_process_upload_queue, desktop_redeem_auth_code,
     desktop_refresh_me, desktop_retry_upload_job, desktop_save_format_rule,
     desktop_save_server_profile, desktop_scan_watch_roots, desktop_select_server_profile,
-    desktop_toggle_watch_root, desktop_update_preferences,
+    desktop_toggle_watch_root, desktop_update_preferences, desktop_use_default_server,
 };
 use tauri::Manager;
 
@@ -54,6 +54,7 @@ fn main() {
             desktop_save_server_profile,
             desktop_delete_server_profile,
             desktop_select_server_profile,
+            desktop_use_default_server,
             desktop_check_server_health,
             desktop_fetch_formats,
             desktop_fetch_cards,

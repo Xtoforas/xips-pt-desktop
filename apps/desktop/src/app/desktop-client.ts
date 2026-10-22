@@ -10,6 +10,7 @@ import type {
   LocalUploadJob,
   LocalWatchRoot,
   MyAggResponse,
+  SaveServerProfileResult,
   ServiceHealth,
   TournamentFormat
 } from '@xips/api-contract';
@@ -48,9 +49,10 @@ type AssignDetectedFileTournamentInput = {
 
 type DesktopClient = {
   getSnapshot: () => Promise<DesktopSnapshot>;
-  saveServerProfile: (input: SaveServerProfileInput) => Promise<void>;
+  saveServerProfile: (input: SaveServerProfileInput) => Promise<SaveServerProfileResult>;
   deleteServerProfile: (profileId: string) => Promise<void>;
   selectServerProfile: (profileId: string) => Promise<void>;
+  useDefaultServer: () => Promise<void>;
   checkServerHealth: (profileId: string) => Promise<ServiceHealth>;
   fetchFormats: (profileId: string) => Promise<TournamentFormat[]>;
   fetchCards: (profileId: string, formatId: string) => Promise<CardsResponse>;
@@ -83,28 +85,39 @@ type DesktopClient = {
   openAppDataDirectory: () => Promise<void>;
 };
 
-const mockProfiles: LocalServerProfile[] = [
-  {
-    id: 'local',
-    name: 'Local xips-pt',
-    baseUrl: 'http://localhost:8080',
-    gameVersion: 'ootp27',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+const mockDefaultProfile: LocalServerProfile = {
+  id: 'xips-default',
+  name: 'XiPS',
+  baseUrl: 'https://xips.xtoforas.com',
+  gameVersion: 'ootp27',
+  isDefault: true,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
 
-const mockWatchRoots: LocalWatchRoot[] = [
-  {
-    id: 'watch-1',
-    profileId: 'local',
-    path: '/Users/example/Downloads/PT Exports',
-    recursive: false,
-    paused: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+const mockCustomProfile: LocalServerProfile = {
+  id: 'local',
+  name: 'Local xips-pt',
+  baseUrl: 'http://localhost:8080',
+  gameVersion: 'ootp27',
+  isDefault: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
+
+const MOCK_DEFAULT_WATCH_ROOT = 'C:\\Users\\example\\Documents\\Out of the Park Developments\\OOTP Baseball 27\\online_data';
+
+const mockWatchRoot = (profileId: string, path = '/Users/example/Downloads/PT Exports'): LocalWatchRoot => ({
+  id: `watch-${profileId}-${Math.random().toString(36).slice(2, 8)}`,
+  profileId,
+  path,
+  recursive: false,
+  paused: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+});
+
+const MOCK_JOB_ROOT = '/Users/example/Downloads/PT Exports';
 
 const mockFormats: TournamentFormat[] = [
   {
@@ -165,9 +178,9 @@ const mockUploadJob = (
   const now = new Date().toISOString();
   return {
     id,
-    profileId: 'local',
+    profileId: mockDefaultProfile.id,
     filename,
-    path: `${mockWatchRoots[0].path}/${folder}/${filename}`,
+    path: `${MOCK_JOB_ROOT}/${folder}/${filename}`,
     stagedPath: '',
     fileKind: 'stats_export',
     localPresence: 'present',
@@ -223,41 +236,127 @@ const mockUploadJobs: LocalUploadJob[] = [
   )
 ];
 
-const mockSnapshot = (): DesktopSnapshot => ({
-  profiles: mockProfiles,
-  selectedProfileId: 'local',
-  authProfileId: '',
-  authUser: null,
-  tokenExpiresAt: '',
-  watchRoots: mockWatchRoots,
-  formatRules: [],
-  detectedFiles: [] as LocalDetectedFile[],
-  uploadJobs: mockUploadJobs,
-  uploadAttempts: [],
-  preferences: {
-    launchAtLogin: false,
-    closeToTray: true,
-    pollingIntervalSeconds: 5,
-    diagnosticsRetentionDays: 14,
-    dismissAutomationRuleReadiness: false,
-    dismissCompletedReadinessCard: false
-  },
-  diagnostics: [],
-  cachedFormats: mockFormats
-});
+// Browser-mock scenarios for `npm run dev`: add `?mock=<scenario>` before the `#` in the URL,
+// e.g. http://localhost:1420/?mock=first-run#/today. Without it the mock starts mid-setup.
+export type MockScenario = 'first-run' | 'mid-setup' | 'done' | 'custom' | 'unreachable';
+
+const MOCK_SCENARIOS: readonly MockScenario[] = ['first-run', 'mid-setup', 'done', 'custom', 'unreachable'];
+
+const readMockScenario = (): MockScenario => {
+  if (typeof window === 'undefined') {
+    return 'mid-setup';
+  }
+  const value = new URLSearchParams(window.location.search).get('mock') ?? '';
+  return (MOCK_SCENARIOS as readonly string[]).includes(value) ? (value as MockScenario) : 'mid-setup';
+};
+
+const mockAuthUser = { userId: 'mock-user', discordId: 'mock-discord', displayName: 'Mock Player', role: 'viewer' as const };
+
+const mockTokenExpiry = (): string => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+const mockSnapshot = (scenario: MockScenario): DesktopSnapshot => {
+  const custom = scenario === 'custom';
+  const profileId = custom ? mockCustomProfile.id : mockDefaultProfile.id;
+  const signedIn = scenario === 'done' || scenario === 'custom' || scenario === 'unreachable';
+  const hasFolder = scenario !== 'first-run';
+  return {
+    profiles: custom ? [mockCustomProfile, mockDefaultProfile] : [mockDefaultProfile],
+    selectedProfileId: profileId,
+    authProfileId: signedIn ? profileId : '',
+    authUser: signedIn ? mockAuthUser : null,
+    tokenExpiresAt: signedIn ? mockTokenExpiry() : '',
+    watchRoots: hasFolder ? [mockWatchRoot(profileId, MOCK_JOB_ROOT)] : [],
+    formatRules: [],
+    detectedFiles: [] as LocalDetectedFile[],
+    uploadJobs: scenario === 'first-run' ? [] : mockUploadJobs.map((job) => ({ ...job, profileId })),
+    uploadAttempts: [],
+    preferences: {
+      launchAtLogin: false,
+      closeToTray: true,
+      pollingIntervalSeconds: 5,
+      diagnosticsRetentionDays: 14,
+      dismissAutomationRuleReadiness: false,
+      dismissCompletedReadinessCard: false
+    },
+    diagnostics: [],
+    cachedFormats: mockFormats
+  };
+};
+
+// Fired after the browser mock changes its state, standing in for Tauri's snapshot event.
+export const MOCK_SNAPSHOT_EVENT = 'xips-mock-snapshot-updated';
 
 export const isTauri = (): boolean => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ === 'object';
 
+const mockScenario = readMockScenario();
+let mockState = mockSnapshot(mockScenario);
+
+const updateMockState = (update: (current: DesktopSnapshot) => DesktopSnapshot): void => {
+  mockState = update(mockState);
+  window.dispatchEvent(new Event(MOCK_SNAPSHOT_EVENT));
+};
+
 const browserClient: DesktopClient = {
   async getSnapshot() {
-    return mockSnapshot();
+    return structuredClone(mockState);
   },
-  async saveServerProfile() {},
-  async deleteServerProfile() {},
-  async selectServerProfile() {},
-  async checkServerHealth() {
+  async saveServerProfile(input) {
+    let parsed: URL;
+    try {
+      parsed = new URL(input.baseUrl.trim());
+    } catch {
+      throw 'Enter a full server address, like https://example.com.';
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw 'Server address must start with http:// or https://.';
+    }
+    const now = new Date().toISOString();
+    const id = input.id || `mock-${Math.random().toString(36).slice(2, 8)}`;
+    const profile: LocalServerProfile = {
+      id,
+      name: input.name.trim(),
+      baseUrl: input.baseUrl.trim().replace(/\/+$/, ''),
+      gameVersion: input.gameVersion?.trim() || 'ootp27',
+      isDefault: false,
+      createdAt: now,
+      updatedAt: now
+    };
+    updateMockState((current) => ({
+      ...current,
+      profiles: [profile, ...current.profiles.filter((item) => item.id !== id)],
+      selectedProfileId: id
+    }));
+    const localHost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
     return {
-      ok: false,
+      warning: parsed.protocol === 'http:' && !localHost
+        ? "This server uses plain http, so your sign-in isn't encrypted in transit. Use https unless this is a local test server."
+        : ''
+    };
+  },
+  async deleteServerProfile(profileId) {
+    if (profileId === mockDefaultProfile.id) {
+      throw "The built-in XiPS server can't be removed.";
+    }
+    updateMockState((current) => ({
+      ...current,
+      profiles: current.profiles.filter((profile) => profile.id !== profileId),
+      watchRoots: current.watchRoots.filter((root) => root.profileId !== profileId),
+      selectedProfileId: current.selectedProfileId === profileId ? mockDefaultProfile.id : current.selectedProfileId
+    }));
+  },
+  async selectServerProfile(profileId) {
+    updateMockState((current) => ({ ...current, selectedProfileId: profileId }));
+  },
+  async useDefaultServer() {
+    updateMockState((current) => ({ ...current, selectedProfileId: mockDefaultProfile.id }));
+  },
+  async checkServerHealth() {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    if (mockScenario === 'unreachable') {
+      throw 'request_failed (error sending request)';
+    }
+    return {
+      ok: true,
       service: 'mock',
       queueDepth: 0,
       failedJobs: 0,
@@ -282,20 +381,44 @@ const browserClient: DesktopClient = {
     };
   },
   async openAuthWindow() {},
-  async redeemAuthCode() {},
+  async redeemAuthCode(profileId, code) {
+    if (!/^[A-Z0-9]{6,12}$/.test(code)) {
+      throw 'invalid_code';
+    }
+    updateMockState((current) => ({
+      ...current,
+      authProfileId: profileId,
+      authUser: mockAuthUser,
+      tokenExpiresAt: mockTokenExpiry()
+    }));
+  },
   async refreshMe() {},
-  async logout() {},
-  async addWatchRoot() {},
+  async logout() {
+    updateMockState((current) => ({ ...current, authProfileId: '', authUser: null, tokenExpiresAt: '' }));
+  },
+  async addWatchRoot(input) {
+    updateMockState((current) => ({
+      ...current,
+      watchRoots: [...current.watchRoots, { ...mockWatchRoot(input.profileId, input.path), recursive: input.recursive }]
+    }));
+  },
   async getDefaultWatchRoot() {
-    return '';
+    return MOCK_DEFAULT_WATCH_ROOT;
   },
   async saveFormatRule() {},
   async deleteFormatRule() {},
   async scanWatchRoots() {},
   async assignDetectedFileFormat() {},
   async assignDetectedFileTournament() {},
-  async deleteWatchRoot() {},
-  async toggleWatchRoot() {},
+  async deleteWatchRoot(watchRootId) {
+    updateMockState((current) => ({ ...current, watchRoots: current.watchRoots.filter((root) => root.id !== watchRootId) }));
+  },
+  async toggleWatchRoot(watchRootId, paused) {
+    updateMockState((current) => ({
+      ...current,
+      watchRoots: current.watchRoots.map((root) => (root.id === watchRootId ? { ...root, paused } : root))
+    }));
+  },
   async processUploadQueue() {},
   async pollActiveUploads() {},
   async retryUploadJob() {},
@@ -305,7 +428,9 @@ const browserClient: DesktopClient = {
   async restoreIgnoredUploadJob() {},
   async removeAwaitingUploadJob() {},
   async openUploadFileLocation() {},
-  async updatePreferences() {},
+  async updatePreferences(preferences) {
+    updateMockState((current) => ({ ...current, preferences }));
+  },
   async addDiagnosticEvent() {},
   async exportDiagnosticsBundle() {
     return '';
@@ -315,9 +440,10 @@ const browserClient: DesktopClient = {
 
 const tauriClient: DesktopClient = {
   getSnapshot: () => invoke<DesktopSnapshot>('desktop_get_snapshot'),
-  saveServerProfile: (input) => invoke<void>('desktop_save_server_profile', { input }),
+  saveServerProfile: (input) => invoke<SaveServerProfileResult>('desktop_save_server_profile', { input }),
   deleteServerProfile: (profileId) => invoke<void>('desktop_delete_server_profile', { profileId }),
   selectServerProfile: (profileId) => invoke<void>('desktop_select_server_profile', { profileId }),
+  useDefaultServer: () => invoke<void>('desktop_use_default_server'),
   checkServerHealth: (profileId) => invoke<ServiceHealth>('desktop_check_server_health', { profileId }),
   fetchFormats: (profileId) => invoke<TournamentFormat[]>('desktop_fetch_formats', { profileId }),
   fetchCards: (profileId, formatId) => invoke<CardsResponse>('desktop_fetch_cards', { profileId, formatId }),

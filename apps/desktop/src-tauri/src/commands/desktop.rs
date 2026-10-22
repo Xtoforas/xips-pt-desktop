@@ -14,7 +14,7 @@ use crate::models::api::{
 use crate::models::local_state::{
     AddDiagnosticEventInput, AddWatchRootInput, AssignDetectedFileFormatInput,
     AssignDetectedFileTournamentInput, DesktopSnapshot, RedeemAuthCodeInput,
-    SaveFormatRuleInput, SaveServerProfileInput, UpdatePreferencesInput,
+    SaveFormatRuleInput, SaveServerProfileInput, SaveServerProfileResult, UpdatePreferencesInput,
 };
 use crate::services::{api_client, file_watcher, scanner, storage};
 
@@ -31,14 +31,33 @@ pub fn desktop_save_server_profile(
     input: SaveServerProfileInput,
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<(), String> {
-    storage::save_server_profile(&state.db_path, input.clone())?;
+) -> Result<SaveServerProfileResult, String> {
+    let (_, warning) = storage::save_server_profile(&state.db_path, input.clone())?;
     storage::write_diagnostic_event(
         &state.db_path,
         "info",
         "storage",
         "Saved server profile",
         &format!("profile_name={},base_url={}", input.name, input.base_url),
+    )?;
+    let _ = app.emit(SNAPSHOT_EVENT, true);
+    Ok(SaveServerProfileResult {
+        warning: warning.unwrap_or_default(),
+    })
+}
+
+#[tauri::command]
+pub fn desktop_use_default_server(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    storage::use_default_server_profile(&state.db_path)?;
+    storage::write_diagnostic_event(
+        &state.db_path,
+        "info",
+        "storage",
+        "Selected default server",
+        "",
     )?;
     let _ = app.emit(SNAPSHOT_EVENT, true);
     Ok(())

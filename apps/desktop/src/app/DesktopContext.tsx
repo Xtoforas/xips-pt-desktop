@@ -15,11 +15,13 @@ import type {
   LocalDiagnosticEvent,
   LocalServerProfile,
   MyAggResponse,
+  SaveServerProfileResult,
   ServiceHealth,
   TournamentFormat
 } from '@xips/api-contract';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
-import { desktopClient, isTauri } from './desktop-client';
+import { desktopClient, isTauri, MOCK_SNAPSHOT_EVENT } from './desktop-client';
+import type { ConnectionState } from './onboarding';
 
 type SaveServerProfileInput = {
   id?: string;
@@ -60,14 +62,17 @@ type DesktopContextValue = {
   authFlowError: string;
   selectedProfile: LocalServerProfile | null;
   health: ServiceHealth | null;
+  // Plain-language view of the background reachability check for the selected server.
+  connection: ConnectionState;
   cards: CardsResponse['rows'];
   cardSource: CardsResponse['source'];
   myAggCards: MyAggResponse['cards'];
   myAggTeams: MyAggResponse['teams'];
   refreshSnapshot: () => Promise<void>;
-  saveServerProfile: (input: SaveServerProfileInput) => Promise<void>;
+  saveServerProfile: (input: SaveServerProfileInput) => Promise<SaveServerProfileResult>;
   deleteServerProfile: (profileId: string) => Promise<void>;
   selectServerProfile: (profileId: string) => Promise<void>;
+  useDefaultServer: () => Promise<void>;
   refreshHealth: () => Promise<void>;
   refreshFormats: () => Promise<void>;
   refreshCards: (formatId: string) => Promise<void>;
@@ -132,6 +137,10 @@ const REFRESH_ME_POLL_INTERVAL_MULTIPLIER = 12;
 
 const PAIRING_CODE_PATTERN = /^[A-Z0-9]{6,12}$/;
 
+// Sign-in errors shown to the user stay plain; the raw error never reaches the UI.
+const OPEN_SIGN_IN_FAILED = "The sign-in window didn't open. Try again in a moment.";
+const REDEEM_CODE_FAILED = "That code didn't work. Codes expire after a few minutes, so click Sign in with Discord to get a new one.";
+
 // Tauri's invoke() rejects with the raw value the Rust command's Err variant serialized
 // to (a plain string for Result<_, String> commands), not an Error instance.
 export function describeError(error: unknown, fallback: string): string {
@@ -152,6 +161,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   const [authFlowState, setAuthFlowState] = useState<'idle' | 'waiting' | 'failed'>('idle');
   const [authFlowError, setAuthFlowError] = useState('');
   const [health, setHealth] = useState<ServiceHealth | null>(null);
+  const [connection, setConnection] = useState<ConnectionState>('checking');
   const [cards, setCards] = useState<CardsResponse['rows']>([]);
   const [cardSource, setCardSource] = useState<CardsResponse['source']>('admin');
   const [myAggCards, setMyAggCards] = useState<MyAggResponse['cards']>([]);
@@ -225,6 +235,17 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, [refreshSnapshot]);
 
   useEffect(() => {
+    if (isTauri()) {
+      return;
+    }
+    const onMockChange = (): void => {
+      void refreshSnapshot();
+    };
+    window.addEventListener(MOCK_SNAPSHOT_EVENT, onMockChange);
+    return () => window.removeEventListener(MOCK_SNAPSHOT_EVENT, onMockChange);
+  }, [refreshSnapshot]);
+
+  useEffect(() => {
     if (snapshot.authProfileId === snapshot.selectedProfileId && snapshot.authUser) {
       return;
     }
@@ -237,20 +258,24 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   useEffect(() => {
     if (!selectedProfileId) {
       setHealth(null);
+      setConnection('checking');
       return;
     }
     let active = true;
+    setConnection('checking');
     const run = (): void => {
       void desktopClient
         .checkServerHealth(selectedProfileId)
         .then((result) => {
           if (active) {
             setHealth(result);
+            setConnection(result.ok ? 'connected' : 'unreachable');
           }
         })
         .catch(() => {
           if (active) {
             setHealth(null);
+            setConnection('unreachable');
           }
         });
     };
@@ -344,9 +369,10 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     };
   }, [snapshot.authProfileId, snapshot.authUser, snapshot.selectedProfileId]);
 
-  const saveServerProfile = useCallback(async (input: SaveServerProfileInput): Promise<void> => {
-    await desktopClient.saveServerProfile(input);
-  }, []);
+  const saveServerProfile = useCallback(
+    async (input: SaveServerProfileInput): Promise<SaveServerProfileResult> => desktopClient.saveServerProfile(input),
+    []
+  );
 
   const deleteServerProfile = useCallback(async (profileId: string): Promise<void> => {
     await desktopClient.deleteServerProfile(profileId);
@@ -357,14 +383,26 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setHealth(null);
   }, []);
 
+  const useDefaultServer = useCallback(async (): Promise<void> => {
+    await desktopClient.useDefaultServer();
+    setHealth(null);
+  }, []);
+
   const refreshHealth = useCallback(async (): Promise<void> => {
     const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
     if (!selectedProfile) {
       setHealth(null);
       return;
     }
-    const result = await desktopClient.checkServerHealth(selectedProfile.id);
-    setHealth(result);
+    setConnection('checking');
+    try {
+      const result = await desktopClient.checkServerHealth(selectedProfile.id);
+      setHealth(result);
+      setConnection(result.ok ? 'connected' : 'unreachable');
+    } catch {
+      setHealth(null);
+      setConnection('unreachable');
+    }
   }, [snapshot.profiles, snapshot.selectedProfileId]);
 
   const refreshFormats = useCallback(async (): Promise<void> => {
@@ -416,7 +454,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       setAuthFlowState('idle');
     } catch (error) {
       setAuthFlowState('failed');
-      setAuthFlowError(describeError(error, 'Failed to open the sign-in window.'));
+      setAuthFlowError(OPEN_SIGN_IN_FAILED);
       throw error;
     }
   }, []);
@@ -430,7 +468,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       setAuthFlowState('idle');
     } catch (error) {
       setAuthFlowState('failed');
-      setAuthFlowError(describeError(error, 'Failed to redeem the sign-in code.'));
+      setAuthFlowError(REDEEM_CODE_FAILED);
       throw error;
     }
   }, [refreshSnapshot]);
@@ -571,6 +609,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       authFlowError,
       selectedProfile,
       health,
+      connection,
       cards,
       cardSource,
       myAggCards,
@@ -579,6 +618,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       saveServerProfile,
       deleteServerProfile,
       selectServerProfile,
+      useDefaultServer,
       refreshHealth,
       refreshFormats,
       refreshCards,
@@ -616,6 +656,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       authFlowError,
       selectedProfile,
       health,
+      connection,
       cards,
       cardSource,
       myAggCards,
@@ -624,6 +665,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       saveServerProfile,
       deleteServerProfile,
       selectServerProfile,
+      useDefaultServer,
       refreshHealth,
       refreshFormats,
       refreshCards,
