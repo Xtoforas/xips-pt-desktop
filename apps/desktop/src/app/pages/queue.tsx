@@ -58,6 +58,7 @@ export const UploadQueuePage = (): JSX.Element => {
   const navigate = useNavigate();
   const {
     snapshot,
+    loading,
     selectedProfile,
     assignDetectedFileFormat,
     assignDetectedFileTournament,
@@ -71,6 +72,14 @@ export const UploadQueuePage = (): JSX.Element => {
     openAuthWindow
   } = useDesktop();
   const [queueView, setQueueView] = useState<QueueWorkspaceView>('working');
+  // The default tab depends on the jobs, so pick it (and write it to the URL) only once a snapshot has loaded;
+  // otherwise a cold start lands on Done from the empty initial snapshot and the URL keeps it.
+  const [snapshotReady, setSnapshotReady] = useState(!loading);
+  useEffect(() => {
+    if (!loading) {
+      setSnapshotReady(true);
+    }
+  }, [loading]);
   const [selectedJobId, setSelectedJobId] = useState('');
   const [selectedQueueJobIds, setSelectedQueueJobIds] = useState<string[]>([]);
   const [selectedFormatId, setSelectedFormatId] = useState('');
@@ -251,6 +260,9 @@ export const UploadQueuePage = (): JSX.Element => {
   const currentViewJobs = queueJobsByView[queueView];
 
   useEffect(() => {
+    if (!snapshotReady) {
+      return;
+    }
     const params = new URLSearchParams(location.search);
     const selectedJobIdFromQuery = params.get('job') ?? '';
     const selectedJobIdsFromQuery = (params.get('jobs') ?? '')
@@ -276,7 +288,7 @@ export const UploadQueuePage = (): JSX.Element => {
     setQueueView(parsedView ?? defaultView);
     setSelectedJobId(selectedJobIdFromQuery);
     setSelectedQueueJobIds(selectedJobIdsFromQuery.length > 0 ? selectedJobIdsFromQuery : selectedJobIdFromQuery ? [selectedJobIdFromQuery] : []);
-  }, [ignoredJobs.length, location.search, needsActionJobs.length, sortedJobs, workingJobs.length]);
+  }, [ignoredJobs.length, location.search, needsActionJobs.length, snapshotReady, sortedJobs, workingJobs.length]);
 
   useEffect(() => {
     if (currentViewJobs.length === 0) {
@@ -292,6 +304,9 @@ export const UploadQueuePage = (): JSX.Element => {
   }, [currentViewJobs, selectedJobId]);
 
   useEffect(() => {
+    if (!snapshotReady) {
+      return;
+    }
     const params = new URLSearchParams(location.search);
     params.delete('filter');
     params.set('view', queueView);
@@ -311,7 +326,7 @@ export const UploadQueuePage = (): JSX.Element => {
         { replace: true }
       );
     }
-  }, [location.pathname, location.search, navigate, queueView, selectedJobId]);
+  }, [location.pathname, location.search, navigate, queueView, selectedJobId, snapshotReady]);
 
   const submitInlineTournamentAssignment = async (jobId: string): Promise<void> => {
     const tournamentId = inlineTournamentId.trim();
