@@ -210,38 +210,31 @@ a {
   background: var(--surface-1);
 }
 
-.desktop-blocker-table {
-  background: var(--surface-2);
+/* Today's tables use the site table markup (site-table.css) with fixed columns, one line per row. */
+.landing-table.observed-table.admin-table.desktop-today-table {
+  table-layout: fixed;
 }
 
-.desktop-blocker-table td {
-  vertical-align: top;
+.desktop-today-col-file {
+  width: 28%;
 }
 
-.desktop-blocker-col-file {
-  width: 25%;
+.desktop-today-col-status {
+  width: 200px;
 }
 
-.desktop-blocker-col-status {
+.desktop-today-col-updated {
   width: 140px;
 }
 
-.desktop-blocker-col-updated {
-  width: 120px;
-}
-
-.desktop-blocker-col-action {
-  width: 76px;
+.desktop-today-col-actions {
+  width: 128px;
 }
 
 /* File cell is the hover target for the details card. */
 .desktop-blocker-file {
   min-width: 0;
   cursor: help;
-}
-
-.desktop-blocker-file .mantine-Group-root > .mantine-Text-root {
-  min-width: 0;
 }
 
 .desktop-blocker-info {
@@ -289,22 +282,6 @@ a {
 .landing-row.desktop-row-selected,
 .landing-row.desktop-row-selected:hover {
   background: rgba(var(--accent-rgb), 0.16);
-}
-
-.desktop-today-job-list {
-  display: grid;
-  gap: 10px;
-}
-
-.desktop-today-job-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 4px;
-  background: var(--surface-2);
-  border: 1px solid var(--line-0);
 }
 
 .desktop-queue-view-switcher {
@@ -430,12 +407,6 @@ a {
   .desktop-queue-inspector {
     position: static;
     max-height: none;
-  }
-}
-
-@media (max-width: 1180px) {
-  .desktop-today-job-row {
-    flex-direction: column;
   }
 }
 

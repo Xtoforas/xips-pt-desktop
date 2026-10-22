@@ -6,13 +6,13 @@ import { useDesktop } from '../DesktopContext';
 import type { LocalUploadJob } from '@xips/api-contract';
 import {
   BlockedStatusBadge,
-  FileKindBadge,
   MdiIcon,
   ReadinessCard,
   SectionHeader
 } from '../components';
 import {
   blockerPriority,
+  COMPACT_TIMESTAMP,
   compareUploadJobsNewestFirst,
   formatLifecycleLabel,
   formatQueueStateLabel,
@@ -68,33 +68,61 @@ const BlockedJobDetails = ({
   );
 };
 
-// One line per job in Today's progress and completion lists.
-const JobSummaryRow = ({
-  job,
-  detail,
-  statusLabel,
-  statusColor
+const PROGRESS_ROW_LIMIT = 8;
+const COMPLETED_ROW_LIMIT = 5;
+
+const UpdatedCell = ({ job }: { job: LocalUploadJob }): JSX.Element => (
+  <td className="landing-cell admin-nowrap" title={formatUploadJobModifiedAt(job)}>
+    {formatUploadJobModifiedAt(job, COMPACT_TIMESTAMP)}
+  </td>
+);
+
+// Today's progress and completion lists: the site table markup, one line per job.
+const JobTable = ({
+  jobs,
+  formatLabels,
+  status
 }: {
-  job: LocalUploadJob;
-  detail: string;
-  statusLabel: string;
-  statusColor: string;
+  jobs: LocalUploadJob[];
+  formatLabels: Record<string, string>;
+  status?: (job: LocalUploadJob) => JSX.Element;
 }): JSX.Element => (
-  <div className="desktop-today-job-row">
-    <div>
-      <Text size="sm" fw={600}>
-        {job.filename}
-      </Text>
-      <Text size="xs" c="dimmed">
-        {detail} · {formatUploadJobModifiedAt(job)}
-      </Text>
+  <div className="admin-table-frame">
+    <div className="landing-table-wrap admin-table-wrap">
+      <table className="landing-table observed-table admin-table desktop-today-table">
+        <colgroup>
+          <col className="desktop-today-col-file" />
+          <col />
+          {status ? <col className="desktop-today-col-status" /> : null}
+          <col className="desktop-today-col-updated" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Format</th>
+            {status ? <th>Stage</th> : null}
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {jobs.map((job) => {
+            const formatLabel = formatUploadFormatLabel(job.formatId, formatLabels);
+            return (
+              <tr key={job.id} className="landing-row">
+                <td className="landing-cell landing-cell-name" title={job.path}>
+                  {job.filename}
+                </td>
+                <td className="landing-cell" title={formatLabel}>
+                  {formatLabel}
+                </td>
+                {status ? <td className="landing-cell admin-nowrap">{status(job)}</td> : null}
+                <UpdatedCell job={job} />
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
-    <Group gap="xs" wrap="nowrap">
-      <Badge color={statusColor} variant="light">
-        {statusLabel}
-      </Badge>
-      <FileKindBadge fileKind={job.fileKind} />
-    </Group>
   </div>
 );
 
@@ -129,20 +157,6 @@ export const TodayPage = (): JSX.Element => {
         }),
     [snapshot.cachedFormats, snapshot.uploadJobs]
   );
-  const activeMachineJobs = useMemo(
-    () =>
-      snapshot.uploadJobs
-        .filter((job) => uploadJobWorkingAutomatically(job) && !uploadJobWaitingOnServer(job))
-        .sort(compareUploadJobsNewestFirst),
-    [snapshot.uploadJobs]
-  );
-  const serverProgressJobs = useMemo(
-    () =>
-      snapshot.uploadJobs
-        .filter((job) => uploadJobWaitingOnServer(job))
-        .sort(compareUploadJobsNewestFirst),
-    [snapshot.uploadJobs]
-  );
   const completedCount = useMemo(
     () => snapshot.uploadJobs.filter((job) => job.localState === 'complete').length,
     [snapshot.uploadJobs]
@@ -151,27 +165,19 @@ export const TodayPage = (): JSX.Element => {
     () => snapshot.uploadJobs.filter(uploadJobNeedsAttention).length,
     [snapshot.uploadJobs]
   );
-  const automaticQueueCount = useMemo(
-    () => snapshot.uploadJobs.filter(uploadJobWorkingAutomatically).length,
-    [snapshot.uploadJobs]
-  );
-  const waitingOnServerCount = useMemo(
-    () => snapshot.uploadJobs.filter(uploadJobWaitingOnServer).length,
-    [snapshot.uploadJobs]
-  );
   const inProgressJobs = useMemo(
     () =>
-      [...activeMachineJobs, ...serverProgressJobs].sort(
-        compareUploadJobsNewestFirst
-      ),
-    [activeMachineJobs, serverProgressJobs]
+      snapshot.uploadJobs
+        .filter((job) => uploadJobWorkingAutomatically(job) || uploadJobWaitingOnServer(job))
+        .sort(compareUploadJobsNewestFirst),
+    [snapshot.uploadJobs]
   );
   const completedJobs = useMemo(
     () =>
       snapshot.uploadJobs
         .filter((job) => job.localState === 'complete')
         .sort(compareUploadJobsNewestFirst)
-        .slice(0, 5),
+        .slice(0, COMPLETED_ROW_LIMIT),
     [snapshot.uploadJobs]
   );
 
@@ -209,90 +215,74 @@ export const TodayPage = (): JSX.Element => {
             </Alert>
           ) : (
             <>
-              <Table className="desktop-blocker-table" layout="fixed" verticalSpacing={6} highlightOnHover>
-                <colgroup>
-                  <col className="desktop-blocker-col-file" />
-                  <col />
-                  <col className="desktop-blocker-col-status" />
-                  <col className="desktop-blocker-col-updated" />
-                  <col className="desktop-blocker-col-action" />
-                </colgroup>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>File</Table.Th>
-                    <Table.Th>Reason</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Updated</Table.Th>
-                    <Table.Th aria-label="Actions" />
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {blockerRows.slice(0, BLOCKER_ROW_LIMIT).map(({ job, summary }) => {
-                    const folder = uploadJobFolderName(job);
-                    return (
-                      <Table.Tr key={job.id}>
-                        <Table.Td>
-                          <HoverCard width={380} shadow="md" position="bottom-start" withArrow openDelay={250}>
-                            <HoverCard.Target>
-                              <div className="desktop-blocker-file">
-                                <Group gap={4} wrap="nowrap">
-                                  <Text size="sm" fw={600} truncate="end">
-                                    {job.filename}
-                                  </Text>
+              <div className="admin-table-frame">
+                <div className="landing-table-wrap admin-table-wrap">
+                  <table className="landing-table observed-table admin-table desktop-today-table">
+                    <colgroup>
+                      <col className="desktop-today-col-file" />
+                      <col />
+                      <col className="desktop-today-col-updated" />
+                      <col className="desktop-today-col-actions" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>File</th>
+                        <th>Status</th>
+                        <th>Updated</th>
+                        <th aria-label="Actions" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {blockerRows.slice(0, BLOCKER_ROW_LIMIT).map(({ job, summary }) => (
+                        <tr key={job.id} className="landing-row">
+                          <td className="landing-cell landing-cell-name">
+                            <HoverCard width={380} shadow="md" position="bottom-start" withArrow openDelay={250}>
+                              <HoverCard.Target>
+                                <div className="admin-cell-inline desktop-blocker-file">
+                                  <span className="admin-cell-clip">{job.filename}</span>
                                   <span className="desktop-blocker-info">
                                     <MdiIcon path={mdiInformationOutline} size={14} />
                                   </span>
-                                </Group>
-                                {folder ? (
-                                  <Text size="xs" c="dimmed" truncate="end">
-                                    {folder}
-                                  </Text>
-                                ) : null}
-                              </div>
-                            </HoverCard.Target>
-                            <HoverCard.Dropdown>
-                              <BlockedJobDetails
-                                job={job}
-                                summary={summary}
-                                formatName={formatUploadFormatLabel(job.formatId, formatLabelById)}
-                              />
-                            </HoverCard.Dropdown>
-                          </HoverCard>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="sm" className="desktop-wrap-anywhere">
-                            {summary.reason}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <BlockedStatusBadge summary={summary} />
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="xs" c="dimmed">
-                            {formatUploadJobModifiedAt(job)}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Stack gap={4} align="stretch">
-                            <Button component={Link} to={queueLinkForJob(job.id, 'needs_action')} size="compact-xs" variant="light">
-                              Open
-                            </Button>
-                            <Button
-                              size="compact-xs"
-                              variant="subtle"
-                              color="gray"
-                              title="Move to the queue's Ignored tab; restore it there any time."
-                              onClick={() => void ignoreUploadJob(job.id)}
-                            >
-                              Ignore
-                            </Button>
-                          </Stack>
-                        </Table.Td>
-                      </Table.Tr>
-                    );
-                  })}
-                </Table.Tbody>
-              </Table>
+                                </div>
+                              </HoverCard.Target>
+                              <HoverCard.Dropdown>
+                                <BlockedJobDetails
+                                  job={job}
+                                  summary={summary}
+                                  formatName={formatUploadFormatLabel(job.formatId, formatLabelById)}
+                                />
+                              </HoverCard.Dropdown>
+                            </HoverCard>
+                          </td>
+                          <td className="landing-cell" title={summary.reason || undefined}>
+                            <div className="admin-cell-inline admin-nowrap">
+                              <BlockedStatusBadge summary={summary} />
+                              <span className="admin-cell-clip">{summary.reason}</span>
+                            </div>
+                          </td>
+                          <UpdatedCell job={job} />
+                          <td className="landing-cell">
+                            <Group gap={4} wrap="nowrap">
+                              <Button component={Link} to={queueLinkForJob(job.id, 'needs_action')} size="compact-xs" variant="light">
+                                Open
+                              </Button>
+                              <Button
+                                size="compact-xs"
+                                variant="subtle"
+                                color="gray"
+                                title="Move to the queue's Ignored tab; restore it there any time."
+                                onClick={() => void ignoreUploadJob(job.id)}
+                              >
+                                Ignore
+                              </Button>
+                            </Group>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
               {blockerRows.length > BLOCKER_ROW_LIMIT ? (
                 <Group justify="space-between" align="center" wrap="wrap">
                   <Text size="sm" c="dimmed">
@@ -312,38 +302,39 @@ export const TodayPage = (): JSX.Element => {
           <SectionHeader
             eyebrow="In progress"
             title="Uploading now"
-            aside={<Group gap="xs" wrap="wrap">
-              <Badge color="blue" variant="light">
-                {automaticQueueCount} moving
-              </Badge>
-              <Badge color="cyan" variant="light">
-                {waitingOnServerCount} on server
-              </Badge>
-            </Group>}
+            aside={<Badge color="blue" variant="light">
+              {inProgressJobs.length} in progress
+            </Badge>}
           />
           {inProgressJobs.length === 0 ? (
             <Alert color="gray" variant="light">
               Nothing is uploading right now.
             </Alert>
           ) : (
-            <div className="desktop-today-job-list">
-              {inProgressJobs.slice(0, 6).map((job) => {
-                const onServer = uploadJobWaitingOnServer(job);
-                return (
-                  <JobSummaryRow
-                    key={job.id}
-                    job={job}
-                    detail={
-                      onServer
-                        ? formatLifecycleLabel(job.lifecyclePhase, job.fileKind)
-                        : formatQueueStateLabel(job.localState, job.fileKind)
-                    }
-                    statusLabel={onServer ? 'On server' : 'Local'}
-                    statusColor={onServer ? 'cyan' : 'blue'}
-                  />
-                );
-              })}
-            </div>
+            <>
+              <JobTable
+                jobs={inProgressJobs.slice(0, PROGRESS_ROW_LIMIT)}
+                formatLabels={formatLabelById}
+                status={(job) =>
+                  uploadJobWaitingOnServer(job) ? (
+                    <Badge color="cyan" variant="light">
+                      {formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}
+                    </Badge>
+                  ) : (
+                    <Badge color="blue" variant="light">
+                      {formatQueueStateLabel(job.localState, job.fileKind)}
+                    </Badge>
+                  )
+                }
+              />
+              {inProgressJobs.length > PROGRESS_ROW_LIMIT ? (
+                <Group justify="flex-end">
+                  <Button component={Link} to="/queue?view=working" size="compact-xs" variant="subtle">
+                    Show all {inProgressJobs.length} in the queue
+                  </Button>
+                </Group>
+              ) : null}
+            </>
           )}
         </Stack>
       </Card>
@@ -361,17 +352,7 @@ export const TodayPage = (): JSX.Element => {
               No uploads have finished yet.
             </Alert>
           ) : (
-            <div className="desktop-today-job-list">
-              {completedJobs.map((job) => (
-                <JobSummaryRow
-                  key={job.id}
-                  job={job}
-                  detail={formatUploadFormatLabel(job.formatId, formatLabelById)}
-                  statusLabel="Complete"
-                  statusColor="teal"
-                />
-              ))}
-            </div>
+            <JobTable jobs={completedJobs} formatLabels={formatLabelById} />
           )}
         </Stack>
       </Card>
