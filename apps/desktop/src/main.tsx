@@ -9,6 +9,7 @@ import '@fontsource/ibm-plex-sans/700.css';
 import { HashRouter } from 'react-router-dom';
 import { App } from './app/App';
 import { desktopCssVariablesResolver, desktopTheme } from './app/theme';
+import './app/site-table.css';
 import './app/styles.css';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
