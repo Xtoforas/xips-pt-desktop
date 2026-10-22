@@ -13,6 +13,7 @@ AGENTS.md
 # Agents
 .claude/settings.local.json
 .claude/worktrees*
+.blurb-history.json
 .playwright-mcp/
 __pycache__/
 tasks/
