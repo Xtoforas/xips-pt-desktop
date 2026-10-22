@@ -559,6 +559,8 @@ export const DesktopTopbar = (): JSX.Element => {
   );
   const needsAttentionCount = snapshot.uploadJobs.filter(uploadJobNeedsAttention).length;
   const automaticQueueCount = snapshot.uploadJobs.filter(uploadJobWorkingAutomatically).length;
+  // "Run queue now" only helps while something is moving or waiting to retry.
+  const queueHasWork = automaticQueueCount > 0 || snapshot.uploadJobs.some((job) => job.localState === 'failed_retryable');
 
   return (
     <header className="desktop-topbar">
@@ -567,7 +569,7 @@ export const DesktopTopbar = (): JSX.Element => {
           <>
             {/* Server switching is a developer feature, so it only shows up while a custom server is in use. */}
             <Group gap="xs" wrap="nowrap" className="desktop-topbar-primary">
-              <Badge color="orange" variant="filled" size="lg" className="desktop-custom-server-badge" title={selectedProfile.baseUrl}>
+              <Badge color="orange" variant="filled" size="md" className="desktop-custom-server-badge" title={selectedProfile.baseUrl}>
                 Custom server: {serverHostLabel(selectedProfile.baseUrl)}
               </Badge>
               <Select
@@ -583,11 +585,6 @@ export const DesktopTopbar = (): JSX.Element => {
                 }}
               />
             </Group>
-            <Group gap="sm" wrap="wrap" className="desktop-topbar-meta">
-              <Text size="sm" c="dimmed">
-                Uploading to <span className="desktop-mono">{selectedProfile.baseUrl}</span>
-              </Text>
-            </Group>
           </>
         ) : null}
         {authFlowState === 'waiting' ? (
@@ -596,26 +593,22 @@ export const DesktopTopbar = (): JSX.Element => {
           </Badge>
         ) : null}
       </div>
-      <Group gap="sm" wrap="wrap" className="desktop-topbar-actions">
+      <Group gap="xs" wrap="wrap" className="desktop-topbar-actions">
         {setupWaiting ? (
           <Button component={Link} to="/today" size="xs" color="orange" variant="light">
             Setup: waiting on you
           </Button>
         ) : null}
         {needsAttentionCount > 0 ? (
-          <Badge color="orange" variant="light">
+          <Button component={Link} to="/queue?view=needs_action" size="xs" color="orange" variant="light">
             Needs action {needsAttentionCount}
-          </Badge>
+          </Button>
         ) : null}
         {automaticQueueCount > 0 ? (
-          <Badge color="blue" variant="light">
+          <Button component={Link} to="/queue?view=working" size="xs" variant="light">
             Working {automaticQueueCount}
-          </Badge>
-        ) : (
-          <Badge color="gray" variant="light">
-            Queue idle
-          </Badge>
-        )}
+          </Button>
+        ) : null}
         {selectedProfile ? (
           <>
             {!isAuthenticated ? (
@@ -628,9 +621,11 @@ export const DesktopTopbar = (): JSX.Element => {
                 </Popover.Dropdown>
               </Popover>
             ) : null}
-            <Button size="xs" variant="light" disabled={!isAuthenticated} onClick={() => void processUploadQueue(selectedProfile.id)}>
-              Run queue now
-            </Button>
+            {isAuthenticated && queueHasWork ? (
+              <Button size="xs" variant="subtle" onClick={() => void processUploadQueue(selectedProfile.id)}>
+                Run queue now
+              </Button>
+            ) : null}
             {snapshot.authUser && isAuthenticated ? (
               <HoverCard shadow="md" position="bottom-end" withArrow>
                 <HoverCard.Target>

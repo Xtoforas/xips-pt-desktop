@@ -102,8 +102,14 @@ a {
 .desktop-topbar-left {
   display: grid;
   gap: 4px;
-  flex: 1 1 520px;
+  flex: 0 1 auto;
   min-width: 0;
+}
+
+/* The custom-server picker sits beside the badge; keep it narrow so the topbar stays one row at 1100px. */
+.desktop-topbar .desktop-select-wrap {
+  min-width: 0;
+  width: 150px;
 }
 
 .desktop-server-field {
@@ -111,11 +117,6 @@ a {
 }
 
 .desktop-topbar-primary {
-  align-items: center;
-  min-width: 0;
-}
-
-.desktop-topbar-meta {
   align-items: center;
   min-width: 0;
 }
