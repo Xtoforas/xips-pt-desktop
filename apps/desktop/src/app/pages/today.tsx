@@ -18,6 +18,7 @@ import {
 } from '../components';
 import {
   blockerPriority,
+  buildFormatLabelById,
   compareUploadJobsNewestFirst,
   formatLifecycleLabel,
   formatQueueStateLabel,
@@ -134,11 +135,7 @@ const QuietSection = ({ title, message }: { title: string; message: string }): J
 
 export const TodayPage = (): JSX.Element => {
   const { snapshot, ignoreUploadJob } = useDesktop();
-  const formatLabelById = useMemo(
-    () =>
-      Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
-    [snapshot.cachedFormats]
-  );
+  const formatLabelById = useMemo(() => buildFormatLabelById(snapshot.cachedFormats), [snapshot.cachedFormats]);
   // Blocked files waiting on the user come first, then ones the app will retry; similar reasons sit together.
   const blockerRows = useMemo(
     () =>

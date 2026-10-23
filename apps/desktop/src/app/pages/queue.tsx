@@ -1,16 +1,18 @@
-import { Alert, Badge, Button, Card, CopyButton, Group, Select, Stack, Table, Text, TextInput, Tooltip } from '@mantine/core';
+import { Alert, Badge, Button, type ButtonProps, Card, CopyButton, Group, Select, Stack, Table, Text, TextInput, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { type JSX, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import type { LocalUploadJob } from '@xips/api-contract';
 import { useDesktop } from '../DesktopContext';
 import { digitsOnly, formatDateTime } from '../format';
 import { BlockedStatusBadge, Disclosure, KeyValueTable, PageHeader, QueueStateBadge, QueueTable, SectionHeader } from '../components';
 import {
+  buildFormatLabelById,
   canDismissUploadJob,
   canIgnoreUploadJob,
   compareUploadJobsNewestFirst,
   explainFilenameAutoAssignment,
-  matchFormatsForTournamentId,
+  findDetectedFile,
   formatFileKindLabel,
   COMPACT_TIMESTAMP,
   formatLifecycleLabel,
@@ -24,6 +26,7 @@ import {
   getQueueRowActionKeys,
   getQueueRowPrimaryAction,
   isQueueJobDone,
+  isTournamentIdLength,
   parseLegacyQueueWorkspaceView,
   parseQueueWorkspaceView,
   parseRetryableFailureDetail,
@@ -33,9 +36,11 @@ import {
   queueWorkspaceViewLabel,
   formatOptionLabel,
   formatUploadFormatLabel,
+  resolveTournamentIdMatch,
   summarizeBlockedJob,
   uploadJobNeedsAttention,
   uploadJobWorkingAutomatically,
+  type QueueRowActionKey,
   type QueueWorkspaceView
 } from '../queue-model';
 
@@ -57,24 +62,419 @@ const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
   </Group>
 );
 
-export const UploadQueuePage = (): JSX.Element => {
-  const location = useLocation();
-  const navigate = useNavigate();
+type ActionButtonStyle = { label: string; variant?: ButtonProps['variant']; color?: string; title?: string };
+// 'row' styles the compact queue-row button, 'inspector' the inspector's; an action with neither is not offered there.
+type JobActionConfig = { run: (job: LocalUploadJob) => void; row?: ActionButtonStyle; inspector?: ActionButtonStyle };
+type JobActionConfigs = Partial<Record<QueueRowActionKey, JobActionConfig>>;
+
+// The fix comes first, then reversible actions, then the ones that drop the row; "Reveal file" sits between the two groups.
+const INSPECTOR_FIX_ACTIONS: readonly QueueRowActionKey[] = ['retry', 'reauth', 'restore'];
+const INSPECTOR_REMOVE_ACTIONS: readonly QueueRowActionKey[] = ['ignore', 'dismissDuplicate', 'dismissWorking', 'removeAwaiting'];
+
+// Actions that only call the desktop client; 'assign' is page navigation, so the page adds it.
+const useJobActionConfigs = (): JobActionConfigs => {
   const {
-    snapshot,
-    loading,
     selectedProfile,
-    assignDetectedFileFormat,
-    assignDetectedFileTournament,
     retryUploadJob,
     dismissDuplicateUploadJob,
     dismissWorkingUploadJob,
     ignoreUploadJob,
     restoreIgnoredUploadJob,
     removeAwaitingUploadJob,
-    openUploadFileLocation,
     openAuthWindow
   } = useDesktop();
+  return {
+    retry: {
+      run: (job) => void retryUploadJob(job.id),
+      row: { label: 'Retry', variant: 'light', color: 'yellow' },
+      inspector: { label: 'Retry now', color: 'orange' }
+    },
+    ...(selectedProfile
+      ? {
+          reauth: {
+            run: () => void openAuthWindow(selectedProfile.id),
+            row: { label: 'Re-auth', variant: 'light', color: 'red' },
+            inspector: { label: 'Sign in again', color: 'orange' }
+          }
+        }
+      : {}),
+    restore: {
+      run: (job) => void restoreIgnoredUploadJob(job.id),
+      row: { label: 'Restore', variant: 'subtle', color: 'gray' },
+      inspector: { label: 'Restore row' }
+    },
+    ignore: {
+      run: (job) => void ignoreUploadJob(job.id),
+      inspector: { label: 'Ignore', variant: 'light', color: 'gray', title: 'Move to the Ignored tab; restore it there any time.' }
+    },
+    dismissDuplicate: {
+      run: (job) => void dismissDuplicateUploadJob(job.id),
+      row: { label: 'Dismiss', variant: 'subtle' },
+      inspector: { label: 'Dismiss duplicate', variant: 'light', color: 'gray' }
+    },
+    dismissWorking: {
+      run: (job) => void dismissWorkingUploadJob(job.id),
+      row: { label: 'Dismiss', variant: 'subtle', color: 'red' },
+      inspector: {
+        label: 'Dismiss',
+        variant: 'subtle',
+        color: 'red',
+        title: 'Remove it from the local queue. Safe until the upload starts.'
+      }
+    },
+    removeAwaiting: {
+      run: (job) => void removeAwaitingUploadJob(job.id),
+      inspector: { label: 'Remove from queue', variant: 'subtle', color: 'red' }
+    }
+  };
+};
+
+// Rendered with key={job.id}, so the typed tournament ID, chosen format and open details reset when the selection changes.
+const Inspector = ({ job }: { job: LocalUploadJob }): JSX.Element => {
+  const { snapshot, assignDetectedFileFormat, assignDetectedFileTournament, openUploadFileLocation } = useDesktop();
+  const actionConfigs = useJobActionConfigs();
+  const [selectedFormatId, setSelectedFormatId] = useState('');
+  const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [showTechnicalDetails, { toggle: toggleTechnicalDetails }] = useDisclosure(false);
+  const formatLabelById = useMemo(() => buildFormatLabelById(snapshot.cachedFormats), [snapshot.cachedFormats]);
+  const selectedAttempts = useMemo(
+    () => snapshot.uploadAttempts.filter((attempt) => attempt.uploadJobId === job.id),
+    [job.id, snapshot.uploadAttempts]
+  );
+  const selectedJobFormat = useMemo(
+    () => snapshot.cachedFormats.find((format) => format.id === job.formatId) ?? null,
+    [job.formatId, snapshot.cachedFormats]
+  );
+  const selectedJobTeamCount = job.teamCount;
+  const { matches: tournamentFormatMatches, error: tournamentAssignmentError } = useMemo(
+    () => resolveTournamentIdMatch(snapshot.cachedFormats, selectedTournamentId, selectedJobTeamCount, 'inspector'),
+    [selectedJobTeamCount, selectedTournamentId, snapshot.cachedFormats]
+  );
+  const matchedTournamentFormat = tournamentFormatMatches.length === 1 ? tournamentFormatMatches[0] : null;
+  const compatibleDirectFormats = useMemo(
+    () => snapshot.cachedFormats.filter((format) => formatMatchesTeamCount(format.teamsPerTournament, selectedJobTeamCount)),
+    [selectedJobTeamCount, snapshot.cachedFormats]
+  );
+  const selectedJobAutoAssignmentReason = useMemo(() => {
+    if (job.localState !== 'awaiting_format_assignment' || job.fileKind !== 'stats_export') {
+      return '';
+    }
+    return explainFilenameAutoAssignment(job.filename, job.teamCount, snapshot.cachedFormats);
+  }, [job, snapshot.cachedFormats]);
+  const selectedJobTeamCountWarning = useMemo(
+    () => getIncompleteTeamCountWarning(job.fileKind, job.teamCount, selectedJobFormat),
+    [job.fileKind, job.teamCount, selectedJobFormat]
+  );
+  const selectedJobFailureDetail =
+    job.localState === 'failed_retryable' ? parseRetryableFailureDetail(job.error) : null;
+  const selectedJobView = queueWorkspaceViewForJob(job);
+  const selectedJobActions = useMemo(() => getQueueRowActionKeys(job), [job]);
+  const selectedJobBlocker = uploadJobNeedsAttention(job) ? summarizeBlockedJob(job, snapshot.cachedFormats) : null;
+  const selectedJobDetail = selectedJobBlocker
+    ? selectedJobBlocker.reason
+    : job.localState === 'detected' || job.localState === 'queued_local'
+      ? 'Queued locally and safe to remove before upload starts'
+      : job.localState === 'ignored'
+        ? job.ignoredFromState
+          ? `Ignored ${formatQueueStateLabel(job.ignoredFromState, job.fileKind).toLowerCase()} row`
+          : 'Ignored row'
+        : selectedJobView === 'done'
+          ? 'Finished queue row'
+          : 'Automatic progress is still underway';
+  // Facts worth a glance; empty ones are left out, the rest sit under technical details.
+  const selectedJobFacts: Array<[string, string]> = ([
+    ['Format', selectedJobFormat?.name ?? formatUploadFormatLabel(job.formatId, formatLabelById)],
+    ['Teams', job.teamCount > 0 ? String(job.teamCount) : ''],
+    ['Server', job.lifecyclePhase ? formatLifecycleLabel(job.lifecyclePhase, job.fileKind) : ''],
+    ['Server status', job.serverStatus],
+    ['Updated', formatUploadJobModifiedAt(job, COMPACT_TIMESTAMP)]
+  ] as Array<[string, string]>).filter(([, value]) => value && value !== '-');
+
+  const renderAction = (key: QueueRowActionKey): JSX.Element | null => {
+    const config = actionConfigs[key];
+    if (!selectedJobActions.includes(key) || !config?.inspector) {
+      return null;
+    }
+    const { label, variant, color, title } = config.inspector;
+    return (
+      <Button key={key} size="xs" variant={variant} color={color} title={title} onClick={() => config.run(job)}>
+        {label}
+      </Button>
+    );
+  };
+
+  return (
+    <Card className="desktop-card desktop-queue-inspector">
+      <Stack gap="md">
+        <SectionHeader
+          eyebrow="Inspector"
+          title={job.filename}
+          description={selectedJobDetail}
+          aside={selectedJobBlocker ? (
+            <BlockedStatusBadge summary={selectedJobBlocker} />
+          ) : (
+            <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
+          )}
+        />
+        {job.localState === 'awaiting_format_assignment' && job.fileKind === 'stats_export' && selectedJobAutoAssignmentReason ? (
+          <Alert color="blue" title="Why this was not auto-assigned">
+            {selectedJobAutoAssignmentReason}
+          </Alert>
+        ) : null}
+        {job.localState === 'failed_retryable' ? (
+          <Alert color="orange" title="Retryable failure" className="desktop-wrap-anywhere">
+            {job.error
+              ? formatRetryableFailureMessage(job.error)
+              : 'A transient error paused this upload. Retry from the queue or after the service recovers.'}
+          </Alert>
+        ) : null}
+        {selectedJobFailureDetail?.kind === 'variant_limit_exceeded' ? (
+          <Card className="desktop-subcard">
+            <Stack gap="xs">
+              <Text fw={600}>Variant limit details</Text>
+              <Table withTableBorder withColumnBorders>
+                <Table.Tbody>
+                  <Table.Tr>
+                    <Table.Th>Team</Table.Th>
+                    <Table.Td>{selectedJobFailureDetail.teamName}</Table.Td>
+                  </Table.Tr>
+                  {selectedJobFailureDetail.formatName ? (
+                    <Table.Tr>
+                      <Table.Th>Format</Table.Th>
+                      <Table.Td>{selectedJobFailureDetail.formatName}</Table.Td>
+                    </Table.Tr>
+                  ) : null}
+                  <Table.Tr>
+                    <Table.Th>Variant cards found</Table.Th>
+                    <Table.Td>{selectedJobFailureDetail.actual}</Table.Td>
+                  </Table.Tr>
+                  <Table.Tr>
+                    <Table.Th>Limit allowed</Table.Th>
+                    <Table.Td>{selectedJobFailureDetail.allowed}</Table.Td>
+                  </Table.Tr>
+                </Table.Tbody>
+              </Table>
+            </Stack>
+          </Card>
+        ) : null}
+        {job.localState === 'auth_blocked' ? (
+          <Alert color="red" title="Sign-in required">
+            The selected account needs to sign in again. After successful auth, the queue resumes automatically.
+          </Alert>
+        ) : null}
+        {job.localState === 'ignored' ? (
+          <Alert color="gray" title="Ignored row">
+            {job.ignoredFromState
+              ? `This row was hidden after ${formatQueueStateLabel(job.ignoredFromState, job.fileKind).toLowerCase()}. Restore it when you want it back in the queue.`
+              : 'This row was hidden from the queue. Restore it when you want it back in the main lane.'}
+          </Alert>
+        ) : null}
+        {job.localState === 'awaiting_format_assignment' && job.fileKind === 'stats_export' ? (
+          <Card className="desktop-subcard desktop-queue-resolution">
+            <Stack gap="xs">
+              <Text fw={600}>Assign a format</Text>
+              <Group gap="xs" align="flex-end" wrap="nowrap">
+                <TextInput
+                  size="xs"
+                  style={{ flex: 1 }}
+                  label="Tournament ID"
+                  placeholder="Full 3 to 7 digit ID"
+                  value={selectedTournamentId}
+                  onChange={(event) => {
+                    setSelectedTournamentId(digitsOnly(event.currentTarget.value, 7));
+                  }}
+                />
+                <Button
+                  size="xs"
+                  color="orange"
+                  disabled={!matchedTournamentFormat || selectedTournamentId.trim().length < 3}
+                  onClick={() => {
+                    const detectedFile = findDetectedFile(snapshot.detectedFiles, job);
+                    if (!detectedFile) {
+                      return;
+                    }
+                    void assignDetectedFileTournament({
+                      detectedFileId: detectedFile.id,
+                      tournamentId: selectedTournamentId.trim()
+                    }).then(() => {
+                      setSelectedTournamentId('');
+                      setSelectedFormatId('');
+                    });
+                  }}
+                >
+                  Assign
+                </Button>
+              </Group>
+              {matchedTournamentFormat ? (
+                <Text size="xs" c="teal">
+                  {matchedTournamentFormat.tournamentId
+                    ? `Maps to ${matchedTournamentFormat.name} (event ${matchedTournamentFormat.tournamentId}).`
+                    : `Maps to ${matchedTournamentFormat.name} using prefix ${matchedTournamentFormat.tournamentIdPrefix} (${matchedTournamentFormat.tournamentIdPrefix.length + 4} digits total).`}
+                  {matchedTournamentFormat.teamsPerTournament > 0 ? ` ${matchedTournamentFormat.teamsPerTournament} teams.` : ''}
+                </Text>
+              ) : tournamentAssignmentError ? (
+                <Text size="xs" c="yellow">{tournamentAssignmentError}</Text>
+              ) : null}
+              <Group gap="xs" align="flex-end" wrap="nowrap">
+                <Select
+                  size="xs"
+                  style={{ flex: 1 }}
+                  label="Or pick the format"
+                  title="Use this when the tournament ID is not known yet or several formats share a prefix."
+                  placeholder="Choose a format"
+                  value={selectedFormatId || null}
+                  onChange={(value) => setSelectedFormatId(value ?? '')}
+                  data={compatibleDirectFormats.map((format) => ({
+                    value: format.id,
+                    label: `${formatOptionLabel(format)}${format.teamsPerTournament > 0 ? ` - ${format.teamsPerTournament} teams` : ''}`
+                  }))}
+                />
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="orange"
+                  disabled={!selectedFormatId}
+                  onClick={() => {
+                    const detectedFile = findDetectedFile(snapshot.detectedFiles, job);
+                    if (!detectedFile) {
+                      return;
+                    }
+                    void assignDetectedFileFormat({
+                      detectedFileId: detectedFile.id,
+                      formatId: selectedFormatId
+                    }).then(() => {
+                      setSelectedFormatId('');
+                    });
+                  }}
+                >
+                  Assign
+                </Button>
+              </Group>
+            </Stack>
+          </Card>
+        ) : null}
+        {selectedJobTeamCountWarning ? (
+          <Alert color="yellow" title="Team count looks short">
+            {selectedJobTeamCountWarning.message}
+          </Alert>
+        ) : null}
+        {/* The fix comes first, then reversible actions, then the ones that drop the row. */}
+        <Group gap="xs" wrap="wrap">
+          {INSPECTOR_FIX_ACTIONS.map(renderAction)}
+          <Button size="xs" variant="light" color="gray" onClick={() => void openUploadFileLocation(job.id)}>
+            Reveal file
+          </Button>
+          {INSPECTOR_REMOVE_ACTIONS.map(renderAction)}
+        </Group>
+        {selectedJobFacts.length > 0 ? (
+          <KeyValueTable
+            className="desktop-inspector-facts"
+            rows={selectedJobFacts.map(([label, value]) => ({ label, value }))}
+            valueClassName="desktop-wrap-anywhere"
+            verticalSpacing={4}
+            fz="sm"
+          />
+        ) : null}
+        <Disclosure
+          size="xs"
+          variant="subtle"
+          color="gray"
+          opened={showTechnicalDetails}
+          onToggle={toggleTechnicalDetails}
+          showLabel="Show technical details"
+          hideLabel="Hide technical details"
+        >
+          <Table.ScrollContainer minWidth={480} type="native">
+            <KeyValueTable
+              withTableBorder
+              withColumnBorders
+              rows={[
+                { label: 'Kind', value: formatFileKindLabel(job.fileKind) },
+                { label: 'Local state', value: formatQueueStateLabel(job.localState, job.fileKind) },
+                { label: 'Error', value: job.error ? formatRetryableFailureMessage(job.error) : '-', className: 'desktop-wrap-anywhere' },
+                { label: 'Local job ID', value: <TechnicalValue value={job.id} /> },
+                { label: 'Path', value: job.path, className: 'desktop-mono' },
+                { label: 'Staged path', value: job.stagedPath || '-', className: 'desktop-mono' },
+                { label: 'Local file', value: formatLocalPresenceLabel(job.localPresence) },
+                { label: 'Tournament ID', value: job.tournamentId || '-' },
+                { label: 'Checksum', value: <TechnicalValue value={job.checksum} /> },
+                { label: 'Remote checksum', value: <TechnicalValue value={job.remoteChecksum} /> },
+                { label: 'Upload ID', value: <TechnicalValue value={job.uploadId} /> },
+                { label: 'Request ID', value: <TechnicalValue value={job.lastRequestId} /> },
+                { label: 'Duplicate reason', value: job.duplicateReason || '-' },
+                { label: 'Retry after', value: job.nextRetryAfter || '-' },
+                { label: 'Queued', value: job.queuedAt || '-' },
+                { label: 'Processing', value: job.processingAt || '-' },
+                { label: 'Parsed', value: job.parsedAt || '-' },
+                { label: 'Refreshing', value: job.refreshingAt || '-' },
+                { label: 'Completed', value: job.completedAt || '-' },
+                { label: 'Failed', value: job.failedAt || '-' },
+                { label: 'Retries', value: job.retries },
+                { label: 'Source modified', value: formatSourceModifiedAt(job.sourceModifiedAt) },
+                { label: 'Queue updated', value: formatDateTime(job.updatedAt) }
+              ]}
+            />
+          </Table.ScrollContainer>
+          <Card className="desktop-subcard">
+            <Stack gap="xs">
+              <Text fw={600}>Attempt history</Text>
+              {selectedAttempts.length === 0 ? (
+                <Alert color="gray">No local attempts recorded yet.</Alert>
+              ) : (
+                <Table.ScrollContainer minWidth={480} type="native">
+                  <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>#</Table.Th>
+                        <Table.Th>Status</Table.Th>
+                        <Table.Th>Detail</Table.Th>
+                        <Table.Th>Updated</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {selectedAttempts.map((attempt) => (
+                        <Table.Tr key={attempt.id}>
+                          <Table.Td>{attempt.attemptNumber}</Table.Td>
+                          <Table.Td>{attempt.status}</Table.Td>
+                          <Table.Td className="desktop-mono">{attempt.detail}</Table.Td>
+                          <Table.Td>{formatDateTime(attempt.updatedAt)}</Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
+            </Stack>
+          </Card>
+        </Disclosure>
+      </Stack>
+    </Card>
+  );
+};
+
+export const UploadQueuePage = (): JSX.Element => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const {
+    snapshot,
+    loading,
+    assignDetectedFileTournament,
+    dismissDuplicateUploadJob,
+    dismissWorkingUploadJob,
+    ignoreUploadJob,
+    removeAwaitingUploadJob
+  } = useDesktop();
+  const jobActionConfigs = useJobActionConfigs();
+  const actionConfigs: JobActionConfigs = {
+    ...jobActionConfigs,
+    assign: {
+      run: (job) => {
+        setQueueView('needs_action');
+        setSelectedJobId(job.id);
+      },
+      row: { label: 'Assign', variant: 'light', color: 'orange' }
+    }
+  };
   const [queueView, setQueueView] = useState<QueueWorkspaceView>('working');
   // The default tab depends on the jobs, so pick it (and write it to the URL) only once a snapshot has loaded;
   // otherwise a cold start lands on Done from the empty initial snapshot and the URL keeps it.
@@ -86,22 +486,15 @@ export const UploadQueuePage = (): JSX.Element => {
   }, [loading]);
   const [selectedJobId, setSelectedJobId] = useState('');
   const [selectedQueueJobIds, setSelectedQueueJobIds] = useState<string[]>([]);
-  const [selectedFormatId, setSelectedFormatId] = useState('');
-  const [selectedTournamentId, setSelectedTournamentId] = useState('');
   const [editingFilenameJobId, setEditingFilenameJobId] = useState('');
   const [inlineTournamentId, setInlineTournamentId] = useState('');
   const [bulkDismissInFlight, setBulkDismissInFlight] = useState(false);
-  const [showTechnicalDetails, { toggle: toggleTechnicalDetails, close: closeTechnicalDetails }] = useDisclosure(false);
   const formatById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format])),
     [snapshot.cachedFormats]
   );
-  const formatLabelById = useMemo(
-    () =>
-      Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
-    [snapshot.cachedFormats]
-  );
+  const formatLabelById = useMemo(() => buildFormatLabelById(snapshot.cachedFormats), [snapshot.cachedFormats]);
   const sortedJobs = useMemo(
     () =>
       [...snapshot.uploadJobs].sort(
@@ -161,104 +554,17 @@ export const UploadQueuePage = (): JSX.Element => {
     () => sortedJobs.find((job) => job.id === selectedJobId) ?? null,
     [selectedJobId, sortedJobs]
   );
-
-  const selectedAttempts = useMemo(
-    () => snapshot.uploadAttempts.filter((attempt) => attempt.uploadJobId === selectedJobId),
-    [selectedJobId, snapshot.uploadAttempts]
-  );
   const inlineEditingJob = useMemo(
     () => snapshot.uploadJobs.find((job) => job.id === editingFilenameJobId) ?? null,
     [editingFilenameJobId, snapshot.uploadJobs]
   );
-  const selectedJobFormat = useMemo(
-    () => snapshot.cachedFormats.find((format) => format.id === selectedJob?.formatId) ?? null,
-    [selectedJob?.formatId, snapshot.cachedFormats]
-  );
-  const selectedJobTeamCount = selectedJob?.teamCount ?? 0;
   const inlineEditingJobTeamCount = inlineEditingJob?.teamCount ?? 0;
-  const tournamentFormatMatches = useMemo(() => {
-    const normalizedTournamentId = selectedTournamentId.trim();
-    if (normalizedTournamentId.length < 3 || normalizedTournamentId.length > 7) {
-      return [];
-    }
-    return matchFormatsForTournamentId(snapshot.cachedFormats, normalizedTournamentId, selectedJobTeamCount);
-  }, [selectedJobTeamCount, selectedTournamentId, snapshot.cachedFormats]);
-  const matchedTournamentFormat = tournamentFormatMatches.length === 1 ? tournamentFormatMatches[0] : null;
-  const tournamentAssignmentError =
-    selectedTournamentId.trim().length === 0
-      ? ''
-      : tournamentFormatMatches.length === 0
-        ? selectedJobTeamCount > 0
-          ? `No cached tournament format matches that 3 to 7 digit tournament ID for ${selectedJobTeamCount} detected teams.`
-          : 'No cached tournament format matches that 3 to 7 digit tournament ID.'
-        : tournamentFormatMatches.length > 1
-          ? 'More than one cached format matches that tournament ID. Refresh formats or assign by format instead.'
-          : '';
-  const inlineTournamentFormatMatches = useMemo(() => {
-    const normalizedTournamentId = inlineTournamentId.trim();
-    if (normalizedTournamentId.length < 3 || normalizedTournamentId.length > 7) {
-      return [];
-    }
-    return matchFormatsForTournamentId(snapshot.cachedFormats, normalizedTournamentId, inlineEditingJobTeamCount);
-  }, [inlineEditingJobTeamCount, inlineTournamentId, snapshot.cachedFormats]);
-  const inlineTournamentAssignmentError =
-    inlineTournamentId.trim().length === 0
-      ? ''
-      : inlineTournamentFormatMatches.length === 0
-        ? inlineEditingJobTeamCount > 0
-          ? `No cached format matches that tournament ID for ${inlineEditingJobTeamCount} detected teams.`
-          : 'No cached format matches that tournament ID.'
-        : inlineTournamentFormatMatches.length > 1
-          ? 'More than one cached format matches that tournament ID.'
-          : '';
-  const compatibleDirectFormats = useMemo(
-    () => snapshot.cachedFormats.filter((format) => formatMatchesTeamCount(format.teamsPerTournament, selectedJobTeamCount)),
-    [selectedJobTeamCount, snapshot.cachedFormats]
+  const { error: inlineTournamentAssignmentError } = resolveTournamentIdMatch(
+    snapshot.cachedFormats,
+    inlineTournamentId,
+    inlineEditingJobTeamCount,
+    'inline'
   );
-  const selectedJobAutoAssignmentReason = useMemo(() => {
-    if (!selectedJob || selectedJob.localState !== 'awaiting_format_assignment' || selectedJob.fileKind !== 'stats_export') {
-      return '';
-    }
-    return explainFilenameAutoAssignment(selectedJob.filename, selectedJob.teamCount, snapshot.cachedFormats);
-  }, [selectedJob, snapshot.cachedFormats]);
-  const selectedJobTeamCountWarning = useMemo(
-    () =>
-      getIncompleteTeamCountWarning(
-        selectedJob?.fileKind ?? '',
-        selectedJob?.teamCount ?? 0,
-        selectedJobFormat
-      ),
-    [selectedJob?.fileKind, selectedJob?.teamCount, selectedJobFormat]
-  );
-  const selectedJobFailureDetail =
-    selectedJob?.localState === 'failed_retryable' ? parseRetryableFailureDetail(selectedJob.error) : null;
-  const selectedJobView = selectedJob ? queueWorkspaceViewForJob(selectedJob) : null;
-  const selectedJobActions = useMemo(() => (selectedJob ? getQueueRowActionKeys(selectedJob) : []), [selectedJob]);
-  const selectedJobBlocker =
-    selectedJob && uploadJobNeedsAttention(selectedJob) ? summarizeBlockedJob(selectedJob, snapshot.cachedFormats) : null;
-  const selectedJobDetail = selectedJob
-    ? selectedJobBlocker
-      ? selectedJobBlocker.reason
-      : selectedJob.localState === 'detected' || selectedJob.localState === 'queued_local'
-        ? 'Queued locally and safe to remove before upload starts'
-        : selectedJob.localState === 'ignored'
-          ? selectedJob.ignoredFromState
-            ? `Ignored ${formatQueueStateLabel(selectedJob.ignoredFromState, selectedJob.fileKind).toLowerCase()} row`
-            : 'Ignored row'
-          : selectedJobView === 'done'
-            ? 'Finished queue row'
-            : 'Automatic progress is still underway'
-    : '';
-  // Facts worth a glance; empty ones are left out, the rest sit under technical details.
-  const selectedJobFacts: Array<[string, string]> = selectedJob
-    ? ([
-        ['Format', selectedJobFormat?.name ?? formatUploadFormatLabel(selectedJob.formatId, formatLabelById)],
-        ['Teams', selectedJob.teamCount > 0 ? String(selectedJob.teamCount) : ''],
-        ['Server', selectedJob.lifecyclePhase ? formatLifecycleLabel(selectedJob.lifecyclePhase, selectedJob.fileKind) : ''],
-        ['Server status', selectedJob.serverStatus],
-        ['Updated', formatUploadJobModifiedAt(selectedJob, COMPACT_TIMESTAMP)]
-      ] as Array<[string, string]>).filter(([, value]) => value && value !== '-')
-    : [];
   const currentViewJobs = queueJobsByView[queueView];
 
   useEffect(() => {
@@ -332,16 +638,14 @@ export const UploadQueuePage = (): JSX.Element => {
 
   const submitInlineTournamentAssignment = async (jobId: string): Promise<void> => {
     const tournamentId = inlineTournamentId.trim();
-    if (tournamentId.length < 3 || tournamentId.length > 7) {
+    if (!isTournamentIdLength(tournamentId)) {
       return;
     }
     const job = snapshot.uploadJobs.find((entry) => entry.id === jobId) ?? null;
     if (!job) {
       return;
     }
-    const detectedFile = snapshot.detectedFiles.find(
-      (file) => file.path === job.path && file.checksum === job.checksum
-    ) ?? null;
+    const detectedFile = findDetectedFile(snapshot.detectedFiles, job);
     if (!detectedFile) {
       return;
     }
@@ -352,12 +656,6 @@ export const UploadQueuePage = (): JSX.Element => {
     setEditingFilenameJobId('');
     setInlineTournamentId('');
   };
-
-  useEffect(() => {
-    setSelectedTournamentId('');
-    setSelectedFormatId('');
-    closeTechnicalDetails();
-  }, [selectedJobId]);
 
   useEffect(() => {
     if (!editingFilenameJobId) {
@@ -566,390 +864,31 @@ export const UploadQueuePage = (): JSX.Element => {
                   );
                 }}
                 actions={(job) => {
-                  const rowAction = getQueueRowPrimaryAction(job);
+                  const key = getQueueRowPrimaryAction(job);
+                  const action = key ? actionConfigs[key] : undefined;
                   return (
-                  <Group gap={4} wrap="nowrap">
-                    {rowAction === 'assign' ? (
-                      <Button
-                        size="compact-xs"
-                        variant="light"
-                        color="orange"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setQueueView('needs_action');
-                          setSelectedJobId(job.id);
-                        }}
-                      >
-                        Assign
-                      </Button>
-                    ) : null}
-                    {rowAction === 'retry' ? (
-                      <Button
-                        size="compact-xs"
-                        variant="light"
-                        color="yellow"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void retryUploadJob(job.id);
-                        }}
-                      >
-                        Retry
-                      </Button>
-                    ) : null}
-                    {rowAction === 'reauth' && selectedProfile ? (
-                      <Button
-                        size="compact-xs"
-                        variant="light"
-                        color="red"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void openAuthWindow(selectedProfile.id);
-                        }}
-                      >
-                        Re-auth
-                      </Button>
-                    ) : null}
-                    {rowAction === 'dismissWorking' ? (
-                      <Button
-                        size="compact-xs"
-                        variant="subtle"
-                        color="red"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void dismissWorkingUploadJob(job.id);
-                        }}
-                      >
-                        Dismiss
-                      </Button>
-                    ) : null}
-                    {rowAction === 'restore' ? (
-                      <Button
-                        size="compact-xs"
-                        variant="subtle"
-                        color="gray"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void restoreIgnoredUploadJob(job.id);
-                        }}
-                      >
-                        Restore
-                      </Button>
-                    ) : null}
-                    {rowAction === 'dismissDuplicate' ? (
-                      <Button
-                        size="compact-xs"
-                        variant="subtle"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void dismissDuplicateUploadJob(job.id);
-                        }}
-                      >
-                        Dismiss
-                      </Button>
-                    ) : null}
-                  </Group>
+                    <Group gap={4} wrap="nowrap">
+                      {action?.row ? (
+                        <Button
+                          size="compact-xs"
+                          variant={action.row.variant}
+                          color={action.row.color}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            action.run(job);
+                          }}
+                        >
+                          {action.row.label}
+                        </Button>
+                      ) : null}
+                    </Group>
                   );
                 }}
               />
             </Stack>
           </Card>
         </Stack>
-        {selectedJob ? (
-          <Card className="desktop-card desktop-queue-inspector">
-            <Stack gap="md">
-              <SectionHeader
-                eyebrow="Inspector"
-                title={selectedJob.filename}
-                description={selectedJobDetail}
-                aside={selectedJobBlocker ? (
-                  <BlockedStatusBadge summary={selectedJobBlocker} />
-                ) : (
-                  <QueueStateBadge state={selectedJob.localState} fileKind={selectedJob.fileKind} />
-                )}
-              />
-              {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' && selectedJobAutoAssignmentReason ? (
-                <Alert color="blue" title="Why this was not auto-assigned">
-                  {selectedJobAutoAssignmentReason}
-                </Alert>
-              ) : null}
-              {selectedJob.localState === 'failed_retryable' ? (
-                <Alert color="orange" title="Retryable failure" className="desktop-wrap-anywhere">
-                  {selectedJob.error
-                    ? formatRetryableFailureMessage(selectedJob.error)
-                    : 'A transient error paused this upload. Retry from the queue or after the service recovers.'}
-                </Alert>
-              ) : null}
-              {selectedJobFailureDetail?.kind === 'variant_limit_exceeded' ? (
-                <Card className="desktop-subcard">
-                  <Stack gap="xs">
-                    <Text fw={600}>Variant limit details</Text>
-                    <Table withTableBorder withColumnBorders>
-                      <Table.Tbody>
-                        <Table.Tr>
-                          <Table.Th>Team</Table.Th>
-                          <Table.Td>{selectedJobFailureDetail.teamName}</Table.Td>
-                        </Table.Tr>
-                        {selectedJobFailureDetail.formatName ? (
-                          <Table.Tr>
-                            <Table.Th>Format</Table.Th>
-                            <Table.Td>{selectedJobFailureDetail.formatName}</Table.Td>
-                          </Table.Tr>
-                        ) : null}
-                        <Table.Tr>
-                          <Table.Th>Variant cards found</Table.Th>
-                          <Table.Td>{selectedJobFailureDetail.actual}</Table.Td>
-                        </Table.Tr>
-                        <Table.Tr>
-                          <Table.Th>Limit allowed</Table.Th>
-                          <Table.Td>{selectedJobFailureDetail.allowed}</Table.Td>
-                        </Table.Tr>
-                      </Table.Tbody>
-                    </Table>
-                  </Stack>
-                </Card>
-              ) : null}
-              {selectedJob.localState === 'auth_blocked' ? (
-                <Alert color="red" title="Sign-in required">
-                  The selected account needs to sign in again. After successful auth, the queue resumes automatically.
-                </Alert>
-              ) : null}
-              {selectedJob.localState === 'ignored' ? (
-                <Alert color="gray" title="Ignored row">
-                  {selectedJob.ignoredFromState
-                    ? `This row was hidden after ${formatQueueStateLabel(selectedJob.ignoredFromState, selectedJob.fileKind).toLowerCase()}. Restore it when you want it back in the queue.`
-                    : 'This row was hidden from the queue. Restore it when you want it back in the main lane.'}
-                </Alert>
-              ) : null}
-              {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
-                <Card className="desktop-subcard desktop-queue-resolution">
-                  <Stack gap="xs">
-                    <Text fw={600}>Assign a format</Text>
-                    <Group gap="xs" align="flex-end" wrap="nowrap">
-                      <TextInput
-                        size="xs"
-                        style={{ flex: 1 }}
-                        label="Tournament ID"
-                        placeholder="Full 3 to 7 digit ID"
-                        value={selectedTournamentId}
-                        onChange={(event) => {
-                          setSelectedTournamentId(digitsOnly(event.currentTarget.value, 7));
-                        }}
-                      />
-                      <Button
-                        size="xs"
-                        color="orange"
-                        disabled={!matchedTournamentFormat || selectedTournamentId.trim().length < 3}
-                        onClick={() => {
-                          const detectedFile = snapshot.detectedFiles.find(
-                            (file) => file.path === selectedJob.path && file.checksum === selectedJob.checksum
-                          ) ?? null;
-                          if (!detectedFile) {
-                            return;
-                          }
-                          void assignDetectedFileTournament({
-                            detectedFileId: detectedFile.id,
-                            tournamentId: selectedTournamentId.trim()
-                          }).then(() => {
-                            setSelectedTournamentId('');
-                            setSelectedFormatId('');
-                          });
-                        }}
-                      >
-                        Assign
-                      </Button>
-                    </Group>
-                    {matchedTournamentFormat ? (
-                      <Text size="xs" c="teal">
-                        {matchedTournamentFormat.tournamentId
-                          ? `Maps to ${matchedTournamentFormat.name} (event ${matchedTournamentFormat.tournamentId}).`
-                          : `Maps to ${matchedTournamentFormat.name} using prefix ${matchedTournamentFormat.tournamentIdPrefix} (${matchedTournamentFormat.tournamentIdPrefix.length + 4} digits total).`}
-                        {matchedTournamentFormat.teamsPerTournament > 0 ? ` ${matchedTournamentFormat.teamsPerTournament} teams.` : ''}
-                      </Text>
-                    ) : tournamentAssignmentError ? (
-                      <Text size="xs" c="yellow">{tournamentAssignmentError}</Text>
-                    ) : null}
-                    <Group gap="xs" align="flex-end" wrap="nowrap">
-                      <Select
-                        size="xs"
-                        style={{ flex: 1 }}
-                        label="Or pick the format"
-                        title="Use this when the tournament ID is not known yet or several formats share a prefix."
-                        placeholder="Choose a format"
-                        value={selectedFormatId || null}
-                        onChange={(value) => setSelectedFormatId(value ?? '')}
-                        data={compatibleDirectFormats.map((format) => ({
-                          value: format.id,
-                          label: `${formatOptionLabel(format)}${format.teamsPerTournament > 0 ? ` - ${format.teamsPerTournament} teams` : ''}`
-                        }))}
-                      />
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="orange"
-                        disabled={!selectedFormatId}
-                        onClick={() => {
-                          const detectedFile = snapshot.detectedFiles.find(
-                            (file) => file.path === selectedJob.path && file.checksum === selectedJob.checksum
-                          ) ?? null;
-                          if (!detectedFile) {
-                            return;
-                          }
-                          void assignDetectedFileFormat({
-                            detectedFileId: detectedFile.id,
-                            formatId: selectedFormatId
-                          }).then(() => {
-                            setSelectedFormatId('');
-                          });
-                        }}
-                      >
-                        Assign
-                      </Button>
-                    </Group>
-                  </Stack>
-                </Card>
-              ) : null}
-              {selectedJobTeamCountWarning ? (
-                <Alert color="yellow" title="Team count looks short">
-                  {selectedJobTeamCountWarning.message}
-                </Alert>
-              ) : null}
-              {/* The fix comes first, then reversible actions, then the ones that drop the row. */}
-              <Group gap="xs" wrap="wrap">
-                {selectedJobActions.includes('retry') ? (
-                  <Button size="xs" color="orange" onClick={() => void retryUploadJob(selectedJob.id)}>
-                    Retry now
-                  </Button>
-                ) : null}
-                {selectedJobActions.includes('reauth') && selectedProfile ? (
-                  <Button size="xs" color="orange" onClick={() => void openAuthWindow(selectedProfile.id)}>
-                    Sign in again
-                  </Button>
-                ) : null}
-                {selectedJobActions.includes('restore') ? (
-                  <Button size="xs" onClick={() => void restoreIgnoredUploadJob(selectedJob.id)}>
-                    Restore row
-                  </Button>
-                ) : null}
-                <Button size="xs" variant="light" color="gray" onClick={() => void openUploadFileLocation(selectedJob.id)}>
-                  Reveal file
-                </Button>
-                {selectedJobActions.includes('ignore') ? (
-                  <Button
-                    size="xs"
-                    variant="light"
-                    color="gray"
-                    title="Move to the Ignored tab; restore it there any time."
-                    onClick={() => void ignoreUploadJob(selectedJob.id)}
-                  >
-                    Ignore
-                  </Button>
-                ) : null}
-                {selectedJobActions.includes('dismissDuplicate') ? (
-                  <Button size="xs" variant="light" color="gray" onClick={() => void dismissDuplicateUploadJob(selectedJob.id)}>
-                    Dismiss duplicate
-                  </Button>
-                ) : null}
-                {selectedJobActions.includes('dismissWorking') ? (
-                  <Button
-                    size="xs"
-                    variant="subtle"
-                    color="red"
-                    title="Remove it from the local queue. Safe until the upload starts."
-                    onClick={() => void dismissWorkingUploadJob(selectedJob.id)}
-                  >
-                    Dismiss
-                  </Button>
-                ) : null}
-                {selectedJobActions.includes('removeAwaiting') ? (
-                  <Button size="xs" variant="subtle" color="red" onClick={() => void removeAwaitingUploadJob(selectedJob.id)}>
-                    Remove from queue
-                  </Button>
-                ) : null}
-              </Group>
-              {selectedJobFacts.length > 0 ? (
-                <KeyValueTable
-                  className="desktop-inspector-facts"
-                  rows={selectedJobFacts.map(([label, value]) => ({ label, value }))}
-                  valueClassName="desktop-wrap-anywhere"
-                  verticalSpacing={4}
-                  fz="sm"
-                />
-              ) : null}
-              <Disclosure
-                size="xs"
-                variant="subtle"
-                color="gray"
-                opened={showTechnicalDetails}
-                onToggle={toggleTechnicalDetails}
-                showLabel="Show technical details"
-                hideLabel="Hide technical details"
-              >
-                <Table.ScrollContainer minWidth={480} type="native">
-                  <KeyValueTable
-                    withTableBorder
-                    withColumnBorders
-                    rows={[
-                      { label: 'Kind', value: formatFileKindLabel(selectedJob.fileKind) },
-                      { label: 'Local state', value: formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind) },
-                      { label: 'Error', value: selectedJob.error ? formatRetryableFailureMessage(selectedJob.error) : '-', className: 'desktop-wrap-anywhere' },
-                      { label: 'Local job ID', value: <TechnicalValue value={selectedJob.id} /> },
-                      { label: 'Path', value: selectedJob.path, className: 'desktop-mono' },
-                      { label: 'Staged path', value: selectedJob.stagedPath || '-', className: 'desktop-mono' },
-                      { label: 'Local file', value: formatLocalPresenceLabel(selectedJob.localPresence) },
-                      { label: 'Tournament ID', value: selectedJob.tournamentId || '-' },
-                      { label: 'Checksum', value: <TechnicalValue value={selectedJob.checksum} /> },
-                      { label: 'Remote checksum', value: <TechnicalValue value={selectedJob.remoteChecksum} /> },
-                      { label: 'Upload ID', value: <TechnicalValue value={selectedJob.uploadId} /> },
-                      { label: 'Request ID', value: <TechnicalValue value={selectedJob.lastRequestId} /> },
-                      { label: 'Duplicate reason', value: selectedJob.duplicateReason || '-' },
-                      { label: 'Retry after', value: selectedJob.nextRetryAfter || '-' },
-                      { label: 'Queued', value: selectedJob.queuedAt || '-' },
-                      { label: 'Processing', value: selectedJob.processingAt || '-' },
-                      { label: 'Parsed', value: selectedJob.parsedAt || '-' },
-                      { label: 'Refreshing', value: selectedJob.refreshingAt || '-' },
-                      { label: 'Completed', value: selectedJob.completedAt || '-' },
-                      { label: 'Failed', value: selectedJob.failedAt || '-' },
-                      { label: 'Retries', value: selectedJob.retries },
-                      { label: 'Source modified', value: formatSourceModifiedAt(selectedJob.sourceModifiedAt) },
-                      { label: 'Queue updated', value: formatDateTime(selectedJob.updatedAt) }
-                    ]}
-                  />
-                </Table.ScrollContainer>
-                <Card className="desktop-subcard">
-                  <Stack gap="xs">
-                    <Text fw={600}>Attempt history</Text>
-                    {selectedAttempts.length === 0 ? (
-                      <Alert color="gray">No local attempts recorded yet.</Alert>
-                    ) : (
-                      <Table.ScrollContainer minWidth={480} type="native">
-                        <Table withTableBorder withColumnBorders highlightOnHover striped="odd">
-                          <Table.Thead>
-                            <Table.Tr>
-                              <Table.Th>#</Table.Th>
-                              <Table.Th>Status</Table.Th>
-                              <Table.Th>Detail</Table.Th>
-                              <Table.Th>Updated</Table.Th>
-                            </Table.Tr>
-                          </Table.Thead>
-                          <Table.Tbody>
-                            {selectedAttempts.map((attempt) => (
-                              <Table.Tr key={attempt.id}>
-                                <Table.Td>{attempt.attemptNumber}</Table.Td>
-                                <Table.Td>{attempt.status}</Table.Td>
-                                <Table.Td className="desktop-mono">{attempt.detail}</Table.Td>
-                                <Table.Td>{formatDateTime(attempt.updatedAt)}</Table.Td>
-                              </Table.Tr>
-                            ))}
-                          </Table.Tbody>
-                        </Table>
-                      </Table.ScrollContainer>
-                    )}
-                  </Stack>
-                </Card>
-              </Disclosure>
-            </Stack>
-          </Card>
-        ) : null}
+        {selectedJob ? <Inspector key={selectedJob.id} job={selectedJob} /> : null}
       </div>
     </Stack>
   );

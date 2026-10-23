@@ -2,11 +2,13 @@ import { describe, expect, test } from 'vitest';
 import type { LocalUploadJob } from '@xips/api-contract';
 import {
   blockerPriority,
+  buildFormatLabelById,
   canDismissUploadJob,
   canIgnoreUploadJob,
   compareUploadJobsNewestFirst,
   diagnoseFilenameAutoAssignment,
   explainFilenameAutoAssignment,
+  findDetectedFile,
   formatUploadFormatLabel,
   leagueFormatIdFromFilename,
   parseLeagueFormatId,
@@ -19,8 +21,10 @@ import {
   getQueueRowActionKeys,
   getQueueRowPrimaryAction,
   isQueueJobDone,
+  isTournamentIdLength,
   matchFormatsForTournamentId,
   parseRetryableFailureDetail,
+  resolveTournamentIdMatch,
   queueWorkspaceViewForJob,
   summarizeBlockedJob,
   uploadJobFolderName,
@@ -655,5 +659,68 @@ describe('Event formats matched by exact tournament id', () => {
 
   test('a short Event id inside a larger filename is not an Event match (league name stays a league)', () => {
     expect(diagnoseFilenameAutoAssignment('2050.403.csv', 30, [...formats, { ...popup, id: 'p403', tournamentId: '403' }]).kind).toBe('no_tournament_id');
+  });
+});
+
+describe('resolveTournamentIdMatch', () => {
+  const iron = { id: 'iron', name: 'Iron Quick', tournamentIdPrefix: '101', tournamentId: '', teamsPerTournament: 16 };
+  const twin = { ...iron, id: 'twin' };
+  const formats = [iron];
+
+  test('isTournamentIdLength accepts 3 to 7 digits', () => {
+    expect(isTournamentIdLength('12')).toBe(false);
+    expect(isTournamentIdLength('123')).toBe(true);
+    expect(isTournamentIdLength('1234567')).toBe(true);
+    expect(isTournamentIdLength('12345678')).toBe(false);
+  });
+
+  test('stays quiet while the field is empty or exactly one format matches', () => {
+    expect(resolveTournamentIdMatch(formats, '  ', 0, 'inspector')).toEqual({ matches: [], error: '' });
+    expect(resolveTournamentIdMatch(formats, ' 1010001 ', 16, 'inline')).toEqual({ matches: [iron], error: '' });
+  });
+
+  test('words a missing match per caller, with the team count when known', () => {
+    expect(resolveTournamentIdMatch(formats, '999', 0, 'inspector').error).toBe(
+      'No cached tournament format matches that 3 to 7 digit tournament ID.'
+    );
+    expect(resolveTournamentIdMatch(formats, '999', 20, 'inspector').error).toBe(
+      'No cached tournament format matches that 3 to 7 digit tournament ID for 20 detected teams.'
+    );
+    expect(resolveTournamentIdMatch(formats, '999', 0, 'inline').error).toBe('No cached format matches that tournament ID.');
+    expect(resolveTournamentIdMatch(formats, '1010001', 20, 'inline').error).toBe(
+      'No cached format matches that tournament ID for 20 detected teams.'
+    );
+  });
+
+  test('an out-of-range id never matches', () => {
+    expect(resolveTournamentIdMatch(formats, '10', 0, 'inline')).toEqual({
+      matches: [],
+      error: 'No cached format matches that tournament ID.'
+    });
+  });
+
+  test('words an ambiguous match per caller', () => {
+    expect(resolveTournamentIdMatch([iron, twin], '1010001', 0, 'inspector').error).toBe(
+      'More than one cached format matches that tournament ID. Refresh formats or assign by format instead.'
+    );
+    expect(resolveTournamentIdMatch([iron, twin], '1010001', 0, 'inline').error).toBe(
+      'More than one cached format matches that tournament ID.'
+    );
+  });
+});
+
+describe('findDetectedFile', () => {
+  const file = (id: string, path: string, checksum: string) => ({ id, path, checksum }) as never;
+
+  test('matches on both path and checksum', () => {
+    const files = [file('a', '/x.csv', '1'), file('b', '/x.csv', '2')];
+    expect(findDetectedFile(files, { path: '/x.csv', checksum: '2' })).toBe(files[1]);
+    expect(findDetectedFile(files, { path: '/y.csv', checksum: '2' })).toBeNull();
+  });
+});
+
+describe('buildFormatLabelById', () => {
+  test('maps format ids to names', () => {
+    expect(buildFormatLabelById([{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }])).toEqual({ a: 'Alpha', b: 'Beta' });
   });
 });

@@ -329,6 +329,53 @@ export const matchFormatsForTournamentId = <T extends PrefixFormat>(
   );
 };
 
+const TOURNAMENT_ID_MIN_DIGITS = 3;
+const TOURNAMENT_ID_MAX_DIGITS = 7;
+
+export const isTournamentIdLength = (tournamentId: string): boolean =>
+  tournamentId.length >= TOURNAMENT_ID_MIN_DIGITS && tournamentId.length <= TOURNAMENT_ID_MAX_DIGITS;
+
+// The two tournament ID inputs word their problems differently: the inspector's is the longer, more helpful text.
+const tournamentIdErrorWording = {
+  inspector: {
+    none: 'No cached tournament format matches that 3 to 7 digit tournament ID',
+    ambiguous: 'More than one cached format matches that tournament ID. Refresh formats or assign by format instead.'
+  },
+  inline: {
+    none: 'No cached format matches that tournament ID',
+    ambiguous: 'More than one cached format matches that tournament ID.'
+  }
+} as const;
+
+// Formats a typed tournament id maps to, plus the message for an empty or ambiguous result ('' while the field is empty or exactly one matches).
+export const resolveTournamentIdMatch = <T extends PrefixFormat>(
+  formats: T[],
+  rawTournamentId: string,
+  teamCount: number,
+  wording: keyof typeof tournamentIdErrorWording
+): { matches: T[]; error: string } => {
+  const tournamentId = rawTournamentId.trim();
+  const matches = isTournamentIdLength(tournamentId) ? matchFormatsForTournamentId(formats, tournamentId, teamCount) : [];
+  if (tournamentId.length === 0 || matches.length === 1) {
+    return { matches, error: '' };
+  }
+  const text = tournamentIdErrorWording[wording];
+  if (matches.length > 1) {
+    return { matches, error: text.ambiguous };
+  }
+  return { matches, error: teamCount > 0 ? `${text.none} for ${teamCount} detected teams.` : `${text.none}.` };
+};
+
+// The detected file a queue job was built from, if it is still known.
+export const findDetectedFile = (
+  detectedFiles: LocalDetectedFile[],
+  job: Pick<LocalUploadJob, 'path' | 'checksum'>
+): LocalDetectedFile | null =>
+  detectedFiles.find((file) => file.path === job.path && file.checksum === job.checksum) ?? null;
+
+export const buildFormatLabelById = (formats: Array<Pick<TournamentFormat, 'id' | 'name'>>): Record<string, string> =>
+  Object.fromEntries(formats.map((format) => [format.id, format.name]));
+
 // Digit runs that exactly equal an Event format id. Runs under 5 digits only count as the whole filename stem.
 const eventIdCandidates = (filename: string, formats: PrefixFormat[]): string[] => {
   const dot = filename.lastIndexOf('.');
