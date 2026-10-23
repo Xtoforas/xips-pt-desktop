@@ -1,4 +1,5 @@
-import type { LocalDetectedFile, LocalUploadJob } from '@xips/api-contract';
+import type { LocalDetectedFile, LocalUploadJob, TournamentFormat } from '@xips/api-contract';
+import { formatDateTime, pluralize } from './format';
 
 export const lifecycleColor = (value: string | null): string => {
   switch (value) {
@@ -7,15 +8,11 @@ export const lifecycleColor = (value: string | null): string => {
     case 'refreshing':
       return 'cyan';
     case 'refresh_pending':
-      return 'blue';
     case 'processing':
+    case 'queued':
       return 'blue';
     case 'failed':
       return 'red';
-    case 'skipped_duplicate':
-      return 'gray';
-    case 'queued':
-      return 'blue';
     default:
       return 'gray';
   }
@@ -28,7 +25,6 @@ export const localStateColor = (value: LocalUploadJob['localState']): string => 
     case 'detected':
     case 'queued_local':
     case 'uploading':
-      return 'blue';
     case 'uploaded_waiting_server':
     case 'server_queued':
     case 'server_processing':
@@ -36,17 +32,11 @@ export const localStateColor = (value: LocalUploadJob['localState']): string => 
     case 'server_refreshing':
       return 'blue';
     case 'failed_retryable':
-      return 'orange';
-    case 'failed_terminal':
-      return 'red';
-    case 'ignored':
-      return 'gray';
-    case 'duplicate_skipped_local':
-      return 'gray';
-    case 'auth_blocked':
-      return 'red';
     case 'awaiting_format_assignment':
       return 'orange';
+    case 'failed_terminal':
+    case 'auth_blocked':
+      return 'red';
     default:
       return 'gray';
   }
@@ -101,66 +91,66 @@ export const formatFileKindLabel = (fileKind: LocalUploadJob['fileKind'] | 'unkn
   }
 };
 
+const queueStateLabels: Record<LocalUploadJob['localState'], string> = {
+  detected: 'Detected',
+  awaiting_format_assignment: 'Awaiting Format Assignment',
+  queued_local: 'Queued Locally',
+  duplicate_skipped_local: 'Skipped as Duplicate',
+  ignored: 'Ignored',
+  uploading: 'Uploading',
+  uploaded_waiting_server: 'Uploaded, Waiting on Server',
+  server_queued: 'Queued on Server',
+  server_processing: 'Server Processing',
+  server_refresh_pending: 'Refresh Pending',
+  server_refreshing: 'Refreshing',
+  complete: 'Complete',
+  failed_retryable: 'Retry Needed',
+  failed_terminal: 'Failed',
+  auth_blocked: 'Sign-In Required'
+};
+
 export const formatQueueStateLabel = (
   state: LocalUploadJob['localState'],
   fileKind: LocalUploadJob['fileKind']
 ): string => {
-  const labels: Record<LocalUploadJob['localState'], string> = {
-    detected: 'Detected',
-    awaiting_format_assignment: 'Awaiting Format Assignment',
-    queued_local: 'Queued Locally',
-    duplicate_skipped_local: 'Skipped as Duplicate',
-    ignored: 'Ignored',
-    uploading: 'Uploading',
-    uploaded_waiting_server: 'Uploaded, Waiting on Server',
-    server_queued: 'Queued on Server',
-    server_processing: 'Server Processing',
-    server_refresh_pending: 'Refresh Pending',
-    server_refreshing: 'Refreshing',
-    complete: 'Complete',
-    failed_retryable: 'Retry Needed',
-    failed_terminal: 'Failed',
-    auth_blocked: 'Sign-In Required'
-  };
-
   if (fileKind === 'card_catalog' && (state === 'complete' || state === 'server_refresh_pending')) {
     return 'Catalog Updated';
   }
-  return labels[state];
+  return queueStateLabels[state];
+};
+
+const lifecycleLabels: Record<NonNullable<LocalUploadJob['lifecyclePhase']>, string> = {
+  queued: 'Queued',
+  processing: 'Processing',
+  refresh_pending: 'Refresh Pending',
+  refreshing: 'Refreshing',
+  complete: 'Complete',
+  failed: 'Failed',
+  skipped_duplicate: 'Skipped as Duplicate'
 };
 
 export const formatLifecycleLabel = (
   phase: LocalUploadJob['lifecyclePhase'],
   fileKind: LocalUploadJob['fileKind']
 ): string => {
-  const labels: Record<NonNullable<LocalUploadJob['lifecyclePhase']>, string> = {
-    queued: 'Queued',
-    processing: 'Processing',
-    refresh_pending: 'Refresh Pending',
-    refreshing: 'Refreshing',
-    complete: 'Complete',
-    failed: 'Failed',
-    skipped_duplicate: 'Skipped as Duplicate'
-  };
-
   if (fileKind === 'card_catalog' && (phase === 'complete' || phase === 'refresh_pending')) {
     return 'Catalog Updated';
   }
-  return phase ? labels[phase] : 'Not Started';
+  return phase ? lifecycleLabels[phase] : 'Not Started';
 };
 
 export const formatLocalPresenceLabel = (presence: LocalUploadJob['localPresence']): string =>
   presence === 'present' ? 'Present' : 'Missing';
 
-export const formatDetectedFileStateLabel = (state: LocalDetectedFile['localState']): string => {
-  const labels: Record<LocalDetectedFile['localState'], string> = {
-    detected: 'Detected',
-    queued_local: 'Queued Locally',
-    awaiting_format_assignment: 'Awaiting Format Assignment',
-    ignored: 'Ignored'
-  };
-  return labels[state];
+const detectedFileStateLabels: Record<LocalDetectedFile['localState'], string> = {
+  detected: 'Detected',
+  queued_local: 'Queued Locally',
+  awaiting_format_assignment: 'Awaiting Format Assignment',
+  ignored: 'Ignored'
 };
+
+export const formatDetectedFileStateLabel = (state: LocalDetectedFile['localState']): string =>
+  detectedFileStateLabels[state];
 
 export const getUploadJobModifiedAt = (job: LocalUploadJob): number | null => {
   const sourceModifiedAt = Number(job.sourceModifiedAt);
@@ -179,14 +169,12 @@ export const compareUploadJobsNewestFirst = (left: LocalUploadJob, right: LocalU
 // Short date and time that fits one table line, as the xips-pt site's admin tables show them.
 export const COMPACT_TIMESTAMP: Intl.DateTimeFormatOptions = { dateStyle: 'short', timeStyle: 'short' };
 
-export const formatUploadJobModifiedAt = (job: LocalUploadJob, options?: Intl.DateTimeFormatOptions): string => {
-  const modifiedAt = getUploadJobModifiedAt(job);
-  return modifiedAt === null ? '-' : new Date(modifiedAt).toLocaleString(undefined, options);
-};
+export const formatUploadJobModifiedAt = (job: LocalUploadJob, options?: Intl.DateTimeFormatOptions): string =>
+  formatDateTime(getUploadJobModifiedAt(job), options);
 
 export const formatSourceModifiedAt = (sourceModifiedAt: string): string => {
   const parsed = Number(sourceModifiedAt);
-  return Number.isFinite(parsed) && parsed > 0 ? new Date(parsed).toLocaleString() : '-';
+  return Number.isFinite(parsed) && parsed > 0 ? formatDateTime(parsed) : '-';
 };
 
 export const formatUploadJobChecksumStatusLabel = (
@@ -390,6 +378,10 @@ export const leagueFormatIdFromFilename = (filename: string): string | null => {
   const parsed = match ? parseLeagueFormatId(match[1]) : null;
   return parsed ? `${parsed.year}.${parsed.leagueNumber}` : null;
 };
+
+// Select option label: the format name, plus its tournament id prefix when it has one.
+export const formatOptionLabel = (format: Pick<TournamentFormat, 'name' | 'tournamentIdPrefix'>): string =>
+  format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name;
 
 export const formatUploadFormatLabel = (formatId: string, formatLabels: Record<string, string>): string => {
   if (!formatId) {
@@ -616,7 +608,7 @@ const describeKnownErrorCode = (code: string, detail: ApiErrorDetail): string | 
       const actual = inner.actual;
       if (typeof teamName === 'string' && typeof allowed === 'number' && typeof actual === 'number') {
         const formatName = typeof inner.formatName === 'string' ? ` for ${inner.formatName}` : '';
-        return `${teamName} has ${actual} variant card${actual === 1 ? '' : 's'}, which exceeds the ${allowed}-card limit${formatName}.`;
+        return `${teamName} has ${actual} variant ${pluralize(actual, 'card')}, which exceeds the ${allowed}-card limit${formatName}.`;
       }
       return 'A team in this export has more variant cards than the format allows.';
     }

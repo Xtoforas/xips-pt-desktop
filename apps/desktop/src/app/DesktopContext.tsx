@@ -141,18 +141,6 @@ const PAIRING_CODE_PATTERN = /^[A-Z0-9]{6,12}$/;
 const OPEN_SIGN_IN_FAILED = "The sign-in window didn't open. Try again in a moment.";
 const REDEEM_CODE_FAILED = "That code didn't work. Codes expire after a few minutes, so click Sign in with Discord to get a new one.";
 
-// Tauri's invoke() rejects with the raw value the Rust command's Err variant serialized
-// to (a plain string for Result<_, String> commands), not an Error instance.
-export function describeError(error: unknown, fallback: string): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'string' && error.trim()) {
-    return error;
-  }
-  return fallback;
-}
-
 const DesktopContext = createContext<DesktopContextValue | null>(null);
 
 // Imported lazily so the browser mock never loads the Tauri event API. Kept outside the

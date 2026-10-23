@@ -2,7 +2,8 @@ import { Button, Card, Group, Select, Stack, Text, TextInput } from '@mantine/co
 import { type JSX, type ReactNode, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
 import { Disclosure, FormatRuleTable, FormatsTable, PageHeader, WatchRootForm, WatchRootTable } from '../components';
-import { explainFilenameAutoAssignment } from '../queue-model';
+import { digitsOnly } from '../format';
+import { explainFilenameAutoAssignment, formatOptionLabel } from '../queue-model';
 import { useScrollToHash } from './shared';
 
 // Reference material that stays one click away: a title line with a Show/Hide toggle.
@@ -161,7 +162,7 @@ export const AutomationPage = (): JSX.Element => {
               onChange={(value) => setSelectedFormatId(value ?? '')}
               data={snapshot.cachedFormats.map((format) => ({
                 value: format.id,
-                label: format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name
+                label: formatOptionLabel(format)
               }))}
             />
             <Button size="xs" disabled={!selectedWatchRootId || !selectedFormatId || !pattern.trim()} onClick={saveRule}>
@@ -204,7 +205,7 @@ export const AutomationPage = (): JSX.Element => {
             placeholder="16"
             value={validationTeamCount}
             onChange={(event) => {
-              setValidationTeamCount(event.currentTarget.value.replace(/[^0-9]/gu, '').slice(0, 2));
+              setValidationTeamCount(digitsOnly(event.currentTarget.value, 2));
             }}
           />
         </Group>

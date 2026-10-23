@@ -3,7 +3,8 @@ import type { LocalDiagnosticEvent } from '@xips/api-contract';
 import { type JSX, useMemo, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
 import { PageHeader, SiteTable, TimestampCell } from '../components';
-import { isSignedInToSelectedServer, serverHostLabel } from '../onboarding';
+import { formatDateTime } from '../format';
+import { connectionLabel, isSignedInToSelectedServer, serverHostLabel } from '../onboarding';
 import { COMPACT_TIMESTAMP } from '../queue-model';
 
 const EVENT_ROW_LIMIT = 50;
@@ -55,9 +56,9 @@ export const DiagnosticsPage = (): JSX.Element => {
   // Server counts cover everyone's uploads on that server; the local counts are this computer's queue.
   const serverItems: Array<[string, string]> = [
     ['Server', selectedProfile ? (selectedProfile.isDefault ? 'XiPS' : serverHostLabel(selectedProfile.baseUrl)) : 'None'],
-    ['Connection', connection === 'connected' ? 'Connected' : connection === 'checking' ? 'Checking…' : "Can't reach"],
+    ['Connection', connectionLabel[connection]],
     ['Signed in as', signedIn ? snapshot.authUser?.displayName ?? '-' : 'Not signed in'],
-    ['Sign-in expires', signedIn && snapshot.tokenExpiresAt ? new Date(snapshot.tokenExpiresAt).toLocaleString(undefined, COMPACT_TIMESTAMP) : '-'],
+    ['Sign-in expires', signedIn ? formatDateTime(snapshot.tokenExpiresAt, COMPACT_TIMESTAMP) : '-'],
     ['Server queue (all users)', String(health?.queueDepth ?? '-')],
     ['Server failures (all users)', String(health?.failedJobs ?? '-')]
   ];
@@ -145,10 +146,7 @@ export const DiagnosticsPage = (): JSX.Element => {
               <tbody>
                 {events.map((event) => (
                   <tr key={event.id} className="landing-row">
-                    <TimestampCell
-                      full={new Date(event.createdAt).toLocaleString()}
-                      compact={new Date(event.createdAt).toLocaleString(undefined, COMPACT_TIMESTAMP)}
-                    />
+                    <TimestampCell at={event.createdAt} />
                     <td className="landing-cell admin-nowrap">
                       <Badge color={eventLevelColor[event.level]}>
                         {event.level}

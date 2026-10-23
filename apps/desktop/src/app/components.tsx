@@ -11,10 +11,13 @@ import type {
   TournamentFormat
 } from '@xips/api-contract';
 import { type JSX, type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { describeError, useDesktop } from './DesktopContext';
+import { useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
+import { DEFAULT_GAME_VERSION, describeError, digitsOnly, formatDateTime } from './format';
 import {
   buildOnboardingSteps,
+  connectionColor,
+  connectionLabel,
   isCustomServer,
   isSignedInToSelectedServer,
   nextOnboardingStep,
@@ -31,7 +34,7 @@ import {
   formatLocalPresenceLabel,
   formatQueueStateLabel,
   formatUploadJobChecksumStatusLabel,
-  formatUploadJobModifiedAt,
+  getUploadJobModifiedAt,
   lifecycleColor,
   localPresenceColor,
   localStateColor,
@@ -118,9 +121,9 @@ export const KeyValueTable = ({
 );
 
 // A table cell with a compact timestamp whose full form shows on hover.
-export const TimestampCell = ({ full, compact }: { full: string; compact: string }): JSX.Element => (
-  <td className="landing-cell admin-nowrap" title={full}>
-    {compact}
+export const TimestampCell = ({ at }: { at: string | number | null }): JSX.Element => (
+  <td className="landing-cell admin-nowrap" title={formatDateTime(at)}>
+    {formatDateTime(at, COMPACT_TIMESTAMP)}
   </td>
 );
 
@@ -589,11 +592,8 @@ export const DesktopSidebar = (): JSX.Element => {
               <Text size="sm" truncate="end">
                 {customServer ? 'Custom' : 'XiPS'}
               </Text>
-              <Badge
-                color={connection === 'connected' ? 'teal' : connection === 'unreachable' ? 'red' : 'gray'}
-                style={{ flexShrink: 0 }}
-              >
-                {connection === 'connected' ? 'Connected' : connection === 'unreachable' ? "Can't reach" : 'Connecting…'}
+              <Badge color={connectionColor[connection]} style={{ flexShrink: 0 }}>
+                {connectionLabel[connection]}
               </Badge>
             </Group>
             {customServer && selectedProfile ? (
@@ -981,7 +981,7 @@ ${statusTitle}` : statusTitle}>
                     {issue ? <span className="admin-cell-clip">{issue}</span> : null}
                   </div>
                 </td>
-                <TimestampCell full={formatUploadJobModifiedAt(job)} compact={formatUploadJobModifiedAt(job, COMPACT_TIMESTAMP)} />
+                <TimestampCell at={getUploadJobModifiedAt(job)} />
                 <td className="landing-cell admin-nowrap">{actions ? actions(job) : '-'}</td>
               </tr>
             );
@@ -1007,11 +1007,6 @@ export const PathText = ({ path }: { path: string }): JSX.Element => (
     <bdi>{path}</bdi>
   </span>
 );
-
-const formatCompactDate = (value: string): string => {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString(undefined, COMPACT_TIMESTAMP);
-};
 
 export const WatchRootTable = ({
   watchRoots,
@@ -1051,7 +1046,7 @@ export const WatchRootTable = ({
               {root.paused ? 'Paused' : 'Active'}
             </Badge>
           </td>
-          <TimestampCell full={new Date(root.updatedAt).toLocaleString()} compact={formatCompactDate(root.updatedAt)} />
+          <TimestampCell at={root.updatedAt} />
           <td className="landing-cell">
             <Group gap={4} wrap="nowrap">
               <Button size="compact-xs" variant="light" onClick={() => void onToggle(root.id, !root.paused)}>
@@ -1132,7 +1127,7 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
   const [editingId, setEditingId] = useState('');
   const [name, setName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
-  const [gameVersion, setGameVersion] = useState('ootp27');
+  const [gameVersion, setGameVersion] = useState(DEFAULT_GAME_VERSION);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
@@ -1141,7 +1136,7 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
     setEditingId('');
     setName('');
     setBaseUrl('');
-    setGameVersion('ootp27');
+    setGameVersion(DEFAULT_GAME_VERSION);
   };
 
   const save = async (): Promise<void> => {
@@ -1155,7 +1150,7 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
       id: editingId || undefined,
       name: name.trim(),
       baseUrl: baseUrl.trim(),
-      gameVersion: gameVersion.trim() || 'ootp27'
+      gameVersion: gameVersion.trim() || DEFAULT_GAME_VERSION
     };
     try {
       const result = await saveServerProfile(profile);
@@ -1192,7 +1187,7 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
               const profile = customProfiles.find((item) => item.id === nextId) ?? null;
               setName(profile?.name ?? '');
               setBaseUrl(profile?.baseUrl ?? '');
-              setGameVersion(profile?.gameVersion ?? 'ootp27');
+              setGameVersion(profile?.gameVersion ?? DEFAULT_GAME_VERSION);
             }}
           />
         ) : null}
@@ -1340,7 +1335,7 @@ export const FormatRuleTable = ({
             <td className="landing-cell" title={rule.formatName}>
               {rule.formatName}
             </td>
-            <TimestampCell full={new Date(rule.updatedAt).toLocaleString()} compact={formatCompactDate(rule.updatedAt)} />
+            <TimestampCell at={rule.updatedAt} />
             <td className="landing-cell">
               <Button size="compact-xs" color="red" variant="subtle" onClick={() => void onDelete(rule.id)}>
                 Remove
@@ -1412,7 +1407,7 @@ export const PreferencesForm = ({
             label="Polling interval (seconds)"
             inputMode="numeric"
             value={pollingIntervalSeconds}
-            onChange={(event) => setPollingIntervalSeconds(event.currentTarget.value.replace(/[^0-9]/gu, ''))}
+            onChange={(event) => setPollingIntervalSeconds(digitsOnly(event.currentTarget.value))}
             onBlur={() => saveNumber('pollingIntervalSeconds', pollingIntervalSeconds, setPollingIntervalSeconds)}
           />
           <TextInput
@@ -1421,7 +1416,7 @@ export const PreferencesForm = ({
             label="Keep diagnostics (days)"
             inputMode="numeric"
             value={diagnosticsRetentionDays}
-            onChange={(event) => setDiagnosticsRetentionDays(event.currentTarget.value.replace(/[^0-9]/gu, ''))}
+            onChange={(event) => setDiagnosticsRetentionDays(digitsOnly(event.currentTarget.value))}
             onBlur={() => saveNumber('diagnosticsRetentionDays', diagnosticsRetentionDays, setDiagnosticsRetentionDays)}
           />
           <Text size="xs" c="dimmed" pb={6}>

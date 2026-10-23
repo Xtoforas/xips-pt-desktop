@@ -3,6 +3,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { type JSX, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
+import { digitsOnly, formatDateTime } from '../format';
 import { BlockedStatusBadge, Disclosure, KeyValueTable, PageHeader, QueueStateBadge, QueueTable, SectionHeader } from '../components';
 import {
   canDismissUploadJob,
@@ -30,6 +31,7 @@ import {
   queueWorkspaceViewDetail,
   queueWorkspaceViewForJob,
   queueWorkspaceViewLabel,
+  formatOptionLabel,
   formatUploadFormatLabel,
   summarizeBlockedJob,
   uploadJobNeedsAttention,
@@ -512,7 +514,7 @@ export const UploadQueuePage = (): JSX.Element => {
                           event.stopPropagation();
                         }}
                         onChange={(event) => {
-                          setInlineTournamentId(event.currentTarget.value.replace(/[^0-9]/gu, '').slice(0, 7));
+                          setInlineTournamentId(digitsOnly(event.currentTarget.value, 7));
                         }}
                         onBlur={() => {
                           setEditingFilenameJobId('');
@@ -727,7 +729,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         placeholder="Full 3 to 7 digit ID"
                         value={selectedTournamentId}
                         onChange={(event) => {
-                          setSelectedTournamentId(event.currentTarget.value.replace(/[^0-9]/gu, '').slice(0, 7));
+                          setSelectedTournamentId(digitsOnly(event.currentTarget.value, 7));
                         }}
                       />
                       <Button
@@ -774,7 +776,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         onChange={(value) => setSelectedFormatId(value ?? '')}
                         data={compatibleDirectFormats.map((format) => ({
                           value: format.id,
-                          label: `${format.tournamentIdPrefix ? `${format.name} (${format.tournamentIdPrefix}xxxx)` : format.name}${format.teamsPerTournament > 0 ? ` - ${format.teamsPerTournament} teams` : ''}`
+                          label: `${formatOptionLabel(format)}${format.teamsPerTournament > 0 ? ` - ${format.teamsPerTournament} teams` : ''}`
                         }))}
                       />
                       <Button
@@ -906,7 +908,7 @@ export const UploadQueuePage = (): JSX.Element => {
                       { label: 'Failed', value: selectedJob.failedAt || '-' },
                       { label: 'Retries', value: selectedJob.retries },
                       { label: 'Source modified', value: formatSourceModifiedAt(selectedJob.sourceModifiedAt) },
-                      { label: 'Queue updated', value: new Date(selectedJob.updatedAt).toLocaleString() }
+                      { label: 'Queue updated', value: formatDateTime(selectedJob.updatedAt) }
                     ]}
                   />
                 </Table.ScrollContainer>
@@ -932,7 +934,7 @@ export const UploadQueuePage = (): JSX.Element => {
                                 <Table.Td>{attempt.attemptNumber}</Table.Td>
                                 <Table.Td>{attempt.status}</Table.Td>
                                 <Table.Td className="desktop-mono">{attempt.detail}</Table.Td>
-                                <Table.Td>{new Date(attempt.updatedAt).toLocaleString()}</Table.Td>
+                                <Table.Td>{formatDateTime(attempt.updatedAt)}</Table.Td>
                               </Table.Tr>
                             ))}
                           </Table.Tbody>

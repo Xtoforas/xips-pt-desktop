@@ -2,9 +2,10 @@ import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Switch, T
 import { useDisclosure } from '@mantine/hooks';
 import { type JSX, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { describeError, useDesktop } from '../DesktopContext';
+import { useDesktop } from '../DesktopContext';
 import { Disclosure, ErrorAlert, KeyValueTable, type KeyValueRow, PageHeader, PreferencesForm, ReadinessCard, ServerProfileForm } from '../components';
-import { isCustomServer, isSignedInToSelectedServer, serverHostLabel } from '../onboarding';
+import { DEFAULT_GAME_VERSION, describeError, formatDateTime, pluralize } from '../format';
+import { connectionLabel, isCustomServer, isSignedInToSelectedServer, serverHostLabel } from '../onboarding';
 import { useScrollToHash } from './shared';
 
 // Old deep links from before the Advanced section existed.
@@ -13,8 +14,6 @@ const LEGACY_HASHES: Record<string, string> = {
   '#server-profile': '#advanced',
   '#server-health': '#advanced'
 };
-
-const connectionLabel = { checking: 'Connecting…', connected: 'Connected', unreachable: "Can't reach" } as const;
 
 // Everything about which server the app talks to. Collapsed by default; opens on its own while a
 // custom server is in use so it's never hidden.
@@ -58,13 +57,13 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
     ? [
         { label: 'Name', value: selectedProfile.name },
         { label: 'Address', value: selectedProfile.baseUrl, className: 'desktop-mono desktop-wrap-anywhere' },
-        { label: 'Game version', value: selectedProfile.gameVersion || 'ootp27' },
+        { label: 'Game version', value: selectedProfile.gameVersion || DEFAULT_GAME_VERSION },
         { label: 'Connection', value: connectionLabel[connection] },
         { label: 'Service', value: health?.service ?? '-' },
         { label: 'Server queue', value: health?.queueDepth !== undefined ? `${health.queueDepth} queued, ${health.failedJobs ?? 0} failed` : '-' },
-        { label: 'Last checked', value: health?.timestamp ? new Date(health.timestamp).toLocaleString() : '-' },
+        { label: 'Last checked', value: formatDateTime(health?.timestamp) },
         { label: 'Signed in as', value: signedIn ? snapshot.authUser?.displayName ?? '-' : 'Not signed in' },
-        { label: 'Sign-in expires', value: signedIn && snapshot.tokenExpiresAt ? new Date(snapshot.tokenExpiresAt).toLocaleString() : '-' }
+        { label: 'Sign-in expires', value: signedIn ? formatDateTime(snapshot.tokenExpiresAt) : '-' }
       ]
     : [];
 
@@ -190,13 +189,13 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
                           {profile.baseUrl}
                         </Text>
                         <Text size="xs" c="dimmed">
-                          {profile.gameVersion || 'ootp27'} · {folderCount} watch folder{folderCount === 1 ? '' : 's'}
+                          {profile.gameVersion || DEFAULT_GAME_VERSION} · {folderCount} watch {pluralize(folderCount, 'folder')}
                         </Text>
                       </div>
                       {confirmRemoveId === profile.id ? (
                         <Group gap="xs" wrap="wrap">
                           <Text size="sm">
-                            Remove {profile.name}? This also removes its {folderCount} watch folder{folderCount === 1 ? '' : 's'}.
+                            Remove {profile.name}? This also removes its {folderCount} watch {pluralize(folderCount, 'folder')}.
                           </Text>
                           <Button
                             size="xs"

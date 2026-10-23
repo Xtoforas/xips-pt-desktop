@@ -3,6 +3,7 @@ import { mdiInformationOutline } from '@mdi/js';
 import { type JSX, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
+import { pluralize } from '../format';
 import type { LocalUploadJob } from '@xips/api-contract';
 import {
   BlockedStatusBadge,
@@ -17,11 +18,10 @@ import {
 } from '../components';
 import {
   blockerPriority,
-  COMPACT_TIMESTAMP,
   compareUploadJobsNewestFirst,
   formatLifecycleLabel,
   formatQueueStateLabel,
-  formatUploadJobModifiedAt,
+  getUploadJobModifiedAt,
   queueLinkForJob,
   formatUploadFormatLabel,
   summarizeBlockedJob,
@@ -70,7 +70,7 @@ const PROGRESS_ROW_LIMIT = 8;
 const COMPLETED_ROW_LIMIT = 5;
 
 const UpdatedCell = ({ job }: { job: LocalUploadJob }): JSX.Element => (
-  <TimestampCell full={formatUploadJobModifiedAt(job)} compact={formatUploadJobModifiedAt(job, COMPACT_TIMESTAMP)} />
+  <TimestampCell at={getUploadJobModifiedAt(job)} />
 );
 
 // Today's progress and completion lists: the site table markup, one line per job.
@@ -199,7 +199,7 @@ export const TodayPage = (): JSX.Element => {
               eyebrow="Needs attention"
               title="Blocked files"
               aside={<Badge color="orange">
-                {needsAttentionCount} file{needsAttentionCount === 1 ? '' : 's'}
+                {needsAttentionCount} {pluralize(needsAttentionCount, 'file')}
               </Badge>}
             />
             <SiteTable className="desktop-today-table">

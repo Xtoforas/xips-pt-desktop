@@ -3,6 +3,7 @@ import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { type JSX, useEffect, useState } from 'react';
 import { isTauri } from './desktop-client';
+import { describeError } from './format';
 
 export const UpdatePrompt = (): JSX.Element | null => {
   const [update, setUpdate] = useState<Update | null>(null);
@@ -40,7 +41,7 @@ export const UpdatePrompt = (): JSX.Element | null => {
       await update.downloadAndInstall();
       await relaunch();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : String(error));
+      setErrorMessage(describeError(error, "The update couldn't be installed."));
       setInstalling(false);
     }
   };

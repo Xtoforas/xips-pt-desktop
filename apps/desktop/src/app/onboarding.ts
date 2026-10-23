@@ -1,6 +1,19 @@
 import type { DesktopSnapshot, LocalServerProfile } from '@xips/api-contract';
+import { pluralize } from './format';
 
 export type ConnectionState = 'checking' | 'connected' | 'unreachable';
+
+export const connectionLabel: Record<ConnectionState, string> = {
+  checking: 'Connecting…',
+  connected: 'Connected',
+  unreachable: "Can't reach"
+};
+
+export const connectionColor: Record<ConnectionState, string> = {
+  checking: 'gray',
+  connected: 'teal',
+  unreachable: 'red'
+};
 
 // Who a setup step is waiting on: the user, the app (working automatically), or nobody.
 export type OnboardingStepState = 'done' | 'waiting_on_you' | 'working' | 'optional';
@@ -86,7 +99,7 @@ export const buildOnboardingSteps = ({
       key: 'rules',
       label: 'Help with oddly named files',
       status: formatRules.length > 0
-        ? `${formatRules.length} rule${formatRules.length === 1 ? '' : 's'} saved`
+        ? `${formatRules.length} ${pluralize(formatRules.length, 'rule')} saved`
         : rulesReminderDismissed
           ? 'Hidden'
           : 'Optional',
