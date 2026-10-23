@@ -211,4 +211,73 @@ describe('DesktopContext snapshot refresh', () => {
     });
     expect(stop).toHaveBeenCalledTimes(1);
   });
+
+  test('a new snapshot for the same signed-in user does not refetch cards or restart the refresh timer', async () => {
+    const { DesktopProvider } = await importDesktopContext();
+    const profile = {
+      id: 'p1',
+      name: 'XiPS',
+      baseUrl: 'https://example.test',
+      gameVersion: 'ootp27',
+      isDefault: true,
+      createdAt: '',
+      updatedAt: ''
+    };
+    let userId = 'u1';
+    // Every snapshot deserializes to a fresh authUser object, as the Tauri command does.
+    const signedInSnapshot = (): DesktopSnapshot =>
+      makeSnapshot({
+        profiles: [profile],
+        selectedProfileId: 'p1',
+        authProfileId: 'p1',
+        authUser: { userId, discordId: 'd1', displayName: 'Player', role: 'viewer' }
+      });
+    const calls: string[] = [];
+    invokeMock.mockImplementation((command: string) => {
+      calls.push(command);
+      switch (command) {
+        case 'desktop_get_snapshot':
+          return Promise.resolve(signedInSnapshot());
+        case 'desktop_fetch_cards':
+          return Promise.resolve({ rows: [], source: 'admin' });
+        case 'desktop_fetch_my_agg':
+          return Promise.resolve({ cards: [], teams: [] });
+        case 'desktop_fetch_formats':
+          return Promise.resolve([]);
+        default:
+          return Promise.resolve(undefined);
+      }
+    });
+    const setIntervalSpy = vi.spyOn(window, 'setInterval');
+    const count = (command: string): number => calls.filter((call) => call === command).length;
+
+    await act(async () => {
+      render(<DesktopProvider>{null}</DesktopProvider>);
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    expect(count('desktop_fetch_cards')).toBe(1);
+    expect(count('desktop_fetch_my_agg')).toBe(1);
+    const intervalsAfterMount = setIntervalSpy.mock.calls.length;
+
+    for (let i = 0; i < 3; i += 1) {
+      await act(async () => {
+        await capturedListener?.();
+        await flushMicrotasks();
+      });
+    }
+    expect(count('desktop_get_snapshot')).toBe(4);
+    expect(count('desktop_fetch_cards')).toBe(1);
+    expect(count('desktop_fetch_my_agg')).toBe(1);
+    expect(setIntervalSpy.mock.calls.length).toBe(intervalsAfterMount);
+
+    // Signing in as someone else is a real change: fetch once more.
+    userId = 'u2';
+    await act(async () => {
+      await capturedListener?.();
+      await flushMicrotasks();
+    });
+    expect(count('desktop_fetch_cards')).toBe(2);
+    expect(count('desktop_fetch_my_agg')).toBe(2);
+  });
 });

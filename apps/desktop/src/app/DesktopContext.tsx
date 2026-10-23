@@ -245,6 +245,10 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   const selectedProfileId = selectedProfile?.id ?? '';
   const selectedProfileBaseUrl = selectedProfile?.baseUrl ?? '';
   const signedIn = isSignedInToSelectedServer(snapshot);
+  // Every snapshot carries a fresh authUser object, so effects that call the server key on who is signed in
+  // (and their role, which decides the card source) instead; otherwise each snapshot would refetch.
+  const signedInUserId = signedIn ? snapshot.authUser?.userId ?? '' : '';
+  const signedInRole = signedIn ? snapshot.authUser?.role ?? '' : '';
 
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const refreshQueuedRef = useRef(false);
@@ -378,7 +382,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [signedIn, selectedProfileId, snapshot.authUser, snapshot.preferences.pollingIntervalSeconds]);
+  }, [signedIn, selectedProfileId, signedInUserId, snapshot.preferences.pollingIntervalSeconds]);
 
   useEffect(() => {
     if (!selectedProfileId) {
@@ -428,7 +432,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     return () => {
       active = false;
     };
-  }, [signedIn, selectedProfileId, snapshot.authUser]);
+  }, [signedIn, selectedProfileId, signedInUserId, signedInRole]);
 
   const selectServerProfile = async (profileId: string): Promise<void> => {
     await desktopClient.selectServerProfile(profileId);
