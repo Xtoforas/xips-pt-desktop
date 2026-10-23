@@ -1,13 +1,10 @@
 import {
   Alert,
   Badge,
-  Button,
+  Card,
   Input,
   InputWrapper,
-  NativeSelect,
-  MultiSelect,
   Table,
-  TextInput,
   createTheme,
   v8CssVariablesResolver,
   type CSSVariablesResolver,
@@ -76,13 +73,12 @@ export const desktopTheme = createTheme({
     }),
     Badge: Badge.extend({
       defaultProps: {
-        variant: 'light',
-        radius: 'xs'
+        variant: 'light'
       }
     }),
-    Button: Button.extend({
+    Card: Card.extend({
       defaultProps: {
-        radius: 'xs'
+        withBorder: true
       }
     }),
     Input: Input.extend({
@@ -111,25 +107,10 @@ export const desktopTheme = createTheme({
         }
       }
     }),
-    NativeSelect: NativeSelect.extend({
-      defaultProps: {
-        radius: 'xs'
-      }
-    }),
-    MultiSelect: MultiSelect.extend({
-      defaultProps: {
-        radius: 'xs'
-      }
-    }),
     Table: Table.extend({
       defaultProps: {
         horizontalSpacing: 'sm',
         verticalSpacing: 'xs'
-      }
-    }),
-    TextInput: TextInput.extend({
-      defaultProps: {
-        radius: 'xs'
       }
     })
   }

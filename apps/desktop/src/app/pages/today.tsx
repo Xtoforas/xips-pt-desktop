@@ -120,7 +120,7 @@ const JobTable = ({
 
 // An empty Today section: one line instead of a header plus an empty-state box.
 const QuietSection = ({ title, message }: { title: string; message: string }): JSX.Element => (
-  <Card withBorder className="desktop-card desktop-today-section" py="xs">
+  <Card className="desktop-card desktop-today-section" py="xs">
     <Group gap="sm" wrap="nowrap">
       <Text size="sm" fw={700}>
         {title}
@@ -193,12 +193,12 @@ export const TodayPage = (): JSX.Element => {
       {blockerRows.length === 0 ? (
         <QuietSection title="Blocked files" message="Nothing needs you right now." />
       ) : (
-        <Card withBorder className="desktop-card desktop-today-section">
+        <Card className="desktop-card desktop-today-section">
           <Stack gap="md">
             <SectionHeader
               eyebrow="Needs attention"
               title="Blocked files"
-              aside={<Badge color="orange" variant="light">
+              aside={<Badge color="orange">
                 {needsAttentionCount} file{needsAttentionCount === 1 ? '' : 's'}
               </Badge>}
             />
@@ -282,12 +282,12 @@ export const TodayPage = (): JSX.Element => {
       {inProgressJobs.length === 0 ? (
         <QuietSection title="Uploading now" message="Nothing is uploading right now." />
       ) : (
-        <Card withBorder className="desktop-card desktop-today-section">
+        <Card className="desktop-card desktop-today-section">
           <Stack gap="md">
             <SectionHeader
               eyebrow="In progress"
               title="Uploading now"
-              aside={<Badge color="blue" variant="light">
+              aside={<Badge color="blue">
                 {inProgressJobs.length} in progress
               </Badge>}
             />
@@ -296,11 +296,11 @@ export const TodayPage = (): JSX.Element => {
               formatLabels={formatLabelById}
               status={(job) =>
                 uploadJobWaitingOnServer(job) ? (
-                  <Badge color="cyan" variant="light">
+                  <Badge color="cyan">
                     {formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}
                   </Badge>
                 ) : (
-                  <Badge color="blue" variant="light">
+                  <Badge color="blue">
                     {formatQueueStateLabel(job.localState, job.fileKind)}
                   </Badge>
                 )
@@ -319,12 +319,12 @@ export const TodayPage = (): JSX.Element => {
       {completedJobs.length === 0 ? (
         <QuietSection title="Finished uploads" message="No uploads have finished yet." />
       ) : (
-        <Card withBorder className="desktop-card desktop-today-section">
+        <Card className="desktop-card desktop-today-section">
           <Stack gap="md">
             <SectionHeader
               eyebrow="Recently completed"
               title="Latest finished uploads"
-              aside={<Badge color="teal" variant="light">
+              aside={<Badge color="teal">
                 {completedCount} total
               </Badge>}
             />

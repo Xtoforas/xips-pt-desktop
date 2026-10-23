@@ -69,7 +69,7 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
     : [];
 
   return (
-    <Card withBorder className="desktop-card desktop-support-card" id="advanced">
+    <Card className="desktop-card desktop-support-card" id="advanced">
       <Stack gap="sm">
         <Disclosure
           size="xs"
@@ -91,7 +91,7 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
         >
           <Stack gap="md">
             {customServer && selectedProfile ? (
-              <Alert color="orange" variant="light" title={`Uploading to a custom server: ${serverHostLabel(selectedProfile.baseUrl)}`}>
+              <Alert color="orange" title={`Uploading to a custom server: ${serverHostLabel(selectedProfile.baseUrl)}`}>
                 <Group justify="space-between" align="center" wrap="wrap" gap="xs">
                   <Text size="sm">New exports go to this server, not XiPS.</Text>
                   <Button size="xs" color="orange" onClick={backToDefault}>
@@ -137,7 +137,7 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
             ) : null}
             <ErrorAlert message={error} />
             <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="md">
-              <Card withBorder className="desktop-card desktop-subcard">
+              <Card className="desktop-card desktop-subcard">
                 <Stack gap="sm">
                   <Text fw={700}>Current server</Text>
                   <KeyValueTable
@@ -164,7 +164,7 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
               </Card>
               <ServerProfileForm />
             </SimpleGrid>
-            <Card withBorder className="desktop-card desktop-subcard">
+            <Card className="desktop-card desktop-subcard">
               <Stack gap="sm">
                 <Text fw={700}>Saved servers</Text>
                 {snapshot.profiles.map((profile) => {
@@ -176,12 +176,12 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
                         <Group gap="xs" wrap="wrap">
                           <Text fw={600}>{profile.name}</Text>
                           {profile.isDefault ? (
-                            <Badge color="gray" variant="light">
+                            <Badge color="gray">
                               Built-in
                             </Badge>
                           ) : null}
                           {inUse ? (
-                            <Badge color={profile.isDefault ? 'teal' : 'orange'} variant="light">
+                            <Badge color={profile.isDefault ? 'teal' : 'orange'}>
                               In use
                             </Badge>
                           ) : null}

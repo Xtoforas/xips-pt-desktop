@@ -437,7 +437,7 @@ export const UploadQueuePage = (): JSX.Element => {
       />
       <div className={`desktop-queue-layout${selectedJob ? '' : ' no-inspector'}`}>
         <Stack gap="lg" className="desktop-queue-main">
-          <Card withBorder className="desktop-card">
+          <Card className="desktop-card">
             <Stack gap="sm">
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="sm" c="dimmed">
@@ -553,7 +553,7 @@ export const UploadQueuePage = (): JSX.Element => {
                         {job.filename}
                       </button>
                       {teamCountWarning ? (
-                        <Badge color="yellow" variant="light">
+                        <Badge color="yellow">
                           {teamCountWarning.badgeLabel}
                         </Badge>
                       ) : null}
@@ -650,7 +650,7 @@ export const UploadQueuePage = (): JSX.Element => {
           </Card>
         </Stack>
         {selectedJob ? (
-          <Card withBorder className="desktop-card desktop-queue-inspector">
+          <Card className="desktop-card desktop-queue-inspector">
             <Stack gap="md">
               <SectionHeader
                 eyebrow="Inspector"
@@ -675,7 +675,7 @@ export const UploadQueuePage = (): JSX.Element => {
                 </Alert>
               ) : null}
               {selectedJobFailureDetail?.kind === 'variant_limit_exceeded' ? (
-                <Card withBorder className="desktop-subcard">
+                <Card className="desktop-subcard">
                   <Stack gap="xs">
                     <Text fw={600}>Variant limit details</Text>
                     <Table withTableBorder withColumnBorders>
@@ -716,7 +716,7 @@ export const UploadQueuePage = (): JSX.Element => {
                 </Alert>
               ) : null}
               {selectedJob.localState === 'awaiting_format_assignment' && selectedJob.fileKind === 'stats_export' ? (
-                <Card withBorder className="desktop-subcard desktop-queue-resolution">
+                <Card className="desktop-subcard desktop-queue-resolution">
                   <Stack gap="xs">
                     <Text fw={600}>Assign a format</Text>
                     <Group gap="xs" align="flex-end" wrap="nowrap">
@@ -910,7 +910,7 @@ export const UploadQueuePage = (): JSX.Element => {
                     ]}
                   />
                 </Table.ScrollContainer>
-                <Card withBorder className="desktop-subcard">
+                <Card className="desktop-subcard">
                   <Stack gap="xs">
                     <Text fw={600}>Attempt history</Text>
                     {selectedAttempts.length === 0 ? (

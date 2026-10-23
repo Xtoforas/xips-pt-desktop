@@ -101,13 +101,13 @@ export const DiagnosticsPage = (): JSX.Element => {
           <span className="desktop-mono">{lastExportPath}</span>
         </Alert>
       ) : null}
-      <Card withBorder className="desktop-card">
+      <Card className="desktop-card">
         <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
           <MetricGrid title="Server" items={serverItems} />
           <MetricGrid title="This computer" items={localItems} />
         </SimpleGrid>
       </Card>
-      <Card withBorder className="desktop-card">
+      <Card className="desktop-card">
         <Stack gap="sm">
           <Group justify="space-between" align="center" wrap="wrap">
             <Text fw={700}>Recent events</Text>
@@ -150,7 +150,7 @@ export const DiagnosticsPage = (): JSX.Element => {
                       compact={new Date(event.createdAt).toLocaleString(undefined, COMPACT_TIMESTAMP)}
                     />
                     <td className="landing-cell admin-nowrap">
-                      <Badge color={eventLevelColor[event.level]} variant="light">
+                      <Badge color={eventLevelColor[event.level]}>
                         {event.level}
                       </Badge>
                     </td>

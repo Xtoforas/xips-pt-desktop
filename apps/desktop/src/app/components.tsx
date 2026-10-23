@@ -52,7 +52,7 @@ export const MdiIcon = ({ path, size = 18 }: { path: string; size?: number }): J
 // A red alert for an error message; renders nothing while the message is empty.
 export const ErrorAlert = ({ message, ...props }: { message: string } & Omit<AlertProps, 'children' | 'color' | 'variant'>): JSX.Element | null =>
   message ? (
-    <Alert color="red" variant="light" {...props}>
+    <Alert color="red" {...props}>
       {message}
     </Alert>
   ) : null;
@@ -146,7 +146,7 @@ const stepBadges: Record<OnboardingStepState, { label: string; color: string }> 
 };
 
 export const OnboardingStepBadge = ({ state }: { state: OnboardingStepState }): JSX.Element => (
-  <Badge color={stepBadges[state].color} variant="light" style={{ flexShrink: 0 }}>
+  <Badge color={stepBadges[state].color} style={{ flexShrink: 0 }}>
     {stepBadges[state].label}
   </Badge>
 );
@@ -301,7 +301,7 @@ export const ReadinessCard = ({ id, variant }: { id?: string; variant: 'today' |
       return null;
     }
     return (
-      <Card withBorder className="desktop-card desktop-setup-done" id={id}>
+      <Card className="desktop-card desktop-setup-done" id={id}>
         <Group justify="space-between" align="center" wrap="wrap" gap="xs">
           <Text size="sm">
             <Text span fw={700} c="teal">
@@ -322,21 +322,21 @@ export const ReadinessCard = ({ id, variant }: { id?: string; variant: 'today' |
   }
 
   return (
-    <Card withBorder className="desktop-card desktop-setup-card" id={id}>
+    <Card className="desktop-card desktop-setup-card" id={id}>
       <Stack gap="sm">
         <SectionHeader
           eyebrow="Setup"
           title="Get your exports uploading"
           description="Two quick steps. After that, the app uploads new exports by itself."
           aside={
-            <Badge color="gray" variant="light">
+            <Badge color="gray">
               {doneCount} of {requiredSteps.length} done
             </Badge>
           }
         />
         <SimpleGrid cols={{ base: 1, lg: pendingSteps.length > 1 ? 2 : 1 }} spacing="sm">
           {pendingSteps.map((step) => (
-            <Card key={step.key} withBorder className="desktop-card desktop-setup-step">
+            <Card key={step.key} className="desktop-card desktop-setup-step">
               <Stack gap="xs">
                 <Group justify="space-between" align="flex-start" wrap="nowrap">
                   <div style={{ minWidth: 0 }}>
@@ -412,7 +412,7 @@ export const ConnectionBanner = (): JSX.Element | null => {
   }
   const custom = isCustomServer(selectedProfile);
   return (
-    <Alert className="desktop-connection-banner" color="red" variant="light">
+    <Alert className="desktop-connection-banner" color="red">
       <Group justify="space-between" align="center" wrap="wrap" gap="xs">
         <div style={{ minWidth: 0 }}>
           <Text size="sm" fw={700}>
@@ -582,7 +582,7 @@ export const DesktopSidebar = (): JSX.Element => {
         </Stack>
       </Paper>
       {collapsed ? null : (
-        <Card withBorder className="desktop-server-status-card">
+        <Card className="desktop-server-status-card">
           <Stack gap={6}>
             <Text className="desktop-micro-label">Connection</Text>
             <Group justify="space-between" wrap="nowrap" gap="xs">
@@ -591,7 +591,6 @@ export const DesktopSidebar = (): JSX.Element => {
               </Text>
               <Badge
                 color={connection === 'connected' ? 'teal' : connection === 'unreachable' ? 'red' : 'gray'}
-                variant="light"
                 style={{ flexShrink: 0 }}
               >
                 {connection === 'connected' ? 'Connected' : connection === 'unreachable' ? "Can't reach" : 'Connecting…'}
@@ -655,7 +654,7 @@ export const DesktopTopbar = (): JSX.Element => {
           </>
         ) : null}
         {authFlowState === 'waiting' ? (
-          <Badge color="blue" variant="light">
+          <Badge color="blue">
             Finishing sign-in…
           </Badge>
         ) : null}
@@ -720,7 +719,7 @@ export const DesktopTopbar = (): JSX.Element => {
 };
 
 export const FileKindBadge = ({ fileKind }: { fileKind: LocalUploadJob['fileKind'] }): JSX.Element => (
-  <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'} variant="light">
+  <Badge color={fileKind === 'card_catalog' ? 'grape' : 'blue'}>
     {formatFileKindLabel(fileKind)}
   </Badge>
 );
@@ -769,7 +768,7 @@ export const SectionHeader = ({
 // Status for a job that needs attention: orange when only the user can unblock it, blue when the app retries.
 // The reason shows on hover; pages with room show it as text next to the badge.
 export const BlockedStatusBadge = ({ summary }: { summary: BlockedJobSummary }): JSX.Element => (
-  <Badge color={summary.owner === 'user' ? 'orange' : 'blue'} variant="light" title={summary.reason || undefined}>
+  <Badge color={summary.owner === 'user' ? 'orange' : 'blue'} title={summary.reason || undefined}>
     {summary.statusLabel}
   </Badge>
 );
@@ -781,7 +780,7 @@ export const QueueStateBadge = ({
   state: LocalUploadJob['localState'];
   fileKind: LocalUploadJob['fileKind'];
 }): JSX.Element => (
-  <Badge color={localStateColor(state)} variant="light">
+  <Badge color={localStateColor(state)}>
     {formatQueueStateLabel(state, fileKind)}
   </Badge>
 );
@@ -793,13 +792,13 @@ export const LifecycleBadge = ({
   phase: LocalUploadJob['lifecyclePhase'];
   fileKind: LocalUploadJob['fileKind'];
 }): JSX.Element => (
-  <Badge color={lifecycleColor(phase)} variant="light">
+  <Badge color={lifecycleColor(phase)}>
     {formatLifecycleLabel(phase, fileKind)}
   </Badge>
 );
 
 export const LocalPresenceBadge = ({ presence }: { presence: LocalUploadJob['localPresence'] }): JSX.Element => (
-  <Badge color={localPresenceColor(presence)} variant="light">
+  <Badge color={localPresenceColor(presence)}>
     {formatLocalPresenceLabel(presence)}
   </Badge>
 );
@@ -813,7 +812,7 @@ export const SummaryCard = ({
   value: string;
   detail: string;
 }): JSX.Element => (
-  <Card withBorder className="desktop-card">
+  <Card className="desktop-card">
     <Stack gap={4}>
       <Text className="desktop-micro-label">{label}</Text>
       <Text className="desktop-stat">{value}</Text>
@@ -1048,7 +1047,7 @@ export const WatchRootTable = ({
           </td>
           <td className="landing-cell">{root.recursive ? 'Included' : 'No'}</td>
           <td className="landing-cell admin-nowrap">
-            <Badge color={root.paused ? 'gray' : 'teal'} variant="light">
+            <Badge color={root.paused ? 'gray' : 'teal'}>
               {root.paused ? 'Paused' : 'Active'}
             </Badge>
           </td>
@@ -1170,7 +1169,7 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
   };
 
   return (
-    <Card withBorder className="desktop-card desktop-subcard" id={id}>
+    <Card className="desktop-card desktop-subcard" id={id}>
       <Stack gap="sm">
         <div>
           <Text fw={700}>Add or edit a server</Text>
@@ -1213,7 +1212,7 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
         />
         <ErrorAlert message={error} />
         {warning ? (
-          <Alert color="yellow" variant="light">
+          <Alert color="yellow">
             {warning}
           </Alert>
         ) : null}
@@ -1388,7 +1387,7 @@ export const PreferencesForm = ({
   };
 
   return (
-    <Card withBorder className="desktop-card">
+    <Card className="desktop-card">
       <Stack gap="xs">
         <Text fw={700}>Desktop behavior</Text>
         <Checkbox

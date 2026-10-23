@@ -15,7 +15,7 @@ const DisclosureCard = ({
   aside?: ReactNode;
   children: ReactNode;
 }): JSX.Element => (
-  <Card withBorder className="desktop-card" py="xs">
+  <Card className="desktop-card" py="xs">
     <Disclosure
       size="compact-xs"
       variant="subtle"
@@ -106,7 +106,7 @@ export const AutomationPage = (): JSX.Element => {
           </>
         }
       />
-      <Card withBorder className="desktop-card" id="watch-folders">
+      <Card className="desktop-card" id="watch-folders">
         <Stack gap="sm">
           <Group justify="space-between" align="center" wrap="nowrap">
             <Text fw={700}>Watched folders</Text>
@@ -122,7 +122,7 @@ export const AutomationPage = (): JSX.Element => {
           {!hasFolders || addingFolder ? <WatchRootForm onAdded={() => setAddingFolder(false)} /> : null}
         </Stack>
       </Card>
-      <Card withBorder className="desktop-card" id="format-rules">
+      <Card className="desktop-card" id="format-rules">
         <Stack gap="sm">
           <div>
             <Text fw={700}>Filename rules</Text>
