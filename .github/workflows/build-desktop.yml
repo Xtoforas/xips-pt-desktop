@@ -25,6 +25,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Nothing is packaged or published unless the renderer typechecks, tests pass and it builds.
+  # No Tauri Linux packages here: the web checks don't need them.
+  verify:
+    name: Typecheck, test and build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Build renderer
+        run: npm run build
+
   select-platforms:
     name: Select platforms
     runs-on: ubuntu-24.04
@@ -53,7 +78,7 @@ jobs:
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   package:
-    needs: select-platforms
+    needs: [verify, select-platforms]
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -120,8 +145,8 @@ jobs:
 
   release:
     name: Publish GitHub release
-    needs: package
-    if: ${{ !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    needs: [verify, package]
+    if: ${{ !cancelled() && needs.verify.result == 'success' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
