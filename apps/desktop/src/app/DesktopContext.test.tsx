@@ -10,10 +10,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 type ListenCallback = () => void | Promise<void>;
 let capturedListener: ListenCallback | null = null;
+let listenResult: () => Promise<() => void> = () => Promise.resolve(vi.fn());
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn((_event: string, callback: ListenCallback) => {
     capturedListener = callback;
-    return Promise.resolve(vi.fn());
+    return listenResult();
   })
 }));
 
@@ -59,6 +60,7 @@ describe('DesktopContext snapshot refresh', () => {
     vi.resetModules();
     invokeMock.mockReset();
     capturedListener = null;
+    listenResult = () => Promise.resolve(vi.fn());
   });
 
   afterEach(() => {
@@ -182,5 +184,31 @@ describe('DesktopContext snapshot refresh', () => {
 
     expect(getSnapshotCalls).toBe(2);
     expect(ref.current?.snapshot.selectedProfileId).toBe('v2');
+  });
+
+  test('the snapshot listener is removed when unmount happens before listen() resolves', async () => {
+    const { DesktopProvider } = await importDesktopContext();
+    invokeMock.mockImplementation(() => Promise.resolve(makeSnapshot()));
+
+    const stop = vi.fn();
+    let resolveListen: ((unlisten: () => void) => void) | null = null;
+    listenResult = () =>
+      new Promise((resolve) => {
+        resolveListen = resolve;
+      });
+
+    let unmount: () => void = () => {};
+    await act(async () => {
+      ({ unmount } = render(<DesktopProvider>{null}</DesktopProvider>));
+      await flushMicrotasks();
+    });
+    expect(resolveListen).not.toBeNull();
+
+    unmount();
+    await act(async () => {
+      resolveListen?.(stop);
+      await flushMicrotasks();
+    });
+    expect(stop).toHaveBeenCalledTimes(1);
   });
 });

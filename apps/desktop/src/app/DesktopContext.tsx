@@ -224,6 +224,11 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
           await refreshSnapshot();
         }
       });
+      // Cleanup may have run while listen() was pending; nothing would remove the listener then.
+      if (!active) {
+        void stop();
+        return;
+      }
       unlisten = () => {
         void stop();
       };
