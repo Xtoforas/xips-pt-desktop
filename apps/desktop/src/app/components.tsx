@@ -9,7 +9,7 @@ import type {
   LocalUploadJob,
   TournamentFormat
 } from '@xips/api-contract';
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type JSX, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError, useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
 import {

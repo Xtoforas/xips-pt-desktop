@@ -1,6 +1,6 @@
 import { Badge, Button, Card, Group, HoverCard, Stack, Table, Text } from '@mantine/core';
 import { mdiInformationOutline } from '@mdi/js';
-import { useMemo } from 'react';
+import { type JSX, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
 import type { LocalUploadJob } from '@xips/api-contract';

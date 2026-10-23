@@ -1,7 +1,7 @@
 import { Button, Card, Group, Stack, Text } from '@mantine/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { useEffect, useState } from 'react';
+import { type JSX, useEffect, useState } from 'react';
 import { isTauri } from './desktop-client';
 
 export const UpdatePrompt = (): JSX.Element | null => {

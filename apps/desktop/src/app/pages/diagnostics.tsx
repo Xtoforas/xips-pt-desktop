@@ -1,6 +1,6 @@
 import { Alert, Badge, Button, Card, Group, SegmentedControl, SimpleGrid, Stack, Text } from '@mantine/core';
 import type { LocalDiagnosticEvent } from '@xips/api-contract';
-import { useMemo, useState } from 'react';
+import { type JSX, useMemo, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
 import { PageHeader, SiteTable } from '../components';
 import { isSignedInToSelectedServer, serverHostLabel } from '../onboarding';

@@ -1,5 +1,5 @@
 import { Button, Card, Collapse, Group, Select, Stack, Text, TextInput } from '@mantine/core';
-import { type ReactNode, useState } from 'react';
+import { type JSX, type ReactNode, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
 import { FormatRuleTable, FormatsTable, PageHeader, WatchRootForm, WatchRootTable } from '../components';
 import { explainFilenameAutoAssignment } from '../queue-model';

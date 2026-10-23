@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { DesktopProvider } from './DesktopContext';
 import { ConnectionBanner, DesktopSidebar, DesktopTopbar } from './components';

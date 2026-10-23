@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type JSX,
   type PropsWithChildren
 } from 'react';
 import type {
@@ -703,7 +704,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     ]
   );
 
-  return <DesktopContext.Provider value={value}>{children}</DesktopContext.Provider>;
+  return <DesktopContext value={value}>{children}</DesktopContext>;
 };
 
 export const useDesktop = (): DesktopContextValue => {

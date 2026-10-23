@@ -1,5 +1,5 @@
 import { Alert, Badge, Button, Card, Collapse, Group, Select, SimpleGrid, Stack, Switch, Table, Text } from '@mantine/core';
-import { useEffect, useState } from 'react';
+import { type JSX, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { describeError, useDesktop } from '../DesktopContext';
 import { PageHeader, PreferencesForm, ReadinessCard, ServerProfileForm } from '../components';

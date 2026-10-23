@@ -1,5 +1,5 @@
 import { Alert, Badge, Button, Card, Collapse, Group, Select, Stack, Table, Text, TextInput } from '@mantine/core';
-import { useEffect, useMemo, useState } from 'react';
+import { type JSX, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
 import { BlockedStatusBadge, PageHeader, QueueStateBadge, QueueTable, SectionHeader } from '../components';
