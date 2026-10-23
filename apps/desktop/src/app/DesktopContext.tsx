@@ -3,7 +3,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type JSX,
@@ -242,10 +241,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   const [cardSource, setCardSource] = useState<CardsResponse['source']>('admin');
   const [myAggCards, setMyAggCards] = useState<MyAggResponse['cards']>([]);
   const [myAggTeams, setMyAggTeams] = useState<MyAggResponse['teams']>([]);
-  const selectedProfile = useMemo(
-    () => snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null,
-    [snapshot.profiles, snapshot.selectedProfileId]
-  );
+  const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
   const selectedProfileId = selectedProfile?.id ?? '';
   const selectedProfileBaseUrl = selectedProfile?.baseUrl ?? '';
   const signedIn = isSignedInToSelectedServer(snapshot);
@@ -258,6 +254,8 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   const clipboardBaselineRef = useRef<string | null>(null);
   const watchingClipboardRef = useRef(false);
 
+  // Effects subscribe with refreshSnapshot and redeemAuthCode as dependencies, so their identity must
+  // stay stable. React Compiler memoization is an optimization, not a guarantee; useCallback is.
   const refreshSnapshot = useCallback(async (): Promise<void> => {
     if (refreshInFlightRef.current) {
       refreshQueuedRef.current = true;
@@ -432,17 +430,17 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     };
   }, [signedIn, selectedProfileId, snapshot.authUser]);
 
-  const selectServerProfile = useCallback(async (profileId: string): Promise<void> => {
+  const selectServerProfile = async (profileId: string): Promise<void> => {
     await desktopClient.selectServerProfile(profileId);
     setHealth(null);
-  }, []);
+  };
 
-  const switchToDefaultServer = useCallback(async (): Promise<void> => {
+  const switchToDefaultServer = async (): Promise<void> => {
     await desktopClient.switchToDefaultServer();
     setHealth(null);
-  }, []);
+  };
 
-  const refreshHealth = useCallback(async (): Promise<void> => {
+  const refreshHealth = async (): Promise<void> => {
     if (!selectedProfileId) {
       setHealth(null);
       return;
@@ -451,9 +449,9 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     const result = await desktopClient.checkServerHealth(selectedProfileId).catch(() => null);
     setHealth(result);
     setConnection(result?.ok ? 'connected' : 'unreachable');
-  }, [selectedProfileId]);
+  };
 
-  const refreshFormats = useCallback(async (): Promise<void> => {
+  const refreshFormats = async (): Promise<void> => {
     if (!selectedProfileId) {
       return;
     }
@@ -462,29 +460,26 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       ...current,
       cachedFormats: formats
     }));
-  }, [selectedProfileId]);
+  };
 
-  const refreshCards = useCallback(
-    async (formatId: string): Promise<void> => {
-      if (!selectedProfileId || !signedIn) {
-        setCards([]);
-        setCardSource('admin');
-        return;
-      }
-      const payload = await desktopClient.fetchCards(selectedProfileId, formatId);
-      setCards(payload.rows);
-      setCardSource(payload.source);
-    },
-    [signedIn, selectedProfileId]
-  );
+  const refreshCards = async (formatId: string): Promise<void> => {
+    if (!selectedProfileId || !signedIn) {
+      setCards([]);
+      setCardSource('admin');
+      return;
+    }
+    const payload = await desktopClient.fetchCards(selectedProfileId, formatId);
+    setCards(payload.rows);
+    setCardSource(payload.source);
+  };
 
-  const refreshMyAgg = useCallback(async (profileId: string): Promise<void> => {
+  const refreshMyAgg = async (profileId: string): Promise<void> => {
     const payload = await desktopClient.fetchMyAgg(profileId);
     setMyAggCards(payload.cards);
     setMyAggTeams(payload.teams);
-  }, []);
+  };
 
-  const openAuthWindow = useCallback(async (profileId: string): Promise<void> => {
+  const openAuthWindow = async (profileId: string): Promise<void> => {
     setAuthFlowState('waiting');
     setAuthFlowError('');
     if (isTauri()) {
@@ -502,7 +497,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       setAuthFlowError(OPEN_SIGN_IN_FAILED);
       throw error;
     }
-  }, []);
+  };
 
   const redeemAuthCode = useCallback(async (profileId: string, code: string): Promise<void> => {
     setAuthFlowState('waiting');
@@ -550,53 +545,29 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     return () => window.removeEventListener('focus', tryAutoFillFromClipboard);
   }, [signedIn, redeemAuthCode, selectedProfileId]);
 
-  const value = useMemo<DesktopContextValue>(
-    () => ({
-      snapshot,
-      loading,
-      authFlowState,
-      authFlowError,
-      selectedProfile,
-      health,
-      connection,
-      cards,
-      cardSource,
-      myAggCards,
-      myAggTeams,
-      refreshSnapshot,
-      selectServerProfile,
-      switchToDefaultServer,
-      refreshHealth,
-      refreshFormats,
-      refreshCards,
-      refreshMyAgg,
-      openAuthWindow,
-      redeemAuthCode,
-      ...clientActions
-    }),
-    [
-      snapshot,
-      loading,
-      authFlowState,
-      authFlowError,
-      selectedProfile,
-      health,
-      connection,
-      cards,
-      cardSource,
-      myAggCards,
-      myAggTeams,
-      refreshSnapshot,
-      selectServerProfile,
-      switchToDefaultServer,
-      refreshHealth,
-      refreshFormats,
-      refreshCards,
-      refreshMyAgg,
-      openAuthWindow,
-      redeemAuthCode,
-    ]
-  );
+  const value: DesktopContextValue = {
+    snapshot,
+    loading,
+    authFlowState,
+    authFlowError,
+    selectedProfile,
+    health,
+    connection,
+    cards,
+    cardSource,
+    myAggCards,
+    myAggTeams,
+    refreshSnapshot,
+    selectServerProfile,
+    switchToDefaultServer,
+    refreshHealth,
+    refreshFormats,
+    refreshCards,
+    refreshMyAgg,
+    openAuthWindow,
+    redeemAuthCode,
+    ...clientActions
+  };
 
   return <DesktopContext value={value}>{children}</DesktopContext>;
 };

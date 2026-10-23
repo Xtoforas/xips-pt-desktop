@@ -136,39 +136,29 @@ const Inspector = ({ job }: { job: LocalUploadJob }): JSX.Element => {
   const [selectedFormatId, setSelectedFormatId] = useState('');
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
   const [showTechnicalDetails, { toggle: toggleTechnicalDetails }] = useDisclosure(false);
-  const formatLabelById = useMemo(() => buildFormatLabelById(snapshot.cachedFormats), [snapshot.cachedFormats]);
-  const selectedAttempts = useMemo(
-    () => snapshot.uploadAttempts.filter((attempt) => attempt.uploadJobId === job.id),
-    [job.id, snapshot.uploadAttempts]
-  );
-  const selectedJobFormat = useMemo(
-    () => snapshot.cachedFormats.find((format) => format.id === job.formatId) ?? null,
-    [job.formatId, snapshot.cachedFormats]
-  );
+  const formatLabelById = buildFormatLabelById(snapshot.cachedFormats);
+  const selectedAttempts = snapshot.uploadAttempts.filter((attempt) => attempt.uploadJobId === job.id);
+  const selectedJobFormat = snapshot.cachedFormats.find((format) => format.id === job.formatId) ?? null;
   const selectedJobTeamCount = job.teamCount;
-  const { matches: tournamentFormatMatches, error: tournamentAssignmentError } = useMemo(
-    () => resolveTournamentIdMatch(snapshot.cachedFormats, selectedTournamentId, selectedJobTeamCount, 'inspector'),
-    [selectedJobTeamCount, selectedTournamentId, snapshot.cachedFormats]
+  const { matches: tournamentFormatMatches, error: tournamentAssignmentError } = resolveTournamentIdMatch(
+    snapshot.cachedFormats,
+    selectedTournamentId,
+    selectedJobTeamCount,
+    'inspector'
   );
   const matchedTournamentFormat = tournamentFormatMatches.length === 1 ? tournamentFormatMatches[0] : null;
-  const compatibleDirectFormats = useMemo(
-    () => snapshot.cachedFormats.filter((format) => formatMatchesTeamCount(format.teamsPerTournament, selectedJobTeamCount)),
-    [selectedJobTeamCount, snapshot.cachedFormats]
+  const compatibleDirectFormats = snapshot.cachedFormats.filter((format) =>
+    formatMatchesTeamCount(format.teamsPerTournament, selectedJobTeamCount)
   );
-  const selectedJobAutoAssignmentReason = useMemo(() => {
-    if (job.localState !== 'awaiting_format_assignment' || job.fileKind !== 'stats_export') {
-      return '';
-    }
-    return explainFilenameAutoAssignment(job.filename, job.teamCount, snapshot.cachedFormats);
-  }, [job, snapshot.cachedFormats]);
-  const selectedJobTeamCountWarning = useMemo(
-    () => getIncompleteTeamCountWarning(job.fileKind, job.teamCount, selectedJobFormat),
-    [job.fileKind, job.teamCount, selectedJobFormat]
-  );
+  const selectedJobAutoAssignmentReason =
+    job.localState !== 'awaiting_format_assignment' || job.fileKind !== 'stats_export'
+      ? ''
+      : explainFilenameAutoAssignment(job.filename, job.teamCount, snapshot.cachedFormats);
+  const selectedJobTeamCountWarning = getIncompleteTeamCountWarning(job.fileKind, job.teamCount, selectedJobFormat);
   const selectedJobFailureDetail =
     job.localState === 'failed_retryable' ? parseRetryableFailureDetail(job.error) : null;
   const selectedJobView = queueWorkspaceViewForJob(job);
-  const selectedJobActions = useMemo(() => getQueueRowActionKeys(job), [job]);
+  const selectedJobActions = getQueueRowActionKeys(job);
   const selectedJobBlocker = uploadJobNeedsAttention(job) ? summarizeBlockedJob(job, snapshot.cachedFormats) : null;
   const selectedJobDetail = selectedJobBlocker
     ? selectedJobBlocker.reason
@@ -489,75 +479,40 @@ export const UploadQueuePage = (): JSX.Element => {
   const [editingFilenameJobId, setEditingFilenameJobId] = useState('');
   const [inlineTournamentId, setInlineTournamentId] = useState('');
   const [bulkDismissInFlight, setBulkDismissInFlight] = useState(false);
-  const formatById = useMemo(
-    () =>
-      Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format])),
-    [snapshot.cachedFormats]
-  );
-  const formatLabelById = useMemo(() => buildFormatLabelById(snapshot.cachedFormats), [snapshot.cachedFormats]);
-  const sortedJobs = useMemo(
-    () =>
-      [...snapshot.uploadJobs].sort(
-        compareUploadJobsNewestFirst
-      ),
-    [snapshot.uploadJobs]
-  );
-  const needsActionJobs = useMemo(
-    () => sortedJobs.filter(uploadJobNeedsAttention),
-    [sortedJobs]
-  );
-  const workingJobs = useMemo(
-    () => sortedJobs.filter((job) => uploadJobWorkingAutomatically(job) && !uploadJobNeedsAttention(job)),
-    [sortedJobs]
-  );
-  const ignoredJobs = useMemo(
-    () => sortedJobs.filter((job) => job.localState === 'ignored'),
-    [sortedJobs]
-  );
-  const doneJobs = useMemo(
-    () => sortedJobs.filter(isQueueJobDone),
-    [sortedJobs]
-  );
-  const queueJobsByView = useMemo(
-    () => ({
-      needs_action: needsActionJobs,
-      ignored: ignoredJobs,
-      working: workingJobs,
-      done: doneJobs
-    }),
-    [doneJobs, ignoredJobs, needsActionJobs, workingJobs]
-  );
-  const queueCounts = useMemo(
-    () => ({
-      needs_action: needsActionJobs.length,
-      ignored: ignoredJobs.length,
-      working: workingJobs.length,
-      done: doneJobs.length
-    }),
-    [doneJobs.length, ignoredJobs.length, needsActionJobs.length, workingJobs.length]
-  );
-  const selectedQueueJobs = useMemo(
-    () => queueJobsByView[queueView].filter((job) => selectedQueueJobIds.includes(job.id)),
-    [queueJobsByView, queueView, selectedQueueJobIds]
-  );
-  const dismissibleSelectedJobs = useMemo(
-    () =>
-      selectedQueueJobs.filter(canDismissUploadJob),
-    [selectedQueueJobs]
-  );
-  const ignorableSelectedJobs = useMemo(
-    () => selectedQueueJobs.filter(canIgnoreUploadJob),
-    [selectedQueueJobs]
-  );
+  const formatById = Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format]));
+  const formatLabelById = buildFormatLabelById(snapshot.cachedFormats);
+  // The URL-sync and selection effects below depend on these arrays, and they set state, so the arrays must
+  // keep their identity until the jobs change. The React Compiler left them unmemoized (an infinite render
+  // loop), so useMemo stays: compiler memoization is an optimization, not a guarantee.
+  const { sortedJobs, needsActionJobs, workingJobs, ignoredJobs, queueJobsByView } = useMemo(() => {
+    const sorted = [...snapshot.uploadJobs].sort(compareUploadJobsNewestFirst);
+    const byView = {
+      needs_action: sorted.filter(uploadJobNeedsAttention),
+      ignored: sorted.filter((job) => job.localState === 'ignored'),
+      working: sorted.filter((job) => uploadJobWorkingAutomatically(job) && !uploadJobNeedsAttention(job)),
+      done: sorted.filter(isQueueJobDone)
+    };
+    return {
+      sortedJobs: sorted,
+      needsActionJobs: byView.needs_action,
+      workingJobs: byView.working,
+      ignoredJobs: byView.ignored,
+      queueJobsByView: byView
+    };
+  }, [snapshot.uploadJobs]);
+  const doneJobs = queueJobsByView.done;
+  const queueCounts = {
+    needs_action: needsActionJobs.length,
+    ignored: ignoredJobs.length,
+    working: workingJobs.length,
+    done: doneJobs.length
+  };
+  const selectedQueueJobs = queueJobsByView[queueView].filter((job) => selectedQueueJobIds.includes(job.id));
+  const dismissibleSelectedJobs = selectedQueueJobs.filter(canDismissUploadJob);
+  const ignorableSelectedJobs = selectedQueueJobs.filter(canIgnoreUploadJob);
 
-  const selectedJob = useMemo(
-    () => sortedJobs.find((job) => job.id === selectedJobId) ?? null,
-    [selectedJobId, sortedJobs]
-  );
-  const inlineEditingJob = useMemo(
-    () => snapshot.uploadJobs.find((job) => job.id === editingFilenameJobId) ?? null,
-    [editingFilenameJobId, snapshot.uploadJobs]
-  );
+  const selectedJob = sortedJobs.find((job) => job.id === selectedJobId) ?? null;
+  const inlineEditingJob = snapshot.uploadJobs.find((job) => job.id === editingFilenameJobId) ?? null;
   const inlineEditingJobTeamCount = inlineEditingJob?.teamCount ?? 0;
   const { error: inlineTournamentAssignmentError } = resolveTournamentIdMatch(
     snapshot.cachedFormats,

@@ -1,6 +1,6 @@
 import { Badge, Button, Card, Group, HoverCard, Stack, Text } from '@mantine/core';
 import { mdiInformationOutline } from '@mdi/js';
-import { type JSX, useMemo } from 'react';
+import { type JSX } from 'react';
 import { Link } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
 import { pluralize } from '../format';
@@ -135,53 +135,35 @@ const QuietSection = ({ title, message }: { title: string; message: string }): J
 
 export const TodayPage = (): JSX.Element => {
   const { snapshot, ignoreUploadJob } = useDesktop();
-  const formatLabelById = useMemo(() => buildFormatLabelById(snapshot.cachedFormats), [snapshot.cachedFormats]);
+  const formatLabelById = buildFormatLabelById(snapshot.cachedFormats);
   // Blocked files waiting on the user come first, then ones the app will retry; similar reasons sit together.
-  const blockerRows = useMemo(
-    () =>
-      snapshot.uploadJobs
-        .filter((job) => uploadJobNeedsAttention(job))
-        .map((job) => ({ job, summary: summarizeBlockedJob(job, snapshot.cachedFormats) }))
-        .sort((left, right) => {
-          if (left.summary.owner !== right.summary.owner) {
-            return left.summary.owner === 'user' ? -1 : 1;
-          }
-          const leftPriority = blockerPriority[left.job.localState as TodayBlockerState] ?? 99;
-          const rightPriority = blockerPriority[right.job.localState as TodayBlockerState] ?? 99;
-          if (leftPriority !== rightPriority) {
-            return leftPriority - rightPriority;
-          }
-          const byReason = left.summary.reason.localeCompare(right.summary.reason);
-          if (byReason !== 0) {
-            return byReason;
-          }
-          return compareUploadJobsNewestFirst(left.job, right.job);
-        }),
-    [snapshot.cachedFormats, snapshot.uploadJobs]
-  );
-  const completedCount = useMemo(
-    () => snapshot.uploadJobs.filter((job) => job.localState === 'complete').length,
-    [snapshot.uploadJobs]
-  );
-  const needsAttentionCount = useMemo(
-    () => snapshot.uploadJobs.filter(uploadJobNeedsAttention).length,
-    [snapshot.uploadJobs]
-  );
-  const inProgressJobs = useMemo(
-    () =>
-      snapshot.uploadJobs
-        .filter((job) => uploadJobWorkingAutomatically(job) || uploadJobWaitingOnServer(job))
-        .sort(compareUploadJobsNewestFirst),
-    [snapshot.uploadJobs]
-  );
-  const completedJobs = useMemo(
-    () =>
-      snapshot.uploadJobs
-        .filter((job) => job.localState === 'complete')
-        .sort(compareUploadJobsNewestFirst)
-        .slice(0, COMPLETED_ROW_LIMIT),
-    [snapshot.uploadJobs]
-  );
+  const blockerRows = snapshot.uploadJobs
+    .filter((job) => uploadJobNeedsAttention(job))
+    .map((job) => ({ job, summary: summarizeBlockedJob(job, snapshot.cachedFormats) }))
+    .sort((left, right) => {
+      if (left.summary.owner !== right.summary.owner) {
+        return left.summary.owner === 'user' ? -1 : 1;
+      }
+      const leftPriority = blockerPriority[left.job.localState as TodayBlockerState] ?? 99;
+      const rightPriority = blockerPriority[right.job.localState as TodayBlockerState] ?? 99;
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+      const byReason = left.summary.reason.localeCompare(right.summary.reason);
+      if (byReason !== 0) {
+        return byReason;
+      }
+      return compareUploadJobsNewestFirst(left.job, right.job);
+    });
+  const completedCount = snapshot.uploadJobs.filter((job) => job.localState === 'complete').length;
+  const needsAttentionCount = snapshot.uploadJobs.filter(uploadJobNeedsAttention).length;
+  const inProgressJobs = snapshot.uploadJobs
+    .filter((job) => uploadJobWorkingAutomatically(job) || uploadJobWaitingOnServer(job))
+    .sort(compareUploadJobsNewestFirst);
+  const completedJobs = snapshot.uploadJobs
+    .filter((job) => job.localState === 'complete')
+    .sort(compareUploadJobsNewestFirst)
+    .slice(0, COMPLETED_ROW_LIMIT);
 
   return (
     <Stack gap="lg">

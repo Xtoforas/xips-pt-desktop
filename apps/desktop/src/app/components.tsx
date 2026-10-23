@@ -10,7 +10,7 @@ import type {
   LocalUploadJob,
   TournamentFormat
 } from '@xips/api-contract';
-import { type JSX, type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type JSX, type CSSProperties, type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
 import { DEFAULT_GAME_VERSION, describeError, digitsOnly, formatDateTime } from './format';
@@ -286,10 +286,7 @@ export const ExportFolderPicker = (): JSX.Element => {
 // step, and a one-line note once setup is done.
 export const ReadinessCard = ({ id, variant }: { id?: string; variant: 'today' | 'settings' }): JSX.Element | null => {
   const { snapshot, selectedProfile, authFlowState, updatePreferences } = useDesktop();
-  const steps = useMemo(
-    () => buildOnboardingSteps({ snapshot, selectedProfile, authFlowState }),
-    [authFlowState, selectedProfile, snapshot]
-  );
+  const steps = buildOnboardingSteps({ snapshot, selectedProfile, authFlowState });
   const nextStep = nextOnboardingStep(steps);
   const requiredSteps = requiredOnboardingSteps(steps);
   const doneCount = requiredSteps.filter((step) => step.complete).length;
@@ -598,10 +595,7 @@ export const DesktopTopbar = (): JSX.Element => {
   } = useDesktop();
   const isAuthenticated = isSignedInToSelectedServer(snapshot);
   const customServer = isCustomServer(selectedProfile);
-  const setupWaiting = useMemo(
-    () => nextOnboardingStep(buildOnboardingSteps({ snapshot, selectedProfile, authFlowState })) !== null,
-    [authFlowState, selectedProfile, snapshot]
-  );
+  const setupWaiting = nextOnboardingStep(buildOnboardingSteps({ snapshot, selectedProfile, authFlowState })) !== null;
   const needsAttentionCount = snapshot.uploadJobs.filter(uploadJobNeedsAttention).length;
   const automaticQueueCount = snapshot.uploadJobs.filter(uploadJobWorkingAutomatically).length;
   // "Run queue now" only helps while something is moving or waiting to retry.

@@ -1,6 +1,6 @@
 import { Alert, Badge, Button, Card, Group, SegmentedControl, SimpleGrid, Stack, Text } from '@mantine/core';
 import type { LocalDiagnosticEvent } from '@xips/api-contract';
-import { type JSX, useMemo, useState } from 'react';
+import { type JSX, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
 import { PageHeader, SiteTable, TimestampCell } from '../components';
 import { formatDateTime } from '../format';
@@ -42,13 +42,9 @@ export const DiagnosticsPage = (): JSX.Element => {
   const { health, connection, refreshHealth, selectedProfile, snapshot, exportDiagnosticsBundle, openAppDataDirectory } = useDesktop();
   const [lastExportPath, setLastExportPath] = useState('');
   const [eventFilter, setEventFilter] = useState<EventFilter>('all');
-  const events = useMemo(
-    () =>
-      snapshot.diagnostics
-        .filter((event) => (eventFilter === 'errors' ? event.level === 'error' : eventFilter === 'api' ? event.category === 'api' : true))
-        .slice(0, EVENT_ROW_LIMIT),
-    [eventFilter, snapshot.diagnostics]
-  );
+  const events = snapshot.diagnostics
+    .filter((event) => (eventFilter === 'errors' ? event.level === 'error' : eventFilter === 'api' ? event.category === 'api' : true))
+    .slice(0, EVENT_ROW_LIMIT);
   const countJobs = (states: string[]): string =>
     String(snapshot.uploadJobs.filter((job) => states.includes(job.localState)).length);
   const signedIn = isSignedInToSelectedServer(snapshot);
