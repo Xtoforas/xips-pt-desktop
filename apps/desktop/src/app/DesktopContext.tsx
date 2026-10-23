@@ -21,7 +21,7 @@ import type {
 } from '@xips/api-contract';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import { desktopClient, isTauri, MOCK_SNAPSHOT_EVENT } from './desktop-client';
-import type { ConnectionState } from './onboarding';
+import { isSignedInToSelectedServer, type ConnectionState } from './onboarding';
 
 type SaveServerProfileInput = {
   id?: string;
@@ -141,6 +141,87 @@ const PAIRING_CODE_PATTERN = /^[A-Z0-9]{6,12}$/;
 const OPEN_SIGN_IN_FAILED = "The sign-in window didn't open. Try again in a moment.";
 const REDEEM_CODE_FAILED = "That code didn't work. Codes expire after a few minutes, so click Sign in with Discord to get a new one.";
 
+// Milliseconds between polls: the configured interval, floored at the minimum, times a multiplier.
+const pollIntervalMs = (seconds: number, multiplier: number): number =>
+  Math.max(seconds, MIN_POLLING_INTERVAL_SECONDS) * multiplier * 1000;
+
+// Context actions that only forward to the desktop client. desktopClient is a module-level
+// constant, so these are stable references and need no hooks.
+const clientActions = {
+  saveServerProfile: async (input: SaveServerProfileInput): Promise<SaveServerProfileResult> =>
+    desktopClient.saveServerProfile(input),
+  exportDiagnosticsBundle: async (): Promise<string> => desktopClient.exportDiagnosticsBundle(),
+  deleteServerProfile: async (profileId: string): Promise<void> => {
+    await desktopClient.deleteServerProfile(profileId);
+  },
+  refreshMe: async (profileId: string): Promise<void> => {
+    await desktopClient.refreshMe(profileId);
+  },
+  logout: async (profileId: string): Promise<void> => {
+    await desktopClient.logout(profileId);
+  },
+  addWatchRoot: async (input: AddWatchRootInput): Promise<void> => {
+    await desktopClient.addWatchRoot(input);
+  },
+  saveFormatRule: async (input: SaveFormatRuleInput): Promise<void> => {
+    await desktopClient.saveFormatRule(input);
+  },
+  deleteFormatRule: async (formatRuleId: string): Promise<void> => {
+    await desktopClient.deleteFormatRule(formatRuleId);
+  },
+  scanWatchRoots: async (profileId: string): Promise<void> => {
+    await desktopClient.scanWatchRoots(profileId);
+  },
+  assignDetectedFileFormat: async (input: AssignDetectedFileFormatInput): Promise<void> => {
+    await desktopClient.assignDetectedFileFormat(input);
+  },
+  assignDetectedFileTournament: async (input: AssignDetectedFileTournamentInput): Promise<void> => {
+    await desktopClient.assignDetectedFileTournament(input);
+  },
+  deleteWatchRoot: async (watchRootId: string): Promise<void> => {
+    await desktopClient.deleteWatchRoot(watchRootId);
+  },
+  toggleWatchRoot: async (watchRootId: string, paused: boolean): Promise<void> => {
+    await desktopClient.toggleWatchRoot(watchRootId, paused);
+  },
+  processUploadQueue: async (profileId: string): Promise<void> => {
+    await desktopClient.processUploadQueue(profileId);
+  },
+  pollActiveUploads: async (profileId: string): Promise<void> => {
+    await desktopClient.pollActiveUploads(profileId);
+  },
+  retryUploadJob: async (uploadJobId: string): Promise<void> => {
+    await desktopClient.retryUploadJob(uploadJobId);
+  },
+  dismissDuplicateUploadJob: async (uploadJobId: string): Promise<void> => {
+    await desktopClient.dismissDuplicateUploadJob(uploadJobId);
+  },
+  dismissWorkingUploadJob: async (uploadJobId: string): Promise<void> => {
+    await desktopClient.dismissWorkingUploadJob(uploadJobId);
+  },
+  ignoreUploadJob: async (uploadJobId: string): Promise<void> => {
+    await desktopClient.ignoreUploadJob(uploadJobId);
+  },
+  restoreIgnoredUploadJob: async (uploadJobId: string): Promise<void> => {
+    await desktopClient.restoreIgnoredUploadJob(uploadJobId);
+  },
+  removeAwaitingUploadJob: async (uploadJobId: string): Promise<void> => {
+    await desktopClient.removeAwaitingUploadJob(uploadJobId);
+  },
+  openUploadFileLocation: async (uploadJobId: string): Promise<void> => {
+    await desktopClient.openUploadFileLocation(uploadJobId);
+  },
+  updatePreferences: async (preferences: DesktopPreferences): Promise<void> => {
+    await desktopClient.updatePreferences(preferences);
+  },
+  addDiagnosticEvent: async (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>): Promise<void> => {
+    await desktopClient.addDiagnosticEvent(event);
+  },
+  openAppDataDirectory: async (): Promise<void> => {
+    await desktopClient.openAppDataDirectory();
+  }
+};
+
 const DesktopContext = createContext<DesktopContextValue | null>(null);
 
 // Imported lazily so the browser mock never loads the Tauri event API. Kept outside the
@@ -167,6 +248,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   );
   const selectedProfileId = selectedProfile?.id ?? '';
   const selectedProfileBaseUrl = selectedProfile?.baseUrl ?? '';
+  const signedIn = isSignedInToSelectedServer(snapshot);
 
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const refreshQueuedRef = useRef(false);
@@ -240,14 +322,14 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, [refreshSnapshot]);
 
   useEffect(() => {
-    if (snapshot.authProfileId === snapshot.selectedProfileId && snapshot.authUser) {
+    if (signedIn) {
       return;
     }
     setCards([]);
     setCardSource('admin');
     setMyAggCards([]);
     setMyAggTeams([]);
-  }, [snapshot.authProfileId, snapshot.authUser, snapshot.selectedProfileId]);
+  }, [signedIn]);
 
   useEffect(() => {
     if (!selectedProfileId) {
@@ -276,9 +358,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     run();
     const intervalId = window.setInterval(
       run,
-      Math.max(snapshot.preferences.pollingIntervalSeconds, MIN_POLLING_INTERVAL_SECONDS) *
-        HEALTH_POLL_INTERVAL_MULTIPLIER *
-        1000
+      pollIntervalMs(snapshot.preferences.pollingIntervalSeconds, HEALTH_POLL_INTERVAL_MULTIPLIER)
     );
     return () => {
       active = false;
@@ -287,37 +367,27 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, [selectedProfileBaseUrl, selectedProfileId, snapshot.preferences.pollingIntervalSeconds]);
 
   useEffect(() => {
-    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
-    if (!selectedProfile || snapshot.authProfileId !== selectedProfile.id || !snapshot.authUser) {
+    if (!selectedProfileId || !signedIn) {
       return;
     }
     const run = (): void => {
-      void desktopClient.refreshMe(selectedProfile.id);
+      void desktopClient.refreshMe(selectedProfileId);
     };
     const intervalId = window.setInterval(
       run,
-      Math.max(snapshot.preferences.pollingIntervalSeconds, MIN_POLLING_INTERVAL_SECONDS) *
-        REFRESH_ME_POLL_INTERVAL_MULTIPLIER *
-        1000
+      pollIntervalMs(snapshot.preferences.pollingIntervalSeconds, REFRESH_ME_POLL_INTERVAL_MULTIPLIER)
     );
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [
-    snapshot.authProfileId,
-    snapshot.authUser,
-    snapshot.preferences.pollingIntervalSeconds,
-    snapshot.profiles,
-    snapshot.selectedProfileId
-  ]);
+  }, [signedIn, selectedProfileId, snapshot.authUser, snapshot.preferences.pollingIntervalSeconds]);
 
   useEffect(() => {
-    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
-    if (!selectedProfile) {
+    if (!selectedProfileId) {
       return;
     }
     let active = true;
-    void desktopClient.fetchFormats(selectedProfile.id).then((formats) => {
+    void desktopClient.fetchFormats(selectedProfileId).then((formats) => {
       if (active) {
         setSnapshot((current) => ({
           ...current,
@@ -328,15 +398,14 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     return () => {
       active = false;
     };
-  }, [snapshot.selectedProfileId]);
+  }, [selectedProfileId]);
 
   useEffect(() => {
-    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
-    if (!selectedProfile || snapshot.authProfileId !== selectedProfile.id || !snapshot.authUser) {
+    if (!selectedProfileId || !signedIn) {
       return;
     }
     let active = true;
-    void desktopClient.fetchCards(selectedProfile.id, '').then((payload) => {
+    void desktopClient.fetchCards(selectedProfileId, '').then((payload) => {
       if (active) {
         setCards(payload.rows);
         setCardSource(payload.source);
@@ -347,7 +416,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
         setCardSource('admin');
       }
     });
-    void desktopClient.fetchMyAgg(selectedProfile.id).then((payload) => {
+    void desktopClient.fetchMyAgg(selectedProfileId).then((payload) => {
       if (active) {
         setMyAggCards(payload.cards);
         setMyAggTeams(payload.teams);
@@ -361,16 +430,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     return () => {
       active = false;
     };
-  }, [snapshot.authProfileId, snapshot.authUser, snapshot.selectedProfileId]);
-
-  const saveServerProfile = useCallback(
-    async (input: SaveServerProfileInput): Promise<SaveServerProfileResult> => desktopClient.saveServerProfile(input),
-    []
-  );
-
-  const deleteServerProfile = useCallback(async (profileId: string): Promise<void> => {
-    await desktopClient.deleteServerProfile(profileId);
-  }, []);
+  }, [signedIn, selectedProfileId, snapshot.authUser]);
 
   const selectServerProfile = useCallback(async (profileId: string): Promise<void> => {
     await desktopClient.selectServerProfile(profileId);
@@ -383,42 +443,39 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
   }, []);
 
   const refreshHealth = useCallback(async (): Promise<void> => {
-    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
-    if (!selectedProfile) {
+    if (!selectedProfileId) {
       setHealth(null);
       return;
     }
     // No 'checking' here: a manual retry keeps the current message (and its Retry button) on screen.
-    const result = await desktopClient.checkServerHealth(selectedProfile.id).catch(() => null);
+    const result = await desktopClient.checkServerHealth(selectedProfileId).catch(() => null);
     setHealth(result);
     setConnection(result?.ok ? 'connected' : 'unreachable');
-  }, [snapshot.profiles, snapshot.selectedProfileId]);
+  }, [selectedProfileId]);
 
   const refreshFormats = useCallback(async (): Promise<void> => {
-    const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
-    if (!selectedProfile) {
+    if (!selectedProfileId) {
       return;
     }
-    const formats = await desktopClient.fetchFormats(selectedProfile.id);
+    const formats = await desktopClient.fetchFormats(selectedProfileId);
     setSnapshot((current) => ({
       ...current,
       cachedFormats: formats
     }));
-  }, [snapshot.profiles, snapshot.selectedProfileId]);
+  }, [selectedProfileId]);
 
   const refreshCards = useCallback(
     async (formatId: string): Promise<void> => {
-      const selectedProfile = snapshot.profiles.find((profile) => profile.id === snapshot.selectedProfileId) ?? null;
-      if (!selectedProfile || snapshot.authProfileId !== selectedProfile.id || !snapshot.authUser) {
+      if (!selectedProfileId || !signedIn) {
         setCards([]);
         setCardSource('admin');
         return;
       }
-      const payload = await desktopClient.fetchCards(selectedProfile.id, formatId);
+      const payload = await desktopClient.fetchCards(selectedProfileId, formatId);
       setCards(payload.rows);
       setCardSource(payload.source);
     },
-    [snapshot.authProfileId, snapshot.authUser, snapshot.profiles, snapshot.selectedProfileId]
+    [signedIn, selectedProfileId]
   );
 
   const refreshMyAgg = useCallback(async (profileId: string): Promise<void> => {
@@ -461,11 +518,8 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     }
   }, [refreshSnapshot]);
 
-  const isAuthenticatedForSelectedProfile =
-    snapshot.authUser !== null && snapshot.authProfileId === selectedProfileId;
-
   useEffect(() => {
-    if (!isTauri() || !selectedProfileId || isAuthenticatedForSelectedProfile) {
+    if (!isTauri() || !selectedProfileId || signedIn) {
       watchingClipboardRef.current = false;
       return;
     }
@@ -494,100 +548,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     };
     window.addEventListener('focus', tryAutoFillFromClipboard);
     return () => window.removeEventListener('focus', tryAutoFillFromClipboard);
-  }, [isAuthenticatedForSelectedProfile, redeemAuthCode, selectedProfileId]);
-
-  const refreshMe = useCallback(async (profileId: string): Promise<void> => {
-    await desktopClient.refreshMe(profileId);
-  }, []);
-
-  const logout = useCallback(async (profileId: string): Promise<void> => {
-    await desktopClient.logout(profileId);
-  }, []);
-
-  const addWatchRoot = useCallback(async (input: AddWatchRootInput): Promise<void> => {
-    await desktopClient.addWatchRoot(input);
-  }, []);
-
-  const saveFormatRule = useCallback(async (input: SaveFormatRuleInput): Promise<void> => {
-    await desktopClient.saveFormatRule(input);
-  }, []);
-
-  const deleteFormatRule = useCallback(async (formatRuleId: string): Promise<void> => {
-    await desktopClient.deleteFormatRule(formatRuleId);
-  }, []);
-
-  const scanWatchRoots = useCallback(async (profileId: string): Promise<void> => {
-    await desktopClient.scanWatchRoots(profileId);
-  }, []);
-
-  const assignDetectedFileFormat = useCallback(async (input: AssignDetectedFileFormatInput): Promise<void> => {
-    await desktopClient.assignDetectedFileFormat(input);
-  }, []);
-
-  const assignDetectedFileTournament = useCallback(async (input: AssignDetectedFileTournamentInput): Promise<void> => {
-    await desktopClient.assignDetectedFileTournament(input);
-  }, []);
-
-  const deleteWatchRoot = useCallback(async (watchRootId: string): Promise<void> => {
-    await desktopClient.deleteWatchRoot(watchRootId);
-  }, []);
-
-  const toggleWatchRoot = useCallback(async (watchRootId: string, paused: boolean): Promise<void> => {
-    await desktopClient.toggleWatchRoot(watchRootId, paused);
-  }, []);
-
-  const processUploadQueue = useCallback(async (profileId: string): Promise<void> => {
-    await desktopClient.processUploadQueue(profileId);
-  }, []);
-
-  const pollActiveUploads = useCallback(async (profileId: string): Promise<void> => {
-    await desktopClient.pollActiveUploads(profileId);
-  }, []);
-
-  const retryUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    await desktopClient.retryUploadJob(uploadJobId);
-  }, []);
-
-  const dismissDuplicateUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    await desktopClient.dismissDuplicateUploadJob(uploadJobId);
-  }, []);
-
-  const dismissWorkingUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    await desktopClient.dismissWorkingUploadJob(uploadJobId);
-  }, []);
-
-  const ignoreUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    await desktopClient.ignoreUploadJob(uploadJobId);
-  }, []);
-
-  const restoreIgnoredUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    await desktopClient.restoreIgnoredUploadJob(uploadJobId);
-  }, []);
-
-  const removeAwaitingUploadJob = useCallback(async (uploadJobId: string): Promise<void> => {
-    await desktopClient.removeAwaitingUploadJob(uploadJobId);
-  }, []);
-
-  const openUploadFileLocation = useCallback(async (uploadJobId: string): Promise<void> => {
-    await desktopClient.openUploadFileLocation(uploadJobId);
-  }, []);
-
-  const updatePreferences = useCallback(async (preferences: DesktopPreferences): Promise<void> => {
-    await desktopClient.updatePreferences(preferences);
-  }, []);
-
-  const addDiagnosticEvent = useCallback(
-    async (event: Omit<LocalDiagnosticEvent, 'id' | 'createdAt'>): Promise<void> => {
-      await desktopClient.addDiagnosticEvent(event);
-    },
-    []
-  );
-
-  const exportDiagnosticsBundle = useCallback(async (): Promise<string> => desktopClient.exportDiagnosticsBundle(), []);
-
-  const openAppDataDirectory = useCallback(async (): Promise<void> => {
-    await desktopClient.openAppDataDirectory();
-  }, []);
+  }, [signedIn, redeemAuthCode, selectedProfileId]);
 
   const value = useMemo<DesktopContextValue>(
     () => ({
@@ -603,8 +564,6 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       myAggCards,
       myAggTeams,
       refreshSnapshot,
-      saveServerProfile,
-      deleteServerProfile,
       selectServerProfile,
       switchToDefaultServer,
       refreshHealth,
@@ -613,29 +572,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       refreshMyAgg,
       openAuthWindow,
       redeemAuthCode,
-      refreshMe,
-      logout,
-      addWatchRoot,
-      saveFormatRule,
-      deleteFormatRule,
-      scanWatchRoots,
-      assignDetectedFileFormat,
-      assignDetectedFileTournament,
-      deleteWatchRoot,
-      toggleWatchRoot,
-      processUploadQueue,
-      pollActiveUploads,
-      retryUploadJob,
-      dismissDuplicateUploadJob,
-      dismissWorkingUploadJob,
-      ignoreUploadJob,
-      restoreIgnoredUploadJob,
-      removeAwaitingUploadJob,
-      openUploadFileLocation,
-      updatePreferences,
-      addDiagnosticEvent,
-      exportDiagnosticsBundle,
-      openAppDataDirectory
+      ...clientActions
     }),
     [
       snapshot,
@@ -650,8 +587,6 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       myAggCards,
       myAggTeams,
       refreshSnapshot,
-      saveServerProfile,
-      deleteServerProfile,
       selectServerProfile,
       switchToDefaultServer,
       refreshHealth,
@@ -660,29 +595,6 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       refreshMyAgg,
       openAuthWindow,
       redeemAuthCode,
-      refreshMe,
-      logout,
-      addWatchRoot,
-      saveFormatRule,
-      deleteFormatRule,
-      scanWatchRoots,
-      assignDetectedFileFormat,
-      assignDetectedFileTournament,
-      deleteWatchRoot,
-      toggleWatchRoot,
-      processUploadQueue,
-      pollActiveUploads,
-      retryUploadJob,
-      dismissDuplicateUploadJob,
-      dismissWorkingUploadJob,
-      ignoreUploadJob,
-      restoreIgnoredUploadJob,
-      removeAwaitingUploadJob,
-      openUploadFileLocation,
-      updatePreferences,
-      addDiagnosticEvent,
-      exportDiagnosticsBundle,
-      openAppDataDirectory
     ]
   );
 
