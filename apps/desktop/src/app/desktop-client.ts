@@ -5,7 +5,6 @@ import type {
   DesktopSnapshot,
   LocalDetectedFile,
   LocalDiagnosticEvent,
-  LocalFormatRule,
   LocalServerProfile,
   LocalUploadJob,
   LocalWatchRoot,

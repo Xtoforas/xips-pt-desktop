@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Title, Tooltip } from '@mantine/core';
+import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Text, TextInput, ThemeIcon, Title, Tooltip } from '@mantine/core';
 import { mdiBaseball, mdiCalendarToday, mdiCloudUpload, mdiCog, mdiLightningBolt, mdiWrench } from '@mdi/js';
 import { Link, useLocation } from 'react-router-dom';
 import type {

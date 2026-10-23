@@ -17,8 +17,7 @@ import type {
   LocalServerProfile,
   MyAggResponse,
   SaveServerProfileResult,
-  ServiceHealth,
-  TournamentFormat
+  ServiceHealth
 } from '@xips/api-contract';
 import { readText } from '@tauri-apps/plugin-clipboard-manager';
 import { desktopClient, isTauri, MOCK_SNAPSHOT_EVENT } from './desktop-client';

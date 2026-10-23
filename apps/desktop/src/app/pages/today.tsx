@@ -22,13 +22,11 @@ import {
   formatUploadFormatLabel,
   summarizeBlockedJob,
   type BlockedJobSummary,
-  uploadJobFolderName,
   uploadJobNeedsAttention,
   uploadJobWaitingOnServer,
   uploadJobWorkingAutomatically,
   type TodayBlockerState
 } from '../queue-model';
-import { isCustomServer, serverHostLabel } from '../onboarding';
 
 const BLOCKER_ROW_LIMIT = 15;
 
@@ -142,8 +140,7 @@ const QuietSection = ({ title, message }: { title: string; message: string }): J
 );
 
 export const TodayPage = (): JSX.Element => {
-  const { snapshot, selectedProfile, ignoreUploadJob } = useDesktop();
-  const customServer = isCustomServer(selectedProfile);
+  const { snapshot, ignoreUploadJob } = useDesktop();
   const formatLabelById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format.name])),
