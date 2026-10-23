@@ -886,7 +886,7 @@ export const UploadQueuePage = (): JSX.Element => {
               >
                 {showTechnicalDetails ? 'Hide technical details' : 'Show technical details'}
               </Button>
-              <Collapse in={showTechnicalDetails}>
+              <Collapse expanded={showTechnicalDetails}>
                 <Table.ScrollContainer minWidth={480} type="native">
                   <Table withTableBorder withColumnBorders>
                     <Table.Tbody>

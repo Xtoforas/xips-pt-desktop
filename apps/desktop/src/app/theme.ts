@@ -9,6 +9,7 @@ import {
   Table,
   TextInput,
   createTheme,
+  v8CssVariablesResolver,
   type CSSVariablesResolver,
   type MantineColorsTuple
 } from '@mantine/core';
@@ -134,38 +135,46 @@ export const desktopTheme = createTheme({
   }
 });
 
-export const desktopCssVariablesResolver: CSSVariablesResolver = (resolvedTheme) => ({
-  variables: {
-    '--font-display': resolvedTheme.headings.fontFamily
-  },
-  light: {
-    '--page-bg': resolvedTheme.other.pageBgLight,
-    '--text-main': resolvedTheme.other.textMainLight,
-    '--text-soft': resolvedTheme.other.textSoftLight,
-    '--text-muted': resolvedTheme.other.textMutedLight,
-    '--text-label': resolvedTheme.other.textLabelLight,
-    '--text-placeholder': resolvedTheme.other.textPlaceholderLight,
-    '--mantine-color-text': 'var(--text-main)',
-    '--mantine-color-dimmed': 'var(--text-muted)',
-    '--mantine-color-placeholder': 'var(--text-placeholder)',
-    '--mantine-color-body': 'var(--page-bg)',
-    '--mantine-color-default': 'var(--field-bg)',
-    '--mantine-color-default-hover': 'var(--field-bg-hover)',
-    '--mantine-color-default-border': 'var(--field-border)'
-  },
-  dark: {
-    '--page-bg': resolvedTheme.other.pageBgDark,
-    '--text-main': resolvedTheme.other.textMainDark,
-    '--text-soft': resolvedTheme.other.textSoftDark,
-    '--text-muted': resolvedTheme.other.textMutedDark,
-    '--text-label': resolvedTheme.other.textLabelDark,
-    '--text-placeholder': resolvedTheme.other.textPlaceholderDark,
-    '--mantine-color-text': 'var(--text-main)',
-    '--mantine-color-dimmed': 'var(--text-muted)',
-    '--mantine-color-placeholder': 'var(--text-placeholder)',
-    '--mantine-color-body': 'var(--page-bg)',
-    '--mantine-color-default': 'var(--field-bg)',
-    '--mantine-color-default-hover': 'var(--field-bg-hover)',
-    '--mantine-color-default-border': 'var(--field-border)'
-  }
-});
+// Mantine 9 made `light` variants solid; v8CssVariablesResolver keeps the translucent ones the
+// site uses. Our overrides go on top of it.
+export const desktopCssVariablesResolver: CSSVariablesResolver = (resolvedTheme) => {
+  const v8 = v8CssVariablesResolver(resolvedTheme);
+  return {
+    variables: {
+      ...v8.variables,
+      '--font-display': resolvedTheme.headings.fontFamily
+    },
+    light: {
+      ...v8.light,
+      '--page-bg': resolvedTheme.other.pageBgLight,
+      '--text-main': resolvedTheme.other.textMainLight,
+      '--text-soft': resolvedTheme.other.textSoftLight,
+      '--text-muted': resolvedTheme.other.textMutedLight,
+      '--text-label': resolvedTheme.other.textLabelLight,
+      '--text-placeholder': resolvedTheme.other.textPlaceholderLight,
+      '--mantine-color-text': 'var(--text-main)',
+      '--mantine-color-dimmed': 'var(--text-muted)',
+      '--mantine-color-placeholder': 'var(--text-placeholder)',
+      '--mantine-color-body': 'var(--page-bg)',
+      '--mantine-color-default': 'var(--field-bg)',
+      '--mantine-color-default-hover': 'var(--field-bg-hover)',
+      '--mantine-color-default-border': 'var(--field-border)'
+    },
+    dark: {
+      ...v8.dark,
+      '--page-bg': resolvedTheme.other.pageBgDark,
+      '--text-main': resolvedTheme.other.textMainDark,
+      '--text-soft': resolvedTheme.other.textSoftDark,
+      '--text-muted': resolvedTheme.other.textMutedDark,
+      '--text-label': resolvedTheme.other.textLabelDark,
+      '--text-placeholder': resolvedTheme.other.textPlaceholderDark,
+      '--mantine-color-text': 'var(--text-main)',
+      '--mantine-color-dimmed': 'var(--text-muted)',
+      '--mantine-color-placeholder': 'var(--text-placeholder)',
+      '--mantine-color-body': 'var(--page-bg)',
+      '--mantine-color-default': 'var(--field-bg)',
+      '--mantine-color-default-hover': 'var(--field-bg-hover)',
+      '--mantine-color-default-border': 'var(--field-border)'
+    }
+  };
+};

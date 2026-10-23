@@ -29,7 +29,7 @@ const DisclosureCard = ({
           {open ? 'Hide' : 'Show'}
         </Button>
       </Group>
-      <Collapse in={open}>
+      <Collapse expanded={open}>
         <Stack gap="sm" pt="sm">
           {children}
         </Stack>

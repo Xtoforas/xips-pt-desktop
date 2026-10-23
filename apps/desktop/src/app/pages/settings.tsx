@@ -81,7 +81,7 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
             {opened ? 'Hide' : 'Show'}
           </Button>
         </Group>
-        <Collapse in={opened}>
+        <Collapse expanded={opened}>
           <Stack gap="md">
             {customServer && selectedProfile ? (
               <Alert color="orange" variant="light" title={`Uploading to a custom server: ${serverHostLabel(selectedProfile.baseUrl)}`}>
