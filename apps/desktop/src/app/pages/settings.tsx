@@ -1,8 +1,9 @@
-import { Alert, Badge, Button, Card, Collapse, Group, Select, SimpleGrid, Stack, Switch, Table, Text } from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Select, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { type JSX, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { describeError, useDesktop } from '../DesktopContext';
-import { PageHeader, PreferencesForm, ReadinessCard, ServerProfileForm } from '../components';
+import { Disclosure, ErrorAlert, KeyValueTable, type KeyValueRow, PageHeader, PreferencesForm, ReadinessCard, ServerProfileForm } from '../components';
 import { isCustomServer, isSignedInToSelectedServer, serverHostLabel } from '../onboarding';
 import { useScrollToHash } from './shared';
 
@@ -30,7 +31,7 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
     refreshMe
   } = useDesktop();
   const customServer = isCustomServer(selectedProfile);
-  const [opened, setOpened] = useState(customServer || forceOpen);
+  const [opened, { open, toggle }] = useDisclosure(customServer || forceOpen);
   const [pickingOther, setPickingOther] = useState(false);
   const [confirmRemoveId, setConfirmRemoveId] = useState('');
   const [error, setError] = useState('');
@@ -39,7 +40,7 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
 
   useEffect(() => {
     if (customServer || forceOpen) {
-      setOpened(true);
+      open();
     }
   }, [customServer, forceOpen]);
 
@@ -53,35 +54,41 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
     run(switchToDefaultServer, "Couldn't switch back to XiPS.");
   };
 
-  const detailRows: Array<[string, string]> = selectedProfile
+  const detailRows: KeyValueRow[] = selectedProfile
     ? [
-        ['Name', selectedProfile.name],
-        ['Address', selectedProfile.baseUrl],
-        ['Game version', selectedProfile.gameVersion || 'ootp27'],
-        ['Connection', connectionLabel[connection]],
-        ['Service', health?.service ?? '-'],
-        ['Server queue', health?.queueDepth !== undefined ? `${health.queueDepth} queued, ${health.failedJobs ?? 0} failed` : '-'],
-        ['Last checked', health?.timestamp ? new Date(health.timestamp).toLocaleString() : '-'],
-        ['Signed in as', signedIn ? snapshot.authUser?.displayName ?? '-' : 'Not signed in'],
-        ['Sign-in expires', signedIn && snapshot.tokenExpiresAt ? new Date(snapshot.tokenExpiresAt).toLocaleString() : '-']
+        { label: 'Name', value: selectedProfile.name },
+        { label: 'Address', value: selectedProfile.baseUrl, className: 'desktop-mono desktop-wrap-anywhere' },
+        { label: 'Game version', value: selectedProfile.gameVersion || 'ootp27' },
+        { label: 'Connection', value: connectionLabel[connection] },
+        { label: 'Service', value: health?.service ?? '-' },
+        { label: 'Server queue', value: health?.queueDepth !== undefined ? `${health.queueDepth} queued, ${health.failedJobs ?? 0} failed` : '-' },
+        { label: 'Last checked', value: health?.timestamp ? new Date(health.timestamp).toLocaleString() : '-' },
+        { label: 'Signed in as', value: signedIn ? snapshot.authUser?.displayName ?? '-' : 'Not signed in' },
+        { label: 'Sign-in expires', value: signedIn && snapshot.tokenExpiresAt ? new Date(snapshot.tokenExpiresAt).toLocaleString() : '-' }
       ]
     : [];
 
   return (
     <Card withBorder className="desktop-card desktop-support-card" id="advanced">
       <Stack gap="sm">
-        <Group justify="space-between" align="center" wrap="wrap" gap="xs">
-          <div>
-            <Text fw={700}>Advanced: connect to a different server</Text>
-            <Text size="sm" c="dimmed">
-              For developers. Most people never need this.
-            </Text>
-          </div>
-          <Button size="xs" variant="light" color="gray" aria-expanded={opened} onClick={() => setOpened((current) => !current)}>
-            {opened ? 'Hide' : 'Show'}
-          </Button>
-        </Group>
-        <Collapse expanded={opened}>
+        <Disclosure
+          size="xs"
+          variant="light"
+          color="gray"
+          opened={opened}
+          onToggle={toggle}
+          renderToggle={(button) => (
+            <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+              <div>
+                <Text fw={700}>Advanced: connect to a different server</Text>
+                <Text size="sm" c="dimmed">
+                  For developers. Most people never need this.
+                </Text>
+              </div>
+              {button}
+            </Group>
+          )}
+        >
           <Stack gap="md">
             {customServer && selectedProfile ? (
               <Alert color="orange" variant="light" title={`Uploading to a custom server: ${serverHostLabel(selectedProfile.baseUrl)}`}>
@@ -128,27 +135,18 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
                 }}
               />
             ) : null}
-            {error ? (
-              <Alert color="red" variant="light">
-                {error}
-              </Alert>
-            ) : null}
+            <ErrorAlert message={error} />
             <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="md">
               <Card withBorder className="desktop-card desktop-subcard">
                 <Stack gap="sm">
                   <Text fw={700}>Current server</Text>
-                  <Table verticalSpacing={4} horizontalSpacing="xs">
-                    <Table.Tbody>
-                      {detailRows.map(([label, value]) => (
-                        <Table.Tr key={label}>
-                          <Table.Th style={{ whiteSpace: 'nowrap', width: 1 }}>{label}</Table.Th>
-                          <Table.Td className={label === 'Address' ? 'desktop-mono desktop-wrap-anywhere' : 'desktop-wrap-anywhere'}>
-                            {value}
-                          </Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
+                  <KeyValueTable
+                    rows={detailRows}
+                    valueClassName="desktop-wrap-anywhere"
+                    labelStyle={{ whiteSpace: 'nowrap', width: 1 }}
+                    verticalSpacing={4}
+                    horizontalSpacing="xs"
+                  />
                   <Group gap="xs" wrap="wrap">
                     <Button size="xs" variant="light" disabled={!selectedProfile} onClick={() => run(refreshHealth, "Couldn't check the connection.")}>
                       Check connection
@@ -242,7 +240,7 @@ const AdvancedServerSection = ({ forceOpen }: { forceOpen: boolean }): JSX.Eleme
               </Stack>
             </Card>
           </Stack>
-        </Collapse>
+        </Disclosure>
       </Stack>
     </Card>
   );

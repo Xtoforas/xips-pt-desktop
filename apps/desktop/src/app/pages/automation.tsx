@@ -1,7 +1,7 @@
-import { Button, Card, Collapse, Group, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Card, Group, Select, Stack, Text, TextInput } from '@mantine/core';
 import { type JSX, type ReactNode, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
-import { FormatRuleTable, FormatsTable, PageHeader, WatchRootForm, WatchRootTable } from '../components';
+import { Disclosure, FormatRuleTable, FormatsTable, PageHeader, WatchRootForm, WatchRootTable } from '../components';
 import { explainFilenameAutoAssignment } from '../queue-model';
 import { useScrollToHash } from './shared';
 
@@ -14,29 +14,30 @@ const DisclosureCard = ({
   title: string;
   aside?: ReactNode;
   children: ReactNode;
-}): JSX.Element => {
-  const [open, setOpen] = useState(false);
-  return (
-    <Card withBorder className="desktop-card" py="xs">
-      <Group justify="space-between" align="center" wrap="nowrap">
-        <Group gap="sm" wrap="nowrap">
-          <Text size="sm" fw={700}>
-            {title}
-          </Text>
-          {aside}
+}): JSX.Element => (
+  <Card withBorder className="desktop-card" py="xs">
+    <Disclosure
+      size="compact-xs"
+      variant="subtle"
+      color="gray"
+      renderToggle={(toggle) => (
+        <Group justify="space-between" align="center" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap">
+            <Text size="sm" fw={700}>
+              {title}
+            </Text>
+            {aside}
+          </Group>
+          {toggle}
         </Group>
-        <Button size="compact-xs" variant="subtle" color="gray" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-          {open ? 'Hide' : 'Show'}
-        </Button>
-      </Group>
-      <Collapse expanded={open}>
-        <Stack gap="sm" pt="sm">
-          {children}
-        </Stack>
-      </Collapse>
-    </Card>
-  );
-};
+      )}
+    >
+      <Stack gap="sm" pt="sm">
+        {children}
+      </Stack>
+    </Disclosure>
+  </Card>
+);
 
 export const AutomationPage = (): JSX.Element => {
   const {

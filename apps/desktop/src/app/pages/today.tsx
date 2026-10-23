@@ -1,4 +1,4 @@
-import { Badge, Button, Card, Group, HoverCard, Stack, Table, Text } from '@mantine/core';
+import { Badge, Button, Card, Group, HoverCard, Stack, Text } from '@mantine/core';
 import { mdiInformationOutline } from '@mdi/js';
 import { type JSX, useMemo } from 'react';
 import { Link } from 'react-router-dom';
@@ -6,10 +6,14 @@ import { useDesktop } from '../DesktopContext';
 import type { LocalUploadJob } from '@xips/api-contract';
 import {
   BlockedStatusBadge,
+  type KeyValueRow,
+  KeyValueTable,
   MdiIcon,
   PageHeader,
   ReadinessCard,
-  SectionHeader
+  SectionHeader,
+  SiteTable,
+  TimestampCell
 } from '../components';
 import {
   blockerPriority,
@@ -40,30 +44,25 @@ const BlockedJobDetails = ({
   summary: BlockedJobSummary;
   formatName: string;
 }): JSX.Element => {
-  const rows: Array<[string, string]> = [
-    ['File', job.filename],
-    ['Path', job.path],
-    ['Teams', job.teamCount > 0 ? String(job.teamCount) : '-'],
-    ['Format', formatName],
-    ['Tournament ID', job.tournamentId || '-'],
-    ['State', formatQueueStateLabel(job.localState, job.fileKind)],
-    ['Reason', summary.reason || '-'],
-    ['Retries', String(job.retries)],
-    ['Last request', job.lastRequestId || '-']
+  const rows: KeyValueRow[] = [
+    { label: 'File', value: job.filename },
+    { label: 'Path', value: job.path, className: 'desktop-mono' },
+    { label: 'Teams', value: job.teamCount > 0 ? String(job.teamCount) : '-' },
+    { label: 'Format', value: formatName },
+    { label: 'Tournament ID', value: job.tournamentId || '-' },
+    { label: 'State', value: formatQueueStateLabel(job.localState, job.fileKind) },
+    { label: 'Reason', value: summary.reason || '-' },
+    { label: 'Retries', value: String(job.retries) },
+    { label: 'Last request', value: job.lastRequestId || '-', className: 'desktop-mono' }
   ];
   return (
-    <Table className="desktop-blocker-details" verticalSpacing={4} horizontalSpacing="xs">
-      <Table.Tbody>
-        {rows.map(([label, value]) => (
-          <Table.Tr key={label}>
-            <Table.Th>{label}</Table.Th>
-            <Table.Td className={label === 'Path' || label === 'Last request' ? 'desktop-mono' : 'desktop-wrap-anywhere'}>
-              {value}
-            </Table.Td>
-          </Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
+    <KeyValueTable
+      className="desktop-blocker-details"
+      rows={rows}
+      valueClassName="desktop-wrap-anywhere"
+      verticalSpacing={4}
+      horizontalSpacing="xs"
+    />
   );
 };
 
@@ -71,9 +70,7 @@ const PROGRESS_ROW_LIMIT = 8;
 const COMPLETED_ROW_LIMIT = 5;
 
 const UpdatedCell = ({ job }: { job: LocalUploadJob }): JSX.Element => (
-  <td className="landing-cell admin-nowrap" title={formatUploadJobModifiedAt(job)}>
-    {formatUploadJobModifiedAt(job, COMPACT_TIMESTAMP)}
-  </td>
+  <TimestampCell full={formatUploadJobModifiedAt(job)} compact={formatUploadJobModifiedAt(job, COMPACT_TIMESTAMP)} />
 );
 
 // Today's progress and completion lists: the site table markup, one line per job.
@@ -86,43 +83,39 @@ const JobTable = ({
   formatLabels: Record<string, string>;
   status?: (job: LocalUploadJob) => JSX.Element;
 }): JSX.Element => (
-  <div className="admin-table-frame">
-    <div className="landing-table-wrap admin-table-wrap">
-      <table className="landing-table observed-table admin-table desktop-today-table">
-        <colgroup>
-          <col className="desktop-today-col-file" />
-          <col />
-          {status ? <col className="desktop-today-col-status" /> : null}
-          <col className="desktop-today-col-updated" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>File</th>
-            <th>Format</th>
-            {status ? <th>Stage</th> : null}
-            <th>Updated</th>
+  <SiteTable className="desktop-today-table">
+    <colgroup>
+      <col className="desktop-today-col-file" />
+      <col />
+      {status ? <col className="desktop-today-col-status" /> : null}
+      <col className="desktop-today-col-updated" />
+    </colgroup>
+    <thead>
+      <tr>
+        <th>File</th>
+        <th>Format</th>
+        {status ? <th>Stage</th> : null}
+        <th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {jobs.map((job) => {
+        const formatLabel = formatUploadFormatLabel(job.formatId, formatLabels);
+        return (
+          <tr key={job.id} className="landing-row">
+            <td className="landing-cell landing-cell-name" title={job.path}>
+              {job.filename}
+            </td>
+            <td className="landing-cell" title={formatLabel}>
+              {formatLabel}
+            </td>
+            {status ? <td className="landing-cell admin-nowrap">{status(job)}</td> : null}
+            <UpdatedCell job={job} />
           </tr>
-        </thead>
-        <tbody>
-          {jobs.map((job) => {
-            const formatLabel = formatUploadFormatLabel(job.formatId, formatLabels);
-            return (
-              <tr key={job.id} className="landing-row">
-                <td className="landing-cell landing-cell-name" title={job.path}>
-                  {job.filename}
-                </td>
-                <td className="landing-cell" title={formatLabel}>
-                  {formatLabel}
-                </td>
-                {status ? <td className="landing-cell admin-nowrap">{status(job)}</td> : null}
-                <UpdatedCell job={job} />
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  </div>
+        );
+      })}
+    </tbody>
+  </SiteTable>
 );
 
 // An empty Today section: one line instead of a header plus an empty-state box.
@@ -209,74 +202,70 @@ export const TodayPage = (): JSX.Element => {
                 {needsAttentionCount} file{needsAttentionCount === 1 ? '' : 's'}
               </Badge>}
             />
-            <div className="admin-table-frame">
-              <div className="landing-table-wrap admin-table-wrap">
-                <table className="landing-table observed-table admin-table desktop-today-table">
-                  <colgroup>
-                    <col className="desktop-today-col-file" />
-                    <col />
-                    <col className="desktop-today-col-updated" />
-                    <col className="desktop-today-col-actions" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>File</th>
-                      <th>Status</th>
-                      <th>Updated</th>
-                      <th aria-label="Actions" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {blockerRows.slice(0, BLOCKER_ROW_LIMIT).map(({ job, summary }) => (
-                      <tr key={job.id} className="landing-row">
-                        <td className="landing-cell landing-cell-name">
-                          <HoverCard width={380} shadow="md" position="bottom-start" withArrow openDelay={250}>
-                            <HoverCard.Target>
-                              <div className="admin-cell-inline desktop-blocker-file">
-                                <span className="admin-cell-clip">{job.filename}</span>
-                                <span className="desktop-blocker-info">
-                                  <MdiIcon path={mdiInformationOutline} size={14} />
-                                </span>
-                              </div>
-                            </HoverCard.Target>
-                            <HoverCard.Dropdown>
-                              <BlockedJobDetails
-                                job={job}
-                                summary={summary}
-                                formatName={formatUploadFormatLabel(job.formatId, formatLabelById)}
-                              />
-                            </HoverCard.Dropdown>
-                          </HoverCard>
-                        </td>
-                        <td className="landing-cell" title={summary.reason || undefined}>
-                          <div className="admin-cell-inline admin-nowrap">
-                            <BlockedStatusBadge summary={summary} />
-                            <span className="admin-cell-clip">{summary.reason}</span>
+            <SiteTable className="desktop-today-table">
+              <colgroup>
+                <col className="desktop-today-col-file" />
+                <col />
+                <col className="desktop-today-col-updated" />
+                <col className="desktop-today-col-actions" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Status</th>
+                  <th>Updated</th>
+                  <th aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {blockerRows.slice(0, BLOCKER_ROW_LIMIT).map(({ job, summary }) => (
+                  <tr key={job.id} className="landing-row">
+                    <td className="landing-cell landing-cell-name">
+                      <HoverCard width={380} shadow="md" position="bottom-start" withArrow openDelay={250}>
+                        <HoverCard.Target>
+                          <div className="admin-cell-inline desktop-blocker-file">
+                            <span className="admin-cell-clip">{job.filename}</span>
+                            <span className="desktop-blocker-info">
+                              <MdiIcon path={mdiInformationOutline} size={14} />
+                            </span>
                           </div>
-                        </td>
-                        <UpdatedCell job={job} />
-                        <td className="landing-cell">
-                          <Group gap={4} wrap="nowrap">
-                            <Button component={Link} to={queueLinkForJob(job.id, 'needs_action')} size="compact-xs" variant="light">
-                              Open
-                            </Button>
-                            <Button
-                              size="compact-xs"
-                              variant="subtle"
-                              color="gray"
-                              title="Move to the queue's Ignored tab; restore it there any time."
-                              onClick={() => void ignoreUploadJob(job.id)}
-                            >
-                              Ignore
-                            </Button>
-                          </Group>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                        </HoverCard.Target>
+                        <HoverCard.Dropdown>
+                          <BlockedJobDetails
+                            job={job}
+                            summary={summary}
+                            formatName={formatUploadFormatLabel(job.formatId, formatLabelById)}
+                          />
+                        </HoverCard.Dropdown>
+                      </HoverCard>
+                    </td>
+                    <td className="landing-cell" title={summary.reason || undefined}>
+                      <div className="admin-cell-inline admin-nowrap">
+                        <BlockedStatusBadge summary={summary} />
+                        <span className="admin-cell-clip">{summary.reason}</span>
+                      </div>
+                    </td>
+                    <UpdatedCell job={job} />
+                    <td className="landing-cell">
+                      <Group gap={4} wrap="nowrap">
+                        <Button component={Link} to={queueLinkForJob(job.id, 'needs_action')} size="compact-xs" variant="light">
+                          Open
+                        </Button>
+                        <Button
+                          size="compact-xs"
+                          variant="subtle"
+                          color="gray"
+                          title="Move to the queue's Ignored tab; restore it there any time."
+                          onClick={() => void ignoreUploadJob(job.id)}
+                        >
+                          Ignore
+                        </Button>
+                      </Group>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </SiteTable>
             {blockerRows.length > BLOCKER_ROW_LIMIT ? (
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="sm" c="dimmed">

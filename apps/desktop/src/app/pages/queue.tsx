@@ -1,8 +1,9 @@
-import { Alert, Badge, Button, Card, Collapse, Group, Select, Stack, Table, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Card, CopyButton, Group, Select, Stack, Table, Text, TextInput } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { type JSX, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDesktop } from '../DesktopContext';
-import { BlockedStatusBadge, PageHeader, QueueStateBadge, QueueTable, SectionHeader } from '../components';
+import { BlockedStatusBadge, Disclosure, KeyValueTable, PageHeader, QueueStateBadge, QueueTable, SectionHeader } from '../components';
 import {
   canDismissUploadJob,
   canIgnoreUploadJob,
@@ -40,15 +41,13 @@ const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
   <Group gap="xs" wrap="nowrap">
     <span className="desktop-mono">{value || '-'}</span>
     {value ? (
-      <Button
-        size="compact-xs"
-        variant="light"
-        onClick={() => {
-          void navigator.clipboard.writeText(value);
-        }}
-      >
-        Copy
-      </Button>
+      <CopyButton value={value}>
+        {({ copied, copy }) => (
+          <Button size="compact-xs" variant="light" onClick={copy}>
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+        )}
+      </CopyButton>
     ) : null}
   </Group>
 );
@@ -87,7 +86,7 @@ export const UploadQueuePage = (): JSX.Element => {
   const [editingFilenameJobId, setEditingFilenameJobId] = useState('');
   const [inlineTournamentId, setInlineTournamentId] = useState('');
   const [bulkDismissInFlight, setBulkDismissInFlight] = useState(false);
-  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+  const [showTechnicalDetails, { toggle: toggleTechnicalDetails, close: closeTechnicalDetails }] = useDisclosure(false);
   const formatById = useMemo(
     () =>
       Object.fromEntries(snapshot.cachedFormats.map((format) => [format.id, format])),
@@ -352,7 +351,7 @@ export const UploadQueuePage = (): JSX.Element => {
   useEffect(() => {
     setSelectedTournamentId('');
     setSelectedFormatId('');
-    setShowTechnicalDetails(false);
+    closeTechnicalDetails();
   }, [selectedJobId]);
 
   useEffect(() => {
@@ -863,54 +862,53 @@ export const UploadQueuePage = (): JSX.Element => {
                 ) : null}
               </Group>
               {selectedJobFacts.length > 0 ? (
-                <Table className="desktop-inspector-facts" verticalSpacing={4} fz="sm">
-                  <Table.Tbody>
-                    {selectedJobFacts.map(([label, value]) => (
-                      <Table.Tr key={label}>
-                        <Table.Th>{label}</Table.Th>
-                        <Table.Td className="desktop-wrap-anywhere">{value}</Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
+                <KeyValueTable
+                  className="desktop-inspector-facts"
+                  rows={selectedJobFacts.map(([label, value]) => ({ label, value }))}
+                  valueClassName="desktop-wrap-anywhere"
+                  verticalSpacing={4}
+                  fz="sm"
+                />
               ) : null}
-              <Button
+              <Disclosure
                 size="xs"
                 variant="subtle"
                 color="gray"
-                onClick={() => setShowTechnicalDetails((current) => !current)}
+                opened={showTechnicalDetails}
+                onToggle={toggleTechnicalDetails}
+                showLabel="Show technical details"
+                hideLabel="Hide technical details"
               >
-                {showTechnicalDetails ? 'Hide technical details' : 'Show technical details'}
-              </Button>
-              <Collapse expanded={showTechnicalDetails}>
                 <Table.ScrollContainer minWidth={480} type="native">
-                  <Table withTableBorder withColumnBorders>
-                    <Table.Tbody>
-                      <Table.Tr><Table.Th>Kind</Table.Th><Table.Td>{formatFileKindLabel(selectedJob.fileKind)}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Local state</Table.Th><Table.Td>{formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind)}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Error</Table.Th><Table.Td className="desktop-wrap-anywhere">{selectedJob.error ? formatRetryableFailureMessage(selectedJob.error) : '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Local job ID</Table.Th><Table.Td><TechnicalValue value={selectedJob.id} /></Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Path</Table.Th><Table.Td className="desktop-mono">{selectedJob.path}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Staged path</Table.Th><Table.Td className="desktop-mono">{selectedJob.stagedPath || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Local file</Table.Th><Table.Td>{formatLocalPresenceLabel(selectedJob.localPresence)}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Tournament ID</Table.Th><Table.Td>{selectedJob.tournamentId || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Checksum</Table.Th><Table.Td><TechnicalValue value={selectedJob.checksum} /></Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Remote checksum</Table.Th><Table.Td><TechnicalValue value={selectedJob.remoteChecksum} /></Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Upload ID</Table.Th><Table.Td><TechnicalValue value={selectedJob.uploadId} /></Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Request ID</Table.Th><Table.Td><TechnicalValue value={selectedJob.lastRequestId} /></Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Duplicate reason</Table.Th><Table.Td>{selectedJob.duplicateReason || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Retry after</Table.Th><Table.Td>{selectedJob.nextRetryAfter || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Queued</Table.Th><Table.Td>{selectedJob.queuedAt || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Processing</Table.Th><Table.Td>{selectedJob.processingAt || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Parsed</Table.Th><Table.Td>{selectedJob.parsedAt || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Refreshing</Table.Th><Table.Td>{selectedJob.refreshingAt || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Completed</Table.Th><Table.Td>{selectedJob.completedAt || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Failed</Table.Th><Table.Td>{selectedJob.failedAt || '-'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Retries</Table.Th><Table.Td>{selectedJob.retries}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Source modified</Table.Th><Table.Td>{formatSourceModifiedAt(selectedJob.sourceModifiedAt)}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Th>Queue updated</Table.Th><Table.Td>{new Date(selectedJob.updatedAt).toLocaleString()}</Table.Td></Table.Tr>
-                    </Table.Tbody>
-                  </Table>
+                  <KeyValueTable
+                    withTableBorder
+                    withColumnBorders
+                    rows={[
+                      { label: 'Kind', value: formatFileKindLabel(selectedJob.fileKind) },
+                      { label: 'Local state', value: formatQueueStateLabel(selectedJob.localState, selectedJob.fileKind) },
+                      { label: 'Error', value: selectedJob.error ? formatRetryableFailureMessage(selectedJob.error) : '-', className: 'desktop-wrap-anywhere' },
+                      { label: 'Local job ID', value: <TechnicalValue value={selectedJob.id} /> },
+                      { label: 'Path', value: selectedJob.path, className: 'desktop-mono' },
+                      { label: 'Staged path', value: selectedJob.stagedPath || '-', className: 'desktop-mono' },
+                      { label: 'Local file', value: formatLocalPresenceLabel(selectedJob.localPresence) },
+                      { label: 'Tournament ID', value: selectedJob.tournamentId || '-' },
+                      { label: 'Checksum', value: <TechnicalValue value={selectedJob.checksum} /> },
+                      { label: 'Remote checksum', value: <TechnicalValue value={selectedJob.remoteChecksum} /> },
+                      { label: 'Upload ID', value: <TechnicalValue value={selectedJob.uploadId} /> },
+                      { label: 'Request ID', value: <TechnicalValue value={selectedJob.lastRequestId} /> },
+                      { label: 'Duplicate reason', value: selectedJob.duplicateReason || '-' },
+                      { label: 'Retry after', value: selectedJob.nextRetryAfter || '-' },
+                      { label: 'Queued', value: selectedJob.queuedAt || '-' },
+                      { label: 'Processing', value: selectedJob.processingAt || '-' },
+                      { label: 'Parsed', value: selectedJob.parsedAt || '-' },
+                      { label: 'Refreshing', value: selectedJob.refreshingAt || '-' },
+                      { label: 'Completed', value: selectedJob.completedAt || '-' },
+                      { label: 'Failed', value: selectedJob.failedAt || '-' },
+                      { label: 'Retries', value: selectedJob.retries },
+                      { label: 'Source modified', value: formatSourceModifiedAt(selectedJob.sourceModifiedAt) },
+                      { label: 'Queue updated', value: new Date(selectedJob.updatedAt).toLocaleString() }
+                    ]}
+                  />
                 </Table.ScrollContainer>
                 <Card withBorder className="desktop-subcard">
                   <Stack gap="xs">
@@ -943,7 +941,7 @@ export const UploadQueuePage = (): JSX.Element => {
                     )}
                   </Stack>
                 </Card>
-              </Collapse>
+              </Disclosure>
             </Stack>
           </Card>
         ) : null}

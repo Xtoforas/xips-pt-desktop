@@ -1,4 +1,5 @@
-import { Alert, Badge, Button, Card, Checkbox, Group, HoverCard, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Text, TextInput, ThemeIcon, Title, Tooltip } from '@mantine/core';
+import { Alert, type AlertProps, Badge, Button, type ButtonProps, Card, Checkbox, Collapse, Group, HoverCard, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Table, type TableProps, Text, TextInput, ThemeIcon, Title, Tooltip } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { mdiBaseball, mdiCalendarToday, mdiCloudUpload, mdiCog, mdiLightningBolt, mdiWrench } from '@mdi/js';
 import { Link, useLocation } from 'react-router-dom';
 import type {
@@ -9,7 +10,7 @@ import type {
   LocalUploadJob,
   TournamentFormat
 } from '@xips/api-contract';
-import { type JSX, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type JSX, type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { describeError, useDesktop } from './DesktopContext';
 import { desktopClient } from './desktop-client';
 import {
@@ -48,7 +49,82 @@ export const MdiIcon = ({ path, size = 18 }: { path: string; size?: number }): J
   </svg>
 );
 
-const navItems: ReadonlyArray<{ to: string; label: string; iconPath: string; support?: boolean }> = [
+// A red alert for an error message; renders nothing while the message is empty.
+export const ErrorAlert = ({ message, ...props }: { message: string } & Omit<AlertProps, 'children' | 'color' | 'variant'>): JSX.Element | null =>
+  message ? (
+    <Alert color="red" variant="light" {...props}>
+      {message}
+    </Alert>
+  ) : null;
+
+// A Show/Hide toggle button plus the Collapse it controls, as sibling elements so the caller's layout
+// stays in charge. `renderToggle` places the button (default: bare); pass `opened` and `onToggle` to
+// control it from outside.
+export const Disclosure = ({
+  renderToggle,
+  showLabel = 'Show',
+  hideLabel = 'Hide',
+  opened: controlledOpened,
+  onToggle,
+  children,
+  ...buttonProps
+}: Pick<ButtonProps, 'size' | 'variant' | 'color'> & {
+  renderToggle?: (toggle: JSX.Element) => JSX.Element;
+  showLabel?: string;
+  hideLabel?: string;
+  opened?: boolean;
+  onToggle?: () => void;
+  children: ReactNode;
+}): JSX.Element => {
+  const [ownOpened, { toggle: ownToggle }] = useDisclosure(false);
+  const opened = controlledOpened ?? ownOpened;
+  const toggle = (
+    <Button {...buttonProps} aria-expanded={opened} onClick={onToggle ?? ownToggle}>
+      {opened ? hideLabel : showLabel}
+    </Button>
+  );
+  return (
+    <>
+      {renderToggle ? renderToggle(toggle) : toggle}
+      <Collapse expanded={opened}>{children}</Collapse>
+    </>
+  );
+};
+
+export interface KeyValueRow {
+  label: string;
+  value: ReactNode;
+  // Replaces the table's valueClassName for this row.
+  className?: string;
+}
+
+// Label/value rows in a Mantine table. Other props (spacing, fz, borders) go to the Table.
+export const KeyValueTable = ({
+  rows,
+  valueClassName,
+  labelStyle,
+  ...tableProps
+}: { rows: KeyValueRow[]; valueClassName?: string; labelStyle?: CSSProperties } & Omit<TableProps, 'children'>): JSX.Element => (
+  <Table {...tableProps}>
+    <Table.Tbody>
+      {rows.map(({ label, value, className }) => (
+        <Table.Tr key={label}>
+          <Table.Th style={labelStyle}>{label}</Table.Th>
+          <Table.Td className={className ?? valueClassName}>{value}</Table.Td>
+        </Table.Tr>
+      ))}
+    </Table.Tbody>
+  </Table>
+);
+
+// A table cell with a compact timestamp whose full form shows on hover.
+export const TimestampCell = ({ full, compact }: { full: string; compact: string }): JSX.Element => (
+  <td className="landing-cell admin-nowrap" title={full}>
+    {compact}
+  </td>
+);
+
+const navItems:ReadonlyArray<{ to: string; label: string; iconPath: string; support?: boolean }> = [
   { to: '/today', label: 'Today', iconPath: mdiCalendarToday },
   { to: '/queue', label: 'Queue', iconPath: mdiCloudUpload },
   { to: '/automation', label: 'Automation', iconPath: mdiLightningBolt },
@@ -139,11 +215,7 @@ export const SignInPanel = (): JSX.Element => {
           Finishing sign-in…
         </Text>
       ) : null}
-      {authFlowError ? (
-        <Alert color="red" variant="light">
-          {authFlowError}
-        </Alert>
-      ) : null}
+      <ErrorAlert message={authFlowError} />
     </Stack>
   );
 };
@@ -202,11 +274,7 @@ export const ExportFolderPicker = (): JSX.Element => {
           Use this folder
         </Button>
       </Group>
-      {error ? (
-        <Alert color="red" variant="light">
-          {error}
-        </Alert>
-      ) : null}
+      <ErrorAlert message={error} />
     </Stack>
   );
 };
@@ -818,116 +886,110 @@ export const QueueTable = ({
 
   // Site table markup: one line per row; full text, paths and server detail sit in titles.
   return (
-    <div className="admin-table-frame">
-      <div className="landing-table-wrap admin-table-wrap">
-        <table className="landing-table observed-table admin-table desktop-queue-table">
-          <colgroup>
-            {selectionEnabled ? <col className="desktop-queue-col-select" /> : null}
-            <col className="desktop-queue-col-file" />
-            <col className="desktop-queue-col-format" />
-            <col />
-            <col className="desktop-queue-col-updated" />
-            <col className="desktop-queue-col-actions" />
-          </colgroup>
-          <thead>
-            <tr>
-              {selectionEnabled ? (
-                <th>
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    aria-label="Select all queue entries"
-                    checked={allVisibleSelected}
-                    onChange={(event) => {
-                      onToggleAllSelection?.(event.currentTarget.checked);
-                    }}
-                  />
-                </th>
-              ) : null}
-              <th>File</th>
-              <th>Format</th>
-              <th>Status</th>
-              <th>Updated</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orderedJobs.length === 0 ? (
-              <tr className="landing-row">
-                <td className="landing-cell" colSpan={columnCount}>No queued uploads yet.</td>
-              </tr>
-            ) : (
-              orderedJobs.map((job) => {
-                const blocked = formats && uploadJobNeedsAttention(job) ? summarizeBlockedJob(job, formats) : null;
-                const issue =
-                  blocked?.reason ||
-                  job.duplicateReason ||
-                  (job.error ? formatRetryableFailureMessage(job.error, { includeRequestId: false }) : '');
-                const formatLabel = formatUploadFormatLabel(job.formatId, formatLabels ?? {});
-                const statusTitle = [
-                  `Server: ${formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}`,
-                  `Upload: ${formatUploadJobChecksumStatusLabel(job)}`,
-                  job.retries > 0 ? `Retries: ${job.retries}` : ''
-                ]
-                  .filter(Boolean)
-                  .join('\n');
-                return (
-                  <tr
-                    key={job.id}
-                    className={`landing-row${selectedJobId === job.id ? ' desktop-row-selected' : ''}`}
-                    style={{ cursor: onSelect ? 'pointer' : undefined }}
-                    onClick={() => onSelect?.(job)}
-                  >
-                    {selectionEnabled ? (
-                      <td className="landing-cell">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${job.filename}`}
-                          checked={selectedIds.has(job.id)}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                          }}
-                          onChange={(event) => {
-                            event.stopPropagation();
-                            onToggleJobSelection?.(job, event.currentTarget.checked);
-                          }}
-                        />
-                      </td>
-                    ) : null}
-                    <td className="landing-cell landing-cell-name" title={job.path}>
-                      <div className="admin-cell-inline">
-                        {renderFilename ? renderFilename(job) : <span className="admin-cell-clip">{job.filename}</span>}
-                        {job.localPresence === 'missing' ? <LocalPresenceBadge presence={job.localPresence} /> : null}
-                      </div>
-                    </td>
-                    <td className="landing-cell">
-                      <span className="admin-cell-clip" title={formatLabel}>
-                        {formatLabel}
-                      </span>
-                    </td>
-                    <td className="landing-cell" title={issue ? `${issue}
+    <SiteTable className="desktop-queue-table">
+      <colgroup>
+        {selectionEnabled ? <col className="desktop-queue-col-select" /> : null}
+        <col className="desktop-queue-col-file" />
+        <col className="desktop-queue-col-format" />
+        <col />
+        <col className="desktop-queue-col-updated" />
+        <col className="desktop-queue-col-actions" />
+      </colgroup>
+      <thead>
+        <tr>
+          {selectionEnabled ? (
+            <th>
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                aria-label="Select all queue entries"
+                checked={allVisibleSelected}
+                onChange={(event) => {
+                  onToggleAllSelection?.(event.currentTarget.checked);
+                }}
+              />
+            </th>
+          ) : null}
+          <th>File</th>
+          <th>Format</th>
+          <th>Status</th>
+          <th>Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {orderedJobs.length === 0 ? (
+          <tr className="landing-row">
+            <td className="landing-cell" colSpan={columnCount}>No queued uploads yet.</td>
+          </tr>
+        ) : (
+          orderedJobs.map((job) => {
+            const blocked = formats && uploadJobNeedsAttention(job) ? summarizeBlockedJob(job, formats) : null;
+            const issue =
+              blocked?.reason ||
+              job.duplicateReason ||
+              (job.error ? formatRetryableFailureMessage(job.error, { includeRequestId: false }) : '');
+            const formatLabel = formatUploadFormatLabel(job.formatId, formatLabels ?? {});
+            const statusTitle = [
+              `Server: ${formatLifecycleLabel(job.lifecyclePhase, job.fileKind)}`,
+              `Upload: ${formatUploadJobChecksumStatusLabel(job)}`,
+              job.retries > 0 ? `Retries: ${job.retries}` : ''
+            ]
+              .filter(Boolean)
+              .join('\n');
+            return (
+              <tr
+                key={job.id}
+                className={`landing-row${selectedJobId === job.id ? ' desktop-row-selected' : ''}`}
+                style={{ cursor: onSelect ? 'pointer' : undefined }}
+                onClick={() => onSelect?.(job)}
+              >
+                {selectionEnabled ? (
+                  <td className="landing-cell">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${job.filename}`}
+                      checked={selectedIds.has(job.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onChange={(event) => {
+                        event.stopPropagation();
+                        onToggleJobSelection?.(job, event.currentTarget.checked);
+                      }}
+                    />
+                  </td>
+                ) : null}
+                <td className="landing-cell landing-cell-name" title={job.path}>
+                  <div className="admin-cell-inline">
+                    {renderFilename ? renderFilename(job) : <span className="admin-cell-clip">{job.filename}</span>}
+                    {job.localPresence === 'missing' ? <LocalPresenceBadge presence={job.localPresence} /> : null}
+                  </div>
+                </td>
+                <td className="landing-cell">
+                  <span className="admin-cell-clip" title={formatLabel}>
+                    {formatLabel}
+                  </span>
+                </td>
+                <td className="landing-cell" title={issue ? `${issue}
 ${statusTitle}` : statusTitle}>
-                      <div className="admin-cell-inline admin-nowrap">
-                        {blocked ? (
-                          <BlockedStatusBadge summary={blocked} />
-                        ) : (
-                          <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
-                        )}
-                        {issue ? <span className="admin-cell-clip">{issue}</span> : null}
-                      </div>
-                    </td>
-                    <td className="landing-cell admin-nowrap" title={formatUploadJobModifiedAt(job)}>
-                      {formatUploadJobModifiedAt(job, COMPACT_TIMESTAMP)}
-                    </td>
-                    <td className="landing-cell admin-nowrap">{actions ? actions(job) : '-'}</td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+                  <div className="admin-cell-inline admin-nowrap">
+                    {blocked ? (
+                      <BlockedStatusBadge summary={blocked} />
+                    ) : (
+                      <QueueStateBadge state={job.localState} fileKind={job.fileKind} />
+                    )}
+                    {issue ? <span className="admin-cell-clip">{issue}</span> : null}
+                  </div>
+                </td>
+                <TimestampCell full={formatUploadJobModifiedAt(job)} compact={formatUploadJobModifiedAt(job, COMPACT_TIMESTAMP)} />
+                <td className="landing-cell admin-nowrap">{actions ? actions(job) : '-'}</td>
+              </tr>
+            );
+          })
+        )}
+      </tbody>
+    </SiteTable>
   );
 };
 
@@ -990,9 +1052,7 @@ export const WatchRootTable = ({
               {root.paused ? 'Paused' : 'Active'}
             </Badge>
           </td>
-          <td className="landing-cell admin-nowrap" title={new Date(root.updatedAt).toLocaleString()}>
-            {formatCompactDate(root.updatedAt)}
-          </td>
+          <TimestampCell full={new Date(root.updatedAt).toLocaleString()} compact={formatCompactDate(root.updatedAt)} />
           <td className="landing-cell">
             <Group gap={4} wrap="nowrap">
               <Button size="compact-xs" variant="light" onClick={() => void onToggle(root.id, !root.paused)}>
@@ -1151,11 +1211,7 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
           value={gameVersion}
           onChange={(event) => setGameVersion(event.currentTarget.value)}
         />
-        {error ? (
-          <Alert color="red" variant="light">
-            {error}
-          </Alert>
-        ) : null}
+        <ErrorAlert message={error} />
         {warning ? (
           <Alert color="yellow" variant="light">
             {warning}
@@ -1285,9 +1341,7 @@ export const FormatRuleTable = ({
             <td className="landing-cell" title={rule.formatName}>
               {rule.formatName}
             </td>
-            <td className="landing-cell admin-nowrap" title={new Date(rule.updatedAt).toLocaleString()}>
-              {formatCompactDate(rule.updatedAt)}
-            </td>
+            <TimestampCell full={new Date(rule.updatedAt).toLocaleString()} compact={formatCompactDate(rule.updatedAt)} />
             <td className="landing-cell">
               <Button size="compact-xs" color="red" variant="subtle" onClick={() => void onDelete(rule.id)}>
                 Remove

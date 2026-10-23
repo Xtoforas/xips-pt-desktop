@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Card, Group, SegmentedControl, SimpleGrid, Stack,
 import type { LocalDiagnosticEvent } from '@xips/api-contract';
 import { type JSX, useMemo, useState } from 'react';
 import { useDesktop } from '../DesktopContext';
-import { PageHeader, SiteTable } from '../components';
+import { PageHeader, SiteTable, TimestampCell } from '../components';
 import { isSignedInToSelectedServer, serverHostLabel } from '../onboarding';
 import { COMPACT_TIMESTAMP } from '../queue-model';
 
@@ -145,9 +145,10 @@ export const DiagnosticsPage = (): JSX.Element => {
               <tbody>
                 {events.map((event) => (
                   <tr key={event.id} className="landing-row">
-                    <td className="landing-cell admin-nowrap" title={new Date(event.createdAt).toLocaleString()}>
-                      {new Date(event.createdAt).toLocaleString(undefined, COMPACT_TIMESTAMP)}
-                    </td>
+                    <TimestampCell
+                      full={new Date(event.createdAt).toLocaleString()}
+                      compact={new Date(event.createdAt).toLocaleString(undefined, COMPACT_TIMESTAMP)}
+                    />
                     <td className="landing-cell admin-nowrap">
                       <Badge color={eventLevelColor[event.level]} variant="light">
                         {event.level}
