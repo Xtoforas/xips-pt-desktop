@@ -226,10 +226,8 @@ export const UploadQueuePage = (): JSX.Element => {
       ),
     [selectedJob?.fileKind, selectedJob?.teamCount, selectedJobFormat]
   );
-  const selectedJobFailureDetail = useMemo(
-    () => (selectedJob?.localState === 'failed_retryable' ? parseRetryableFailureDetail(selectedJob.error) : null),
-    [selectedJob?.localState, selectedJob?.error]
-  );
+  const selectedJobFailureDetail =
+    selectedJob?.localState === 'failed_retryable' ? parseRetryableFailureDetail(selectedJob.error) : null;
   const selectedJobView = selectedJob ? queueWorkspaceViewForJob(selectedJob) : null;
   const selectedJobActions = useMemo(() => (selectedJob ? getQueueRowActionKeys(selectedJob) : []), [selectedJob]);
   const selectedJobBlocker =
@@ -375,7 +373,7 @@ export const UploadQueuePage = (): JSX.Element => {
 
     setBulkDismissInFlight(true);
     const removedIds = dismissibleSelectedJobs.map((job) => job.id);
-    try {
+    const dismissAll = async (): Promise<void> => {
       for (const job of dismissibleSelectedJobs) {
         if (job.localState === 'duplicate_skipped_local') {
           await dismissDuplicateUploadJob(job.id);
@@ -389,9 +387,8 @@ export const UploadQueuePage = (): JSX.Element => {
       if (removedIds.includes(selectedJobId)) {
         setSelectedJobId('');
       }
-    } finally {
-      setBulkDismissInFlight(false);
-    }
+    };
+    await dismissAll().finally(() => setBulkDismissInFlight(false));
   };
 
   const ignoreSelectedJobs = async (): Promise<void> => {
@@ -401,7 +398,7 @@ export const UploadQueuePage = (): JSX.Element => {
 
     setBulkDismissInFlight(true);
     const ignoredIds = ignorableSelectedJobs.map((job) => job.id);
-    try {
+    const ignoreAll = async (): Promise<void> => {
       for (const job of ignorableSelectedJobs) {
         await ignoreUploadJob(job.id);
       }
@@ -410,9 +407,8 @@ export const UploadQueuePage = (): JSX.Element => {
         setSelectedJobId('');
       }
       setQueueView('ignored');
-    } finally {
-      setBulkDismissInFlight(false);
-    }
+    };
+    await ignoreAll().finally(() => setBulkDismissInFlight(false));
   };
 
   return (

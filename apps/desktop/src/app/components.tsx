@@ -177,9 +177,8 @@ export const ExportFolderPicker = (): JSX.Element => {
       await addWatchRoot({ profileId: selectedProfile.id, path: path.trim(), recursive: false });
     } catch {
       setError("Couldn't use that folder. Check the path and try again.");
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   return (
@@ -1093,21 +1092,21 @@ export const ServerProfileForm = ({ id }: { id?: string }): JSX.Element => {
     setSaving(true);
     setError('');
     setWarning('');
+    const profile = {
+      id: editingId || undefined,
+      name: name.trim(),
+      baseUrl: baseUrl.trim(),
+      gameVersion: gameVersion.trim() || 'ootp27'
+    };
     try {
-      const result = await saveServerProfile({
-        id: editingId || undefined,
-        name: name.trim(),
-        baseUrl: baseUrl.trim(),
-        gameVersion: gameVersion.trim() || 'ootp27'
-      });
+      const result = await saveServerProfile(profile);
       setWarning(result.warning);
       reset();
     } catch (saveError) {
       // Rust validation errors are written for people ("Server address must start with ...").
       setError(describeError(saveError, "Couldn't save this server."));
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   return (

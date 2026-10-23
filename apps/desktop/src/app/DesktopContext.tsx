@@ -155,6 +155,13 @@ export function describeError(error: unknown, fallback: string): string {
 
 const DesktopContext = createContext<DesktopContextValue | null>(null);
 
+// Imported lazily so the browser mock never loads the Tauri event API. Kept outside the
+// provider because the React Compiler can't compile a component containing import().
+const listenForSnapshotUpdates = async (onUpdate: () => Promise<void>): Promise<() => void> => {
+  const { listen } = await import('@tauri-apps/api/event');
+  return listen<boolean>('desktop:snapshot-updated', onUpdate);
+};
+
 export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element => {
   const [snapshot, setSnapshot] = useState<DesktopSnapshot>(emptySnapshot);
   const [loading, setLoading] = useState(true);
@@ -188,12 +195,7 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     }
     const fetchAndApply = async (): Promise<void> => {
       setLoading(true);
-      try {
-        const next = await desktopClient.getSnapshot();
-        setSnapshot(next);
-      } finally {
-        setLoading(false);
-      }
+      await desktopClient.getSnapshot().then(setSnapshot).finally(() => setLoading(false));
     };
     const run = async (): Promise<void> => {
       do {
@@ -218,12 +220,11 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     }
     let active = true;
     let unlisten: (() => void) | null = null;
-    void import('@tauri-apps/api/event').then(async ({ listen }) => {
-      const stop = await listen<boolean>('desktop:snapshot-updated', async () => {
-        if (active) {
-          await refreshSnapshot();
-        }
-      });
+    void listenForSnapshotUpdates(async () => {
+      if (active) {
+        await refreshSnapshot();
+      }
+    }).then((stop) => {
       // Cleanup may have run while listen() was pending; nothing would remove the listener then.
       if (!active) {
         void stop();
@@ -400,14 +401,9 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
       return;
     }
     // No 'checking' here: a manual retry keeps the current message (and its Retry button) on screen.
-    try {
-      const result = await desktopClient.checkServerHealth(selectedProfile.id);
-      setHealth(result);
-      setConnection(result.ok ? 'connected' : 'unreachable');
-    } catch {
-      setHealth(null);
-      setConnection('unreachable');
-    }
+    const result = await desktopClient.checkServerHealth(selectedProfile.id).catch(() => null);
+    setHealth(result);
+    setConnection(result?.ok ? 'connected' : 'unreachable');
   }, [snapshot.profiles, snapshot.selectedProfileId]);
 
   const refreshFormats = useCallback(async (): Promise<void> => {
@@ -447,11 +443,10 @@ export const DesktopProvider = ({ children }: PropsWithChildren): JSX.Element =>
     setAuthFlowState('waiting');
     setAuthFlowError('');
     if (isTauri()) {
-      try {
-        clipboardBaselineRef.current = ((await readText()) ?? '').trim().toUpperCase();
-      } catch {
-        clipboardBaselineRef.current = null;
-      }
+      clipboardBaselineRef.current = await readText().then(
+        (text) => (text ?? '').trim().toUpperCase(),
+        () => null
+      );
       watchingClipboardRef.current = true;
     }
     try {
