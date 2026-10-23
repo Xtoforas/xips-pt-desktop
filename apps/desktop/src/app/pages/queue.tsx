@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, CopyButton, Group, Select, Stack, Table, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Card, CopyButton, Group, Select, Stack, Table, Text, TextInput, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { type JSX, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -43,11 +43,14 @@ const TechnicalValue = ({ value }: { value: string }): JSX.Element => (
   <Group gap="xs" wrap="nowrap">
     <span className="desktop-mono">{value || '-'}</span>
     {value ? (
+      // The confirmation is a tooltip: a wider 'Copied' label overflows the narrow value column.
       <CopyButton value={value}>
         {({ copied, copy }) => (
-          <Button size="compact-xs" variant="light" onClick={copy}>
-            {copied ? 'Copied' : 'Copy'}
-          </Button>
+          <Tooltip label="Copied" opened={copied} position="left" withArrow>
+            <Button size="compact-xs" variant="light" onClick={copy}>
+              Copy
+            </Button>
+          </Tooltip>
         )}
       </CopyButton>
     ) : null}
