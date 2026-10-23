@@ -165,6 +165,10 @@ const mockFormats: TournamentFormat[] = [
   }
 ];
 
+// Every sample job shares one timestamp, so newest-first sorting keeps the order they are listed in
+// instead of depending on which millisecond each was created in.
+const MOCK_JOBS_CREATED_AT = new Date().toISOString();
+
 // One blocked job per kind of reason the Today and Queue pages explain, plus one job on the server and one done.
 const mockUploadJob = (
   id: string,
@@ -174,7 +178,7 @@ const mockUploadJob = (
   teamCount: number,
   error = ''
 ): LocalUploadJob => {
-  const now = new Date().toISOString();
+  const now = MOCK_JOBS_CREATED_AT;
   return {
     id,
     profileId: mockDefaultProfile.id,
