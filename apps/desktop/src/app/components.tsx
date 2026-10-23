@@ -1,5 +1,5 @@
 import { Alert, type AlertProps, Badge, Button, type ButtonProps, Card, Checkbox, Collapse, Group, HoverCard, NavLink, Paper, Popover, Select, SimpleGrid, Stack, Table, type TableProps, Text, TextInput, ThemeIcon, Title, Tooltip } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useTimeout } from '@mantine/hooks';
 import { mdiBaseball, mdiCalendarToday, mdiCloudUpload, mdiCog, mdiLightningBolt, mdiWrench } from '@mdi/js';
 import { Link, useLocation } from 'react-router-dom';
 import type {
@@ -452,60 +452,39 @@ export const DesktopSidebar = (): JSX.Element => {
   const customServer = isCustomServer(selectedProfile);
   const [collapsed, setCollapsed] = useState(false);
   const sidebarRef = useRef<HTMLDivElement | null>(null);
-  const collapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const expandTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearCollapseTimer = (): void => {
-    if (collapseTimeoutRef.current !== null) {
-      clearTimeout(collapseTimeoutRef.current);
-      collapseTimeoutRef.current = null;
-    }
-  };
-
-  const clearExpandTimer = (): void => {
-    if (expandTimeoutRef.current !== null) {
-      clearTimeout(expandTimeoutRef.current);
-      expandTimeoutRef.current = null;
-    }
-  };
+  // Both timers clear on unmount; start() is a no-op while one is pending, so restarts clear first.
+  const collapseTimer = useTimeout(() => setCollapsed(true), SIDEBAR_COLLAPSE_DELAY_MS, { autoInvoke: true });
+  const expandTimer = useTimeout(() => setCollapsed(false), SIDEBAR_EXPAND_HOVER_DELAY_MS);
 
   const scheduleCollapse = (): void => {
-    clearExpandTimer();
-    clearCollapseTimer();
-    collapseTimeoutRef.current = setTimeout(() => setCollapsed(true), SIDEBAR_COLLAPSE_DELAY_MS);
+    expandTimer.clear();
+    collapseTimer.clear();
+    collapseTimer.start();
   };
 
   const expandNow = (): void => {
-    clearExpandTimer();
-    clearCollapseTimer();
+    expandTimer.clear();
+    collapseTimer.clear();
     setCollapsed(false);
   };
 
   const handleMouseEnter = (): void => {
-    clearCollapseTimer();
+    collapseTimer.clear();
     if (!collapsed) {
       return;
     }
     // Wait for a deliberate hover instead of expanding the instant the cursor
     // grazes the collapsed rail, which otherwise flickers expand/collapse.
-    clearExpandTimer();
-    expandTimeoutRef.current = setTimeout(() => setCollapsed(false), SIDEBAR_EXPAND_HOVER_DELAY_MS);
+    expandTimer.clear();
+    expandTimer.start();
   };
 
   const handleMouseLeave = (): void => {
-    clearExpandTimer();
+    expandTimer.clear();
     if (!collapsed) {
       scheduleCollapse();
     }
   };
-
-  useEffect(() => {
-    scheduleCollapse();
-    return () => {
-      clearCollapseTimer();
-      clearExpandTimer();
-    };
-  }, []);
 
   return (
     <Stack
@@ -1239,8 +1218,9 @@ export const WatchRootForm = ({ onAdded }: { onAdded?: () => void }): JSX.Elemen
     }
     let active = true;
     void desktopClient.getDefaultWatchRoot().then((defaultPath) => {
-      if (active && defaultPath && !path.trim()) {
-        setPath(defaultPath);
+      // Functional update: the user may have typed a path while this was loading.
+      if (active && defaultPath) {
+        setPath((current) => (current.trim() ? current : defaultPath));
       }
     }).catch(() => {});
     return () => {
