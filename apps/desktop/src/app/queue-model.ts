@@ -659,6 +659,18 @@ const describeKnownErrorCode = (code: string, detail: ApiErrorDetail): string | 
       }
       return 'A team in this export has more variant cards than the format allows.';
     }
+    case 'invalid_field_value': {
+      const inner = asRecord(detail.details) ?? detail;
+      const { field, rowNumber, value } = inner;
+      if (typeof field === 'string' && typeof rowNumber === 'number') {
+        const shown = typeof value === 'string' ? ` ("${value}")` : '';
+        return `The ${field} value on row ${rowNumber}${shown} is not a possible stat. Re-export the file from OOTP.`;
+      }
+      return 'The export has a stat value that is not possible. Re-export the file from OOTP.';
+    }
+    case 'body_too_large':
+    case 'payload_too_large':
+      return 'The file is larger than the server accepts.';
     case 'authentication_required':
       return 'The selected account needs to sign in again.';
     case 'format_not_found':

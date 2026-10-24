@@ -42,8 +42,8 @@ impl ApiError {
     /// change on a bare retry (e.g. cap/variant limits, missing teams) — only
     /// resolved by editing the tournament format/rules on the server.
     pub fn is_permanent_validation_failure(&self) -> bool {
-        self.status == 400
-            && matches!(
+        match self.status {
+            400 => matches!(
                 self.code.as_str(),
                 "team_count_mismatch"
                     | "format_team_count_mismatch"
@@ -51,7 +51,12 @@ impl ApiError {
                     | "cap_limit_exceeded"
                     | "slot_limit_exceeded"
                     | "ovr_range_violation"
-            )
+                    | "invalid_field_value"
+            ),
+            // The same file is just as large on the next attempt.
+            413 => matches!(self.code.as_str(), "body_too_large" | "payload_too_large"),
+            _ => false,
+        }
     }
 }
 
@@ -686,6 +691,9 @@ mod tests {
         assert!(api_error(400, "cap_limit_exceeded").is_permanent_validation_failure());
         assert!(api_error(400, "slot_limit_exceeded").is_permanent_validation_failure());
         assert!(api_error(400, "ovr_range_violation").is_permanent_validation_failure());
+        assert!(api_error(400, "invalid_field_value").is_permanent_validation_failure());
+        assert!(api_error(413, "body_too_large").is_permanent_validation_failure());
+        assert!(api_error(413, "payload_too_large").is_permanent_validation_failure());
     }
 
     #[test]
@@ -693,6 +701,8 @@ mod tests {
         assert!(!api_error(500, "team_count_mismatch").is_permanent_validation_failure());
         assert!(!api_error(429, "variant_limit_exceeded").is_permanent_validation_failure());
         assert!(!api_error(502, "cap_limit_exceeded").is_permanent_validation_failure());
+        assert!(!api_error(500, "invalid_field_value").is_permanent_validation_failure());
+        assert!(!api_error(400, "body_too_large").is_permanent_validation_failure());
     }
 
     #[test]

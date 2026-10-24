@@ -420,6 +420,17 @@ describe('formatRetryableFailureMessage', () => {
     ).toBe('Ovr range violation: The Black Freighter TBD has card 83868 rated 59, outside the 60-69 range.');
   });
 
+  test('summarizes impossible stat values and oversized files', () => {
+    expect(
+      formatRetryableFailureMessage(
+        'invalid_field_value ({"ok":false,"error":"invalid_field_value","details":{"field":"HR","rowNumber":14,"value":"1e999"}})'
+      )
+    ).toBe('Invalid field value: The HR value on row 14 ("1e999") is not a possible stat. Re-export the file from OOTP.');
+    expect(formatRetryableFailureMessage('body_too_large ({"ok":false,"error":"body_too_large"})')).toBe(
+      'Body too large: The file is larger than the server accepts.'
+    );
+  });
+
   test('can leave out the request id for compact lists', () => {
     expect(formatRetryableFailureMessage('request_failed (error code: 502) [requestId=abc]', { includeRequestId: false })).toBe(
       'Request failed: error code: 502'
