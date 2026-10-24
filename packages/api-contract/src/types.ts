@@ -32,6 +32,8 @@ export type SessionUser = z.infer<typeof sessionUserSchema>;
 export const serviceHealthSchema = z.object({
   ok: z.boolean(),
   service: z.string().optional(),
+  version: z.string().nullable().optional(),
+  commitDate: z.string().nullable().optional(),
   runtime: z
     .object({
       appEnv: z.string(),

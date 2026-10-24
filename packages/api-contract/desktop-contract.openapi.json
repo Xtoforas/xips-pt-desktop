@@ -542,6 +542,8 @@
         "properties": {
           "ok": { "const": true },
           "service": { "const": "api" },
+          "version": { "type": ["string", "null"], "description": "Deployed image tag (short commit), null outside a deploy" },
+          "commitDate": { "type": ["string", "null"], "description": "Committer date (ISO 8601) of the deployed build, null outside a deploy" },
           "runtime": {
             "type": "object",
             "required": ["appEnv", "appBaseUrl"],
