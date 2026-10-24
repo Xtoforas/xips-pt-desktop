@@ -37,6 +37,8 @@ By the end of this sprint, the app should:
 - [x] Improve shell and queue responsiveness so the desktop app remains usable below full-screen widths.
 - [x] Move readiness management out of the sidebar, add a Settings readiness tab, and let the completed Today readiness card be dismissed.
 - [x] Fix topbar server URL spacing and let Working rows be ignored or dismissed when that action is safe.
+- [x] Sync with xips-pt security fixes (2026-10-24): contract /health version fields, sign-in hint for the new Continue click, `invalid_field_value` and 413 size rejections treated as permanent with readable reasons.
+- [ ] PKCE-style binding of the desktop pairing code (xips-pt plan item 10 follow-up; needs a server change first).
 
 ## Design direction
 
