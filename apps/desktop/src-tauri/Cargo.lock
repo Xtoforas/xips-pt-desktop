@@ -6017,7 +6017,7 @@ dependencies = [
 
 [[package]]
 name = "xips-pt-desktop"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "notify",
  "reqwest 0.12.28",
