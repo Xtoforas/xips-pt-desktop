@@ -194,7 +194,8 @@ export const SignInPanel = (): JSX.Element => {
         )}
       </Group>
       <Text size="xs" c="dimmed">
-        A Discord window opens, and sign-in usually finishes by itself. If the window shows a code, paste it here.
+        A Discord window opens. After you sign in, click Continue to the desktop app. If the window shows a code
+        instead, paste it here.
       </Text>
       {codeEntryOpen ? (
       <form onSubmit={(event) => void submit(event)}>
